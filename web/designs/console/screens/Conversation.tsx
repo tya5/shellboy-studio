@@ -18,7 +18,6 @@ import type { SavedItemProjection } from "../../../ui-core/src/conversation-item
 import { ConversationItems, type ConversationItem, type ConversationToolSummary, type ConversationWorkGroup } from "./ConversationItems";
 import { ConversationCharacter } from "../system/components";
 import { effect } from "@preact/signals-core";
-import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
@@ -416,31 +415,6 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
   );
 }
 
-function WorkRegions({ model, place }: { model: AppModel; place: string }) {
-  const t = model.t.value;
-  const work = model.work.value;
-  const replies = [
-    ...model.replyPages.owed_by.value.items.map(reply => ({ reply, side: "owed_by" as const })),
-    ...model.replyPages.asked_by.value.items.map(reply => ({ reply, side: "asked_by" as const })),
-  ];
-  const state = (s: string) => s === "accepted" ? t("work.accepted") : s === "held" ? t("work.held") : s === "starting" ? t("work.starting") : s === "stopping" ? t("work.stopping") : t("work.runningState");
-  return <>
-    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map(({ reply, side }) => {
-      const isHuman = reply.recipient.kind === "name" && reply.recipient.name === "human";
-      if (side === "owed_by" || isHuman) return <QuestionCard key={reply.message_id} id={`${place}-${reply.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, reply.message_id)} busy={panelOperationBlocked(model, reply.message_id)} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />;
-      return <div class="work-row" key={reply.message_id}><span>{reply.excerpt}</span>{reply.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: reply.recipient.thread_id })}>{reply.recipient.thread_id}</a> : null}</div>;
-    })}</section> : null}
-    {work.running.length ? <section class="work-region running-region"><h3>{t("work.running")}</h3><span class="caption muted">{t("work.incomplete")}</span>{work.running.map((r) => <div class="work-row" key={r.id}><MonitorPopover className="running-label" label={r.label} preview><span>{r.label}</span>{r.command ? <code>{r.command}</code> : null}<span>{r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></MonitorPopover><span>{state(r.state)} {r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></div>)}</section> : null}
-    {work.pending.length ? <section class="work-region"><h3>{t("work.pending")}</h3>{work.pending.map(r => {
-      const action = panelCancel(model, r.id);
-      const error = panelOperationError(model, r.id);
-      return <div class="work-row" key={r.id}><span>{r.label || t("work.textUnavailable")}</span><span class="mono">{r.id}</span><span>{state(r.state)}</span><Button disabled={action.disabled} onClick={action.run}>{action.label}</Button>{error ? <div role="alert">{error}</div> : null}</div>;
-    })}</section> : null}
-    {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
-    {workRefreshing(model) && (work.running.length > 0 || work.pending.length > 0) ? <div class="caption muted">{t("work.stale")}</div> : null}
-  </>;
-}
-
 const activitySections = [
   { key: "running", label: "work.running", kind: "step", icon: "work.command" },
   { key: "pending", label: "panel.pending", kind: "message", icon: "panel.awaiting_reply" },
@@ -555,7 +529,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
         ...(side === "asked_by" ? [panelCancel(model, reply.message_id, "reply")] : [])];
       return <ListRow key={reply.message_id} id={reply.message_id} title={[party, reply.excerpt || t("work.textUnavailable")].filter(Boolean).join(" · ")}
         subtitle={panelElapsed(model.now.value, reply.created_at)} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
-        menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener))} />;
+        menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener), true)} />;
     })}
     {page.error ? <p role="alert">{errorMessage(page.error)}</p> : null}
     {!page.items.length && !page.loading && !page.error ? <EmptyState compact role={side === "owed_by" ? "empty.panelReplies" : "empty.panelAwaiting"} title={t(side === "owed_by" ? "panel.empty.owed" : "panel.empty.asked")} body={t(side === "owed_by" ? "panel.empty.owedBody" : "panel.empty.askedBody")} /> : null}
@@ -593,6 +567,12 @@ function ThreadAnalytics({ model, threadId }: { model: AppModel; threadId: strin
         : compactions ? <EmptyState compact role="empty.panelCompactions" title={t("panel.empty.compactions")} body={t("panel.empty.compactionsBody")} /> : <p class="muted caption">{unreadable}</p>}
     </Section>
   </div>;
+}
+
+/** Core's message and attachment delivery states, in Shellboy's own words; an unknown value stays as sent. */
+function deliveryStateLabel(t: AppModel["t"]["value"], state: string): string {
+  return state === "accepted" ? t("work.accepted") : state === "held" ? t("work.held")
+    : state === "applied" ? t("work.applied") : state === "cancelled" ? t("work.cancelled") : state;
 }
 
 function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: string; onBack: () => void }) {
@@ -634,7 +614,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
     const row = model.work.value.pending.find(item => item.id === detail.id);
     const action = row ? panelCancel(model, row.id) : undefined;
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("work.pending")}</h3></div>
-      {row ? <KeyValue rows={[{ key: t("work.pending"), value: model.bodyState(row.id)?.text ?? (row.label || t("work.textUnavailable")) }, { key: t("details.status"), value: row.state }]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
+      {row ? <KeyValue rows={[{ key: t("work.pending"), value: model.bodyState(row.id)?.text ?? (row.label || t("work.textUnavailable")) }, { key: t("details.status"), value: deliveryStateLabel(t, row.state) }]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
       {action ? <Button disabled={action.disabled} onClick={action.run}>{action.label}</Button> : null}
       {error ? <p role="alert">{error}</p> : null}
       {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
@@ -649,7 +629,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
       {row ? <KeyValue rows={[
         { key: t("panel.attachmentPath"), value: <bdi>{row.path}</bdi> },
         { key: t("panel.attachmentKind"), value: t(row.kind === "image" ? "panel.attachmentImage" : "panel.attachmentFile") },
-        { key: t("details.status"), value: row.delivery_status },
+        { key: t("details.status"), value: deliveryStateLabel(t, row.delivery_status) },
         { key: t("panel.attachmentManaged"), value: t(row.managed ? "panel.attachmentYes" : "panel.attachmentNo") },
         { key: t("panel.attachmentSelected"), value: t(row.selected ? "panel.attachmentYes" : "panel.attachmentNo") },
         ...(row.unavailable_reason ? [{ key: t("panel.attachmentUnavailable"), value: row.unavailable_reason }] : []),
@@ -663,7 +643,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   const replyCancel = reply && side === "asked_by" ? panelCancel(model, reply.message_id, "reply") : undefined;
   const canAnswer = reply && (side === "owed_by" || reply.recipient.kind === "name" && reply.recipient.name === "human");
   return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{tabLabel}</h3></div>
-    {canAnswer ? <QuestionCard id={`panel-${reply.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={body?.text ?? reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={panelOperationBlocked(model, reply.message_id)} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />
+    {canAnswer ? <QuestionCard id={`panel-${reply.message_id}`} label={tabLabel} waitingWord={side === "asked_by" ? t("status.awaiting") : undefined} question={body?.text ?? reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={panelOperationBlocked(model, reply.message_id)} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />
       : <p>{body?.text ?? reply?.excerpt ?? t("work.textUnavailable")}</p>}
     {peer && peer !== model.selectedId.value ? <a href={formatRoute({ view: "conversation", threadId: peer })}>{model.rowById.value.get(peer)?.summary.title || peer}</a> : null}
     {replyCancel ? <Button disabled={replyCancel.disabled} onClick={replyCancel.run}>{replyCancel.label}</Button> : null}
@@ -772,11 +752,8 @@ export function OrderedHistory({ model, handle, win, t, openThreadSettings }: { 
 
 export function Conversation({ model, panelCollapsed = false, rightPanelWidth, onPanelWidth, phonePanel, onClosePhonePanel, onOpenPhonePanel }: { model: AppModel; panelCollapsed?: boolean; rightPanelWidth?: number; onPanelWidth?: (width: number) => void; phonePanel?: boolean; onClosePhonePanel?: () => void; onOpenPhonePanel?: () => void }) {
   const t = model.t.value;
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetReturnFocus, setSheetReturnFocus] = useState<{ opener: HTMLElement; resolveFallback: () => HTMLElement | null }>();
   const handle = model.handle.value;
   const win = model.longReader.value;
-  useEffect(() => { setSheetOpen(false); }, [handle]);
 
   const details = model.details.value;
   const context = model.context.value;
@@ -838,11 +815,6 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
               {t("composer.unconfirmed")}{!model.canResend()?<div>{t("composer.retryUnavailable")}</div>:null}
             </Notice>
           ) : null}
-          {((model.replyPages.asked_by.value.items.length || model.replyPages.owed_by.value.items.length) || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={(event) => { const opener = event.currentTarget; const fallback = opener.closest(".dock")?.querySelector<HTMLElement>("textarea"); setSheetReturnFocus({ opener, resolveFallback: () => fallback?.isConnected ? fallback : null }); setSheetOpen(true); }}>
-            {[t("work.title"), ...((model.replyPages.asked_by.value.items.length || model.replyPages.owed_by.value.items.length) ? [t("work.replies")] : []),
-              ...(model.work.value.pending.length ? [t("work.pending")] : []),
-              ...(model.work.value.partial ? [t("work.partial")] : [])].join(" · ")}
-          </Button></div> : null}
           <Composer
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
@@ -871,7 +843,6 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
         disabled={panelCollapsed} onWidth={onPanelWidth} /> : null}
       {handle && !phonePanel ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} destination={destination} clearDestination={clearDestination} /> : null}
       {handle && phonePanel ? <WorkSheet open title={t("panel.title")} closeLabel={t("common.close")} onClose={() => onClosePhonePanel?.()} getReturnFocusTarget={() => root.current?.querySelector<HTMLElement>(".phone-panel-footer .shell-toggle-panel") ?? null}><RightPanel key={handle.threadId} model={model} phone destination={destination} clearDestination={clearDestination} /></WorkSheet> : null}
-      <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );
 }

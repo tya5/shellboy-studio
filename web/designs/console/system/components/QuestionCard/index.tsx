@@ -2,12 +2,12 @@ import { useState } from "preact/hooks";
 import { StatusMark } from "../StatusMark";
 import { Button } from "../Button";
 
-export function QuestionCard(props: { id: string; label: string; waitingWord: string; question: string; answerLabel: string; submitLabel: string; error?: string | undefined; busy?: boolean; onAnswer: (text: string) => void; extra?: preact.ComponentChildren }) {
+export function QuestionCard(props: { id: string; label: string; waitingWord?: string | undefined; question: string; answerLabel: string; submitLabel: string; error?: string | undefined; busy?: boolean; onAnswer: (text: string) => void; extra?: preact.ComponentChildren }) {
   const [text, setText] = useState("");
   return (
     <section class="q">
       <div class="lab">
-        <StatusMark status="awaiting" label={props.waitingWord} word={false} />
+        {props.waitingWord ? <StatusMark status="awaiting" label={props.waitingWord} word={false} /> : null}
         {props.label}
       </div>
       <div class="question-card-text">{props.question}</div>

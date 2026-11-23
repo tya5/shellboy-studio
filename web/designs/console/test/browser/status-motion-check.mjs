@@ -36,7 +36,7 @@ try{
     if(!image||(image.tagName==='IMG'&&(!image.complete||!image.naturalWidth)))return;
     const rect=image.getBoundingClientRect();
     return {running:image.hasAttribute('data-running'),dots:image.querySelectorAll('circle').length,x:rect.x,y:rect.y,width:rect.width,height:rect.height,bar:bar.height,
-     text:footer.textContent,strip:document.querySelector('.work-strip')?.textContent,
+     text:footer.textContent,
      fixedFields:[...footer.querySelectorAll('span:not([data-status-description])')].every(node=>node.getBoundingClientRect().right<=bar.right && node.scrollWidth<=node.clientWidth+1)};
    })()`));
    if(state==='completed'){
@@ -50,7 +50,6 @@ try{
    assert(frame.fixedFields,`${width}/${theme}/${state}: clipped fact`);
    if(state==='running'){
     assert(frame.text.includes('Running at least 2') && frame.text.includes('Verify query ranking') && frame.text.includes('1m'));
-    assert(!frame.strip?.includes('Running at least'));
    }
    if(width!==390)continue;
    const frames=new Set();

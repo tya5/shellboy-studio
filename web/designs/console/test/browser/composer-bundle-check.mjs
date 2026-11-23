@@ -18,7 +18,7 @@ try{
  await until(async()=>(await fetch(base)).ok);
  const before=process.env.BASELINE==='1';
  const capture=async name=>{const shot=await call('Page.captureScreenshot',{format:'png'});await writeFile(`${process.env.SHOTS}/${before?'before':'after'}-${name}.png`,Buffer.from(shot.data,'base64'));};
- for(const width of [1280,390]) for(const theme of ['console','light']){
+ for(const width of [1280,1000,390]) for(const theme of ['console','light']){
   await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url:`${base}?width=${width}&theme=${theme}&longModel`});
   await until(()=>evaluate("!!window.setRun && !!document.querySelector('.context-ring')"));
@@ -67,9 +67,11 @@ try{
    assert.equal(await evaluate("document.querySelectorAll('[data-conversation-header] .shell-toggle-panel').length"),0);
    const visible=await evaluate("[...document.querySelectorAll('.shell-toggle-panel')].filter(b=>b.getClientRects().length).length");
    assert.equal(visible,1);
-   if(width===390){
-    const target=await evaluate("(() => {const b=document.querySelector('.phone-panel-footer button');const r=b.getBoundingClientRect();return [r.width,r.height,parseFloat(getComputedStyle(b).getPropertyValue('--size-touch'))];})()");
-    assert(target[0]>=target[2] && target[1]>=target[2]);
+   // Below 1180px the panel does not fit beside the conversation; its footer toggle opens it as a sheet.
+   assert.equal(await evaluate("getComputedStyle(document.querySelector('.details')??document.body).display==='none' || !document.querySelector('.details')"),width<1180);
+   if(width<1180){
+    const target=await evaluate("(() => {const b=document.querySelector('.phone-panel-footer button');const r=b.getBoundingClientRect();return [r.width,r.height,parseFloat(getComputedStyle(b).getPropertyValue(innerWidth<900?'--size-touch':'--size-shell-footer'))];})()");
+    assert(target[0]>=target[2] && target[1]>=target[2],JSON.stringify(target));
     await evaluate("document.querySelector('.phone-panel-footer button').click();true");
     await until(()=>evaluate("!!document.querySelector('dialog[open] [data-phone-panel]')"));
     await evaluate("document.querySelector('dialog[open] .work-sheet-head button').click();true");

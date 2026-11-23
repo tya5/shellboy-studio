@@ -58,7 +58,7 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
     return;
   }
   if (params.get('state') === 'awaiting') {
-    Object.assign(db.details.lead!, { parent_id: 'organization', shells_count: 1 });
+    Object.assign(db.details.lead!, { parent_id: 'organization', shells_count: 1, pending_replies: { owed_by: { count: 1, exact: true }, asked_by: { count: 1, exact: true } } });
     db.replies = [pendingReply('human-5', 'lead', {kind:'name',name:'human'}, 'P5_HUMAN_QUESTION'),
       pendingReply('thread-5', 'child', {kind:'thread',thread_id:'lead'}, 'P5_THREAD_DUTY')];
   }

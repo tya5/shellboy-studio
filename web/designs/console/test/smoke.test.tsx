@@ -155,8 +155,8 @@ describe("App request and guide", () => {
   });
 });
 
-describe("Conversation work regions", () => {
-  it("shows nonempty regions in the sidebar and one compact strip; removes them on a hint", async () => {
+describe("Conversation right-panel activity", () => {
+  it("shows nonempty activity sections in the right panel and removes them on a hint", async () => {
     const { model, t, db } = await fixtureModel();
     db.work.lead = [
       { kind: "shell", id: "exec-1", execution_id: "exec-1", thread_id: "lead", run_id: "run-1", state: "running" },
@@ -172,12 +172,9 @@ describe("Conversation work regions", () => {
     expect(headings).toEqual(["Running", "Waiting for history"]);
     expect(text(sidebar)).toContain("test command");
     expect(text(sidebar)).toContain("Please review");
-    expect(el.querySelector(".work-strip")?.textContent).toContain("Conversation work");
-    expect(el.querySelector(".work-strip")?.textContent).not.toContain("Running at least");
     db.work.lead = [];
     act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
-    expect(el.querySelector(".work-strip")).toBeNull();
     expect(el.querySelectorAll("#panel-page-work [data-panel-row-id]")).toHaveLength(0);
     model.dispose();
   });

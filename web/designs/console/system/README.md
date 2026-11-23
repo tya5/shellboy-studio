@@ -23,7 +23,8 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 ## Layout
 
 - Desktop: 260px sidebar, breadcrumb top bar, main column, optional 340px four-tab conversation inspector with a compact icon rail, status bar at the bottom. Settings and Analytics add a 230px section list beside one pane (SubView).
-- Phone width (container under 900px): sidebar, status bar and details disappear and a bottom tab bar of four tabs takes over: Awaiting you, Conversation, Monitor and More, which holds the rest. Use container queries, so the same components work in any frame.
+- Under 1180px the right panel does not fit beside the conversation. It is hidden, and the right-panel toggle in a footer under the conversation opens the same panel as a sheet (see Shell panels). One container query, `max-width:1179px`, owns both sides.
+- Phone width (container under 900px): sidebar and status bar disappear and a bottom tab bar of four tabs takes over: Awaiting you, Conversation, Monitor and More, which holds the rest. Use container queries, so the same components work in any frame.
 - The conversation opens first. Thread views are Conversation, Monitor and Awaiting you. Analytics, Settings, Branches and Threads are whole-owner views.
 
 ## Layout contract
@@ -177,13 +178,13 @@ The shared row-action pattern and its references are recorded in `patterns/row-a
 
 ### Conversation status artwork
 
-The permanent one-line footer in Conversation uses the existing status artwork. Only its description may ellipsize; activity, the lower-bound count when two or more, elapsed time from the actual start, and actions retain their own fields. The phone WorkSheet opener does not repeat the running summary.
+The permanent one-line footer in Conversation uses the existing status artwork. Only its description may ellipsize; activity, the lower-bound count when two or more, elapsed time from the actual start, and actions retain their own fields.
 
 The `ConversationCharacter` component owns running-only dot motion inside the existing artwork.
 
 ## Shell panels
 
-On desktop, sidebar and right-panel visibility controls live in `ShellFooter` rows of height `size-shell-footer` (36px), separated from the middle content. At phone width, the right-panel toggle opens the sheet from a footer of height `size-touch` (44px). Headers and footers do not scroll; only each panel's middle does. `ShellToggle` uses a VS Code-style window glyph whose leading strip is filled when shown and outline-only when hidden; do not change color for state. The shared 50px `size-shell-column` fixes icon centers 25px from the left/right shell edge in both expanded and rail states; `size-shell-rail` adds only the divider width. Keep current navigation IconRoles unchanged. The right rail repeats the existing tab counts as badges on their icons. The phone drawer remains on the header menu button. References: VS Code layout sidebar actions, Orca SidebarToggleIcon, GitHub sidebar footer disclosure.
+On desktop, sidebar and right-panel visibility controls live in `ShellFooter` rows of height `size-shell-footer` (36px), separated from the middle content. Under 1180px, where the right panel is hidden, the right-panel toggle sits in a footer under the conversation and opens the same panel in a WorkSheet; that footer is `size-shell-footer` high from 900px to 1179px and `size-touch` (44px) at phone width. Headers and footers do not scroll; only each panel's middle does. `ShellToggle` uses a VS Code-style window glyph whose leading strip is filled when shown and outline-only when hidden; do not change color for state. The shared 50px `size-shell-column` fixes icon centers 25px from the left/right shell edge in both expanded and rail states; `size-shell-rail` adds only the divider width. Keep current navigation IconRoles unchanged. The right rail repeats the existing tab counts as badges on their icons. The phone drawer remains on the header menu button. References: VS Code layout sidebar actions, Orca SidebarToggleIcon, GitHub sidebar footer disclosure.
 
 When the right panel collapses, all tab panels are hidden and unfocusable; the flex middle remains to anchor the footer. Do not use this rule to remove tab state or unmount panel content.
 Settings navigation and save behavior are specified in `patterns/settings.md`.

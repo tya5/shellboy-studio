@@ -33,7 +33,21 @@ try {
       return { theme: document.documentElement.dataset.ds, images, statusInDock: dock.contains(status), pageOverflow: document.documentElement.scrollWidth > innerWidth, empty: !!document.querySelector('.empty-character'), avatars: document.querySelectorAll('.character-avatar').length, statusText: status.innerText };
     })()`);
     if (state === 'awaiting') {
-      const replies = await evaluate(`(() => ({human:document.body.textContent.includes('P5_HUMAN_QUESTION'),thread:document.body.textContent.includes('P5_THREAD_DUTY'),answer:!!document.querySelector('.work-region textarea'),peerLink:[...document.querySelectorAll('.work-region a')].some(a=>a.href.includes('child')),oldOwner:document.body.innerText.includes('previous owner')}))()`);
+      // Replies live in the right panel; below 1180px its footer toggle opens it as a sheet.
+      const replies = await evaluate(`(async () => {
+        const frame = () => new Promise(r => setTimeout(r, 100));
+        const until = async find => { for (let i = 0; i < 50; i++) { const found = find(); if (found) return found; await frame(); } return null; };
+        if (innerWidth < 1180) document.querySelector('.phone-panel-footer button').click();
+        const panel = await until(() => document.querySelector('dialog[open] [data-panel-root]') ?? (innerWidth < 1180 ? null : document.querySelector('[data-panel-root]')));
+        panel?.querySelector('[data-panel-tab="reply-needed"]').click();
+        (await until(() => panel?.querySelector('[data-panel-row-id="thread-5"] button')))?.click();
+        const detail = await until(() => panel?.querySelector('#panel-page-reply-needed [data-panel-detail]'));
+        if (!panel) return {panel:false};
+        const result = {human:panel.textContent.includes('P5_HUMAN_QUESTION'),thread:panel.textContent.includes('P5_THREAD_DUTY'),answer:!!detail?.querySelector('textarea'),peerLink:[...(detail?.querySelectorAll('a') ?? [])].some(a=>a.href.includes('child')),oldOwner:document.body.innerText.includes('previous owner')};
+        panel.querySelector('[data-panel-back]')?.click(); await frame();
+        document.querySelector('dialog[open] .work-sheet-head button')?.click();
+        return result;
+      })()`);
       if (!replies.human || !replies.thread || !replies.answer || !replies.peerLink || replies.oldOwner) throw Error('Protocol-5 reply display: '+JSON.stringify(replies));
       result.replies = replies;
     }

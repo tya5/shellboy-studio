@@ -178,7 +178,6 @@
   .scrim.open{display:block;position:absolute;inset:0;z-index:25;border:0;padding:0;background:var(--scrim)}
   .status{display:none}
   .tabbar{display:grid}
-  .phone-panel-footer{display:block;flex:none}
   .phone-panel-footer .shell-footer,.phone-panel-footer .shell-toggle{height:var(--size-touch);min-height:var(--size-touch)}
   .phone-panel-footer .shell-toggle{min-width:var(--size-touch)}
   .top{padding-left:var(--space-8);padding-right:var(--space-8)}
@@ -208,16 +207,13 @@
   .inbox .empty-state-root{margin:0;padding:0}
 }
 
-/* Conversation work regions: independent scroll areas; compact sheet on narrow frames. */
+/* The right panel fits beside the conversation from 1180px. Below that it opens as a sheet from the
+   right-panel toggle in the footer under the conversation; this one query owns both sides. */
 .details{min-height:0;overflow:hidden}
-.work-region,.detail-region{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:var(--space-8);flex:1 1 auto}
-.work-region h3,.detail-region h3{position:sticky;top:0;background:var(--panel)}
 .work-row{display:flex;flex-direction:column;gap:var(--space-4);overflow-wrap:anywhere;padding:var(--space-8);background:var(--inset);border-radius:var(--radius-s)}
-.work-strip{display:none}
 @container app (max-width:1179px){
   .details{display:none}
-  .work-strip{display:block}
-  .work-strip .btn{width:100%;justify-content:flex-start;min-height:var(--size-touch);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .phone-panel-footer{display:block;flex:none}
 }
 .work-sheet{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);color:var(--fg);width:min(100%,var(--size-work-sheet-width));max-height:80dvh;padding:var(--space-16)}
 .work-sheet::backdrop{background:var(--scrim)}
@@ -225,26 +221,15 @@ html:has(dialog:modal){overflow:hidden}
 .work-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8)}
 .work-sheet-head h2{font:var(--type-heading);margin:0}
 .work-sheet-body{display:flex;flex-direction:column;gap:var(--space-12);max-height:65dvh;overflow:auto}
-.work-sheet-body .work-region{overflow:visible;flex:none}
 .work-sheet-body .details[data-phone-panel]{display:flex;width:100%;overflow:auto}
 
 /* Padding is included in the virtual row height measured by ResizeObserver. */
 .vrow,.conversation-row{padding-bottom:var(--space-8)}
 
-.running-region .work-row{flex-direction:row;align-items:center;white-space:nowrap}
-.running-label{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
 /* The virtual reader owns anchor correction; do not let browser anchoring compete. */
 .scroll-frame > .scroll{overflow-anchor:none}
 
 .branch-excerpts p{margin:var(--space-4) 0;white-space:pre-wrap;overflow-wrap:anywhere}
-
-/* Work items are rows within their section; inset focus stays inside scrolling bounds. */
-.work-region .work-row{background:transparent;border-radius:0;border:0;border-bottom:1px solid var(--line)}
-.work-region .work-row:hover,.work-region .work-row:focus-within{background:var(--accent-bg)}
-.work-region .running-label{overflow:visible}
-.work-region .running-label>button{display:block;max-width:100%;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;text-align:left}
-.work-region .running-label>button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
 .conversation-status{flex-direction:row;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;overflow-wrap:normal;box-sizing:border-box;height:calc(var(--size-conversation-character) + 2 * var(--space-8));min-height:calc(var(--size-conversation-character) + 2 * var(--space-8));max-height:calc(var(--size-conversation-character) + 2 * var(--space-8));min-width:0}
 .conversation-status>span{flex:none}

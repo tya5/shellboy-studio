@@ -1,11 +1,12 @@
 # WorkSheet
 
-- **Use for:** Show Conversation Work in a native modal sheet; let the caller own open state and supply a dismissal-time focus target.
+- **Use for:** Show the conversation right panel in a native modal sheet below 1180px, where it does not fit beside the conversation, and other modal flows; let the caller own open state and supply a dismissal-time focus target.
 - **Do not use for:** Use PanelTabs for the desktop inspector, Popover for anchored controls and ThreadDeleteDialog for destructive confirmation.
 - **Why:** Native modality confines focus and input; a scrollable body and explicit outside/Escape handling give the sheet one close path.
 - **Source:** [WAI-ARIA APG Modal Dialog](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/); [Radix Dialog](https://www.radix-ui.com/primitives/docs/components/dialog); [shadcn/ui Sheet](https://ui.shadcn.com/docs/components/sheet)
 
-A native modal sheet for the Conversation work strip. `open` alone drives
+A native modal sheet, opened for the conversation right panel by the right-panel toggle
+under 1180px. `open` alone drives
 `showModal()` and `close()`. On dismissal, the sheet calls the supplied focus-target
 getter then; it does not capture a DOM element during render or infer a fallback.
 `showModal()` contains modal focus. The single `html:has(dialog:modal)` rule locks

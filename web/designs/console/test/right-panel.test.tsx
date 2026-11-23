@@ -5,12 +5,33 @@ import { signal } from '@preact/signals-core';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+// @ts-ignore -- node built-in, no Node types in the browser build
+import { readFileSync } from 'node:fs';
 import { fixtureModel } from '../../../ui-core/test/fixture';
 import { details, summary, settle, flush } from '../../../data/test/harness';
 import type { DesignContext, Prefs } from '../../../ui-core/src';
 import { DESIGNS } from '../../registry';
 import { loadPrefs, savePrefs, type PrefStore } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
+
+const layoutCss=readFileSync('designs/console/system/layout.css','utf8').replace(/\/\*[\s\S]*?\*\//g,'');
+/** layout.css as a browser applies it in a container of `width`; happy-dom does not evaluate container queries. */
+function layoutAtContainerWidth(width:number) {
+ let out='';
+ for (let at=0;at<layoutCss.length;) {
+  const start=layoutCss.indexOf('@container app (',at);
+  if (start<0) {out+=layoutCss.slice(at);break;}
+  out+=layoutCss.slice(at,start);
+  const open=layoutCss.indexOf('{',start);
+  const query=/\((min|max)-width:(\d+)px\)/.exec(layoutCss.slice(start,open))!;
+  let depth=1,end=open+1;
+  for (;depth;end++) depth+=layoutCss[end]==='{'?1:layoutCss[end]==='}'?-1:0;
+  const limit=Number(query[2]);
+  if (query[1]==='min' ? width>=limit : width<=limit) out+=layoutCss.slice(open+1,end-1);
+  at=end;
+ }
+ return out;
+}
 
 let host: HTMLElement | undefined;
 afterEach(() => { if (host) render(null, host); host?.remove(); host = undefined; });
@@ -126,21 +147,85 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
- it('keeps non-human asked-by rows linked in the narrow work sheet', async () => {
+ it('opens the right panel from its footer toggle at a 1000px container and answers a reply from the sheet', async () => {
   const f=await setup();
+  const style=document.createElement('style');
+  style.textContent=layoutAtContainerWidth(1000);
+  document.head.append(style);
   try {
-   f.db.replies=[f.db.replies[0]!,pendingReply("asked-child","lead",{kind:"thread",thread_id:"child"},"Waiting for the child Thread")];
-   await act(async()=>{f.t.push({t:"changed",config_changed:false,thread_ids:["lead"],list:false});await settle(f.t,f.db);});
-   Object.defineProperty(f.host.querySelector(".app"), "clientWidth", { configurable:true, value:390 });
-   const strip=[...f.host.querySelectorAll('button')].find(button=>button.textContent?.includes('返信'))!;
-   await act(async()=>strip.click());
-   await act(async()=>{await settle(f.t,f.db);});
-   const sheet=f.host.querySelector<HTMLDialogElement>('.work-sheet')!;
+   Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:1000});
+   const footer=f.host.querySelector<HTMLElement>('.phone-panel-footer')!;
+   expect(getComputedStyle(f.host.querySelector('.details')!).display).toBe('none');
+   expect(getComputedStyle(footer).display).not.toBe('none');
+   const toggle=footer.querySelector<HTMLButtonElement>('.shell-toggle-panel')!;
+   expect(toggle.getAttribute('aria-expanded')).toBe('false');
+   await act(async()=>toggle.click());
+   const sheet=f.host.querySelector<HTMLDialogElement>('dialog.work-sheet')!;
    expect(sheet.open).toBe(true);
-   expect(sheet.querySelector('textarea')).not.toBeNull();
-   const link=[...sheet.querySelectorAll<HTMLAnchorElement>('.work-row a')].find(anchor=>anchor.textContent==='child');
-   expect(link?.getAttribute('href')).toContain('child');
-   expect(sheet.querySelectorAll('.work-row a')).toHaveLength(1);
+   expect(sheet.querySelector('[data-phone-panel]')).not.toBeNull();
+   expect(f.host.querySelector('.phone-panel-footer .shell-toggle-panel')?.getAttribute('aria-expanded')).toBe('true');
+   await act(async()=>sheet.querySelector<HTMLButtonElement>('[data-panel-tab="reply-needed"]')!.click());
+   await act(async()=>sheet.querySelector<HTMLButtonElement>('[data-panel-row-id="asked-child"] button')!.click());
+   await act(async()=>{await settle(f.t,f.db);});
+   const detail=sheet.querySelector('#panel-page-reply-needed [data-panel-detail]')!;
+   expect(detail).not.toBeNull();
+   expect(detail.querySelector('textarea')).not.toBeNull();
+   expect([...detail.querySelectorAll<HTMLAnchorElement>('a')].map(a=>a.getAttribute('href'))).toEqual([expect.stringContaining('child')]);
+   await act(async()=>sheet.querySelector<HTMLButtonElement>('.work-sheet-head button')!.click());
+   expect(f.host.querySelector('dialog[open]')).toBeNull();
+   expect(document.activeElement).toBe(f.host.querySelector('.phone-panel-footer .shell-toggle-panel'));
+  } finally {style.remove();f.model.dispose();f.data.stop();}
+ });
+
+ it('keeps one container rule for hiding the panel and showing its footer toggle', () => {
+  const at=(width:number)=>{
+   const style=document.createElement('style');
+   style.textContent=layoutAtContainerWidth(width);
+   document.head.append(style);
+   const app=document.createElement('div');app.className='app';
+   app.innerHTML='<aside class="details" data-panel-root=""></aside><div class="phone-panel-footer"></div>';
+   document.body.append(app);
+   try {
+    return [getComputedStyle(app.querySelector('.details')!).display==='none', getComputedStyle(app.querySelector('.phone-panel-footer')!).display!=='none'];
+   } finally {app.remove();style.remove();}
+  };
+  for (const width of [390,899,900,1000,1179]) expect(at(width),String(width)).toEqual([true,true]);
+  for (const width of [1180,1280]) expect(at(width),String(width)).toEqual([false,false]);
+ });
+
+ it('labels the right-panel detail by its tab and translates delivery states', async () => {
+  const f=await setup(['attachment.list.page']);
+  const answer=f.db.answer.bind(f.db);
+  const attachment=(id:string,delivery_status:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path:`/fixture/${id}.txt`,kind:'file',delivery_status,selected:true,managed:false});
+  f.db.answer=call=>call.command==='attachment.list'
+   ? {ok:true,result:{items:[attachment('applied-file','applied'),attachment('held-file','held'),attachment('cancelled-file','cancelled')]}} : answer(call);
+  try {
+   f.db.work.lead!.push({kind:'message',id:'queued',thread_id:'lead',message_id:'queued',state:'accepted',excerpt:'Queued'});
+   await act(async()=>{f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});await settle(f.t,f.db);});
+   const open=async(tab:string,id:string)=>{
+    await act(async()=>f.host.querySelector<HTMLButtonElement>(`[data-panel-tab="${tab}"]`)!.click());
+    await act(async()=>{await settle(f.t,f.db);});
+    await act(async()=>f.host.querySelector<HTMLButtonElement>(`#panel-page-${tab} [data-panel-row-id="${id}"] button`)!.click());
+    await act(async()=>{await settle(f.t,f.db);});
+    return f.host.querySelector<HTMLElement>(`#panel-page-${tab} [data-panel-detail]`)!;
+   };
+   const owed=await open('reply-needed','asked-child');
+   expect(owed.querySelector('.q .lab')?.textContent).toBe('要返信');
+   expect(owed.querySelector('[data-status="awaiting"]')).toBeNull();
+   expect(owed.textContent).not.toContain('返信待ち');
+   expect(owed.innerHTML).not.toContain('あなた待ち');
+   const asked=await open('awaiting-reply','owed-human');
+   expect(asked.querySelector('.q .lab')?.textContent).toBe('返信待ち');
+   expect(asked.querySelector('[data-status="awaiting"]')?.getAttribute('aria-label')).toBe('あなた待ち');
+   const status=(detail:HTMLElement)=>[...detail.querySelectorAll('dt')].find(dt=>dt.textContent===f.model.t.value('details.status'))?.nextElementSibling?.textContent;
+   expect(status(await open('work','queued'))).toBe('受付済み');
+   const states:(string|null|undefined)[]=[];
+   for (const id of ['applied-file','held-file','cancelled-file']) {
+    const detail=await open('possessions',id);
+    states.push(status(detail));
+    await act(async()=>detail.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
+   }
+   expect(states).toEqual(['反映済み','保留中','取消済み']);
   } finally {f.model.dispose();f.data.stop();}
  });
 

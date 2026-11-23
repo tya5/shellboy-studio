@@ -16,3 +16,5 @@ Styles are colocated in `system/components/QuestionCard/style.css`.
 Styles: style.css in this directory
 
 A caller-owned in-flight operation can disable answer submission through `busy`.
+
+`waitingWord` names the awaiting mark beside the label. Pass it only when the question waits for the person (StatusMark: the awaiting mark means a person needs to answer). A reply this Thread owes another Thread (the right panel's Reply needed) passes no `waitingWord` and shows no mark; its label is the tab name.
