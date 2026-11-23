@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Button } from "../Button";
 
 export function MonitorPopover({ label, children, className = "", preview = false, controlled }: { label: string; children: ComponentChildren; className?: string; preview?: boolean; controlled?: { open: boolean; toggle: () => void; close: () => void; panelClass: string; panelLabel: string } }) {
@@ -8,7 +8,7 @@ export function MonitorPopover({ label, children, className = "", preview = fals
   const root = useRef<HTMLDivElement>(null);
   const open = controlled?.open ?? localOpen;
   const close = controlled?.close;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open && !hover) return;
     const press = (e: Event) => { if (!root.current?.contains(e.target as Node)) { if (close) close(); else setOpen(false); } };
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setHover(false); if (open) { if (close) close(); else setOpen(false); root.current?.querySelector("button")?.focus(); } } };

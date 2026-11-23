@@ -39,7 +39,9 @@ try{
   await until(()=>evaluate("!document.querySelector('.model-picker')"));
   await evaluate("document.querySelector('.model-picker-anchor>button').click(); true");
   await until(()=>evaluate("!!document.querySelector('.model-picker')"));
+  await evaluate("document.querySelector('.model-picker input').focus(); true");
   await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await until(()=>evaluate("!document.querySelector('.model-picker') && document.activeElement===document.querySelector('.model-picker-anchor>button')"));
   console.log(JSON.stringify({width,bounds,writes:await evaluate('window.writes()')}));
  }
