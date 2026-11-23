@@ -5,7 +5,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.ui.json",
     "test": "vitest run",
-    "check": "npm run -s typecheck && vitest run",
+    "check": "npm run -s typecheck && node designs/console/system/check-raw-px.mjs && vitest run",
     "tokens": "node designs/console/system/gen-tokens.mjs",
     "build": "vite build",
     "dev": "vite"
