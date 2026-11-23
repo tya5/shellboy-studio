@@ -30,7 +30,7 @@ export type ConversationRow =
   | { type: "note"; id: string; kind: string; text: string; at: string | undefined };
 
 
-function speakerOf(item: HistoryItem): Speaker {
+export function speakerOf(item: { readonly kind?: string; readonly provenance?: { readonly sender?: unknown } }): Speaker {
   if (item.kind === "assistant_response") return { kind: "shellboy" };
   const sender = senderFact(item.provenance?.sender);
   if (sender.kind === "human") return { kind: "you" };

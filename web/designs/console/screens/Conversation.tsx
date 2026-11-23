@@ -6,6 +6,7 @@ import { WorkElementRow, formatWorkElementDisplay } from "../system/components/W
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
+import { speakerOf, type Speaker } from "../../../ui-core/src/conversation";
 import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
@@ -345,13 +346,25 @@ function BodyReadButton({model,nodeId,itemIdentity,typedNode,unavailable}:{model
   return <Button variant="link" onClick={() => void model.loadBody(nodeId, typedNode ? { kind: "typed", identity: undefined } : itemIdentity === undefined ? undefined : { kind: "typed", identity: itemIdentity })}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
 }
 
+function speakerWho(speaker: Speaker, model: AppModel): string {
+  const t = model.t.value;
+  return speaker.kind === "you" ? t("convo.you") : speaker.kind === "shellboy" ? t("convo.shellboy")
+    : speaker.kind === "cli" ? t("convo.cli") : speaker.kind === "model" ? t("convo.modelSender")
+    : speaker.kind === "unknown" ? t(speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : speaker.label;
+}
+
+function speakerClaim(speaker: Speaker, model: AppModel): string | undefined {
+  return (speaker.kind === "model" || speaker.kind === "unknown") && speaker.label !== undefined
+    ? model.t.value("convo.senderClaimedLabel", { label: speaker.label }) : undefined;
+}
+
 function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartial, bodyUnavailable, nodeAuthoritative }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string; bodyPartial?: boolean; bodyUnavailable?: boolean; nodeAuthoritative?: boolean }) {
   const t = model.t.value;
   const threadId = model.handle.value?.threadId;
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
   const found = model.rowMarks.value.get(row.id);
   const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
-  const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.kind === "model" ? t("convo.modelSender") : row.speaker.kind === "unknown" ? t(row.speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : row.speaker.label;
+  const who = speakerWho(row.speaker, model);
   const senderHeader = row.speaker.kind === "model" ? senderHeaderDisplay(row.speaker.threadId, model.senderTitles.values.value.get(row.speaker.threadId), t("convo.modelSender")) : undefined;
   const header = senderHeader ? {...senderHeader,role:t("convo.modelSender")} : who;
   const body = model.bodyState(row.id, row.itemIdentity);
@@ -360,8 +373,8 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
     <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={renderedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
       {relationship.kind==="request" ? <div class="caption" data-message-relation="request">{t("convo.relationRequest")} · {t(`convo.relation.${relationship.state}`)}{relationship.replyId ? <> <code>{relationship.replyId}</code></> : null}</div> : relationship.kind==="reply" ? <div class="caption" data-message-relation="reply">{t("convo.relationReply")} <code>{relationship.requestId}</code></div> : null}
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
-        {row.speaker.label !== undefined ? <div>{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
-      </div> : row.speaker.kind === "unknown" && row.speaker.label !== undefined ? <div class="caption">{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
+        {speakerClaim(row.speaker, model) ? <div>{speakerClaim(row.speaker, model)}</div> : null}
+      </div> : speakerClaim(row.speaker, model) ? <div class="caption">{speakerClaim(row.speaker, model)}</div> : null}
       {(row.truncated || bodyPartial) && body?.text === undefined ? (
         <span class="more">
           {bodyUnavailable ? <span class="muted caption" data-body-unavailable="">{t("work.textUnavailable")}</span> : <Button variant="link" onClick={() => void model.loadBody(row.id, nodeAuthoritative ? { kind: "typed", identity: undefined } : row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
@@ -387,8 +400,11 @@ function WorkRegions({ model, place }: { model: AppModel; place: string }) {
   ];
   const state = (s: string) => s === "accepted" ? t("work.accepted") : s === "held" ? t("work.held") : s === "starting" ? t("work.starting") : s === "stopping" ? t("work.stopping") : t("work.runningState");
   return <>
-    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map(({ reply, side }) =>
-      <QuestionCard key={reply.message_id} id={`${place}-${reply.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, reply.message_id)} busy={panelOperationBlocked(model, reply.message_id)} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />)}</section> : null}
+    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map(({ reply, side }) => {
+      const isHuman = reply.recipient.kind === "name" && reply.recipient.name === "human";
+      if (side === "owed_by" || isHuman) return <QuestionCard key={reply.message_id} id={`${place}-${reply.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, reply.message_id)} busy={panelOperationBlocked(model, reply.message_id)} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />;
+      return <div class="work-row" key={reply.message_id}><span>{reply.excerpt}</span>{reply.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: reply.recipient.thread_id })}>{reply.recipient.thread_id}</a> : null}</div>;
+    })}</section> : null}
     {work.running.length ? <section class="work-region running-region"><h3>{t("work.running")}</h3><span class="caption muted">{t("work.incomplete")}</span>{work.running.map((r) => <div class="work-row" key={r.id}><MonitorPopover className="running-label" label={r.label} preview><span>{r.label}</span>{r.command ? <code>{r.command}</code> : null}<span>{r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></MonitorPopover><span>{state(r.state)} {r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></div>)}</section> : null}
     {work.pending.length ? <section class="work-region"><h3>{t("work.pending")}</h3>{work.pending.map(r => {
       const action = panelCancel(model, r.id);
@@ -493,12 +509,8 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
       const human = reply.recipient.kind === "name" && reply.recipient.name === "human";
       const peer = side === "owed_by" ? reply.sender.thread_id : reply.recipient.kind === "thread" ? reply.recipient.thread_id : undefined;
       const title = peer ? model.rowById.value.get(peer)?.summary.title || peer : undefined;
-      const sender = senderFact(reply.sender);
-      const senderLabel = sender.kind === "human" ? t("convo.you")
-        : sender.kind === "external_cli" ? sender.label?.trim() ? `CLI: ${sender.label}` : "CLI"
-        : sender.kind === "model" ? title ?? sender.label ?? t("convo.shellboy")
-        : sender.kind === "unknown_model" ? sender.label ?? t("convo.shellboy")
-        : sender.label ?? t("work.textUnavailable");
+      const senderSpeaker = speakerOf({ kind: "message", provenance: { sender: reply.sender } });
+      const senderLabel = [speakerWho(senderSpeaker, model), speakerClaim(senderSpeaker, model)].filter(Boolean).join(" · ");
       const party = side === "owed_by" ? senderLabel
         : human ? t("convo.you") : title ?? (reply.recipient.kind === "name" ? reply.recipient.name : undefined);
       const target = peer && peer !== model.selectedId.value ? formatRoute({ view: "conversation", threadId: peer }) : undefined;

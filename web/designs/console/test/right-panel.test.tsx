@@ -37,6 +37,36 @@ async function setup(capabilities?: string[]) {
 }
 
 describe('right panel purpose',()=>{
+ it('uses the canonical unknown sender label in the reply list', async () => {
+  const f=await setup();
+  try {
+   f.db.replies[1]!.sender={kind:"unknown"};
+   await act(async()=>{f.t.push({t:"changed",config_changed:false,thread_ids:["lead"],list:false});await settle(f.t,f.db);});
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="reply-needed"]')!.click());
+   const row=f.host.querySelector('[data-panel-row-id="asked-child"]')!;
+   expect(row.textContent).toContain(f.model.t.value("convo.unknownSender"));
+   expect(row.textContent).not.toContain(f.model.t.value("work.textUnavailable"));
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
+ it('keeps non-human asked-by rows linked in the narrow work sheet', async () => {
+  const f=await setup();
+  try {
+   f.db.replies=[f.db.replies[0]!,pendingReply("asked-child","lead",{kind:"thread",thread_id:"child"},"Waiting for the child Thread")];
+   await act(async()=>{f.t.push({t:"changed",config_changed:false,thread_ids:["lead"],list:false});await settle(f.t,f.db);});
+   Object.defineProperty(f.host.querySelector(".app"), "clientWidth", { configurable:true, value:390 });
+   const strip=[...f.host.querySelectorAll('button')].find(button=>button.textContent?.includes('返信'))!;
+   await act(async()=>strip.click());
+   await act(async()=>{await settle(f.t,f.db);});
+   const sheet=f.host.querySelector<HTMLDialogElement>('.work-sheet')!;
+   expect(sheet.open).toBe(true);
+   expect(sheet.querySelector('textarea')).not.toBeNull();
+   const link=[...sheet.querySelectorAll<HTMLAnchorElement>('.work-row a')].find(anchor=>anchor.textContent==='child');
+   expect(link?.getAttribute('href')).toContain('child');
+   expect(sheet.querySelectorAll('.work-row a')).toHaveLength(1);
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('opens the attachment section on demand, pages by cursor, and refreshes on the Thread hint', async () => {
   const f=await setup(['attachment.list.page']);
   const row=(id:string,path:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path,kind:'file',delivery_status:'applied',selected:true,managed:false});
