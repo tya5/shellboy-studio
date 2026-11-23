@@ -1,13 +1,14 @@
-
 .btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
 .btn-primary:hover{background:var(--accent)}
 .btn-warn{border-color:var(--wait);color:var(--wait)}
 .btn-stop{border-color:var(--bad);color:var(--bad)}
 .btn-icon{width:var(--size-control);padding:0}
 .btn-link{border-color:transparent;color:var(--accent)}
-.btn-quiet{border-color:transparent;background:transparent}
-.btn-quiet:hover{background:var(--hover)}
-.btn-quiet:focus-visible{background:var(--hover)}
+.btn-link:hover,.btn-link:focus-visible{background:transparent;text-decoration:underline}
+.btn-ghost{border-color:transparent;background:transparent}
+.btn-ghost:hover,.btn-ghost:focus-visible,.btn-ghost[aria-haspopup][aria-expanded=true]{background:var(--hover)}
+.btn-ghost:disabled{background:transparent}
+.btn-ghost.btn-icon .i{color:var(--muted)}
 @container app (max-width:899px){
   .btn-icon{width:var(--size-touch)}
 }

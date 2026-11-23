@@ -8,7 +8,7 @@ export function ChildrenChip(p: ChildrenChipProps) {
     {p.awaiting ? <><StatusMark status="awaiting" label={p.awaitingLabel} word={false} />{p.awaiting}</> : null}
     {p.running ? <><StatusMark status="running" label={p.runningLabel} word={false} />{p.running}</> : null}</>;
   return <span class="children-chip" data-urgency={p.awaiting ? "awaiting" : p.running ? "running" : undefined}>
-    {p.onToggle ? <Button variant="quiet" aria-expanded={p.open} aria-label={p.label} onClick={() => p.onToggle?.(!p.open)}>{parts}</Button>
+    {p.onToggle ? <Button variant="ghost" aria-expanded={p.open} aria-label={p.label} onClick={() => p.onToggle?.(!p.open)}>{parts}</Button>
       : <span class="children-chip-count" role="img" aria-label={p.label}>{parts}</span>}
   </span>;
 }

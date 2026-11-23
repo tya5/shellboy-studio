@@ -57,7 +57,7 @@ export function ThreadHeader({ model, settings, onSettings, onList, onDelete, on
   const editorLabel = t(editor === "cwd" ? "header.directory" : "header.rename");
   return <>
     <ConversationHeader folder={folderName(cwd)} label={t("thread.rowMenu")} entries={entries}
-      title={id ? <Button buttonRef={titleButton} variant="quiet" title={t("header.rename")} onClick={() => open("title")}>{title}</Button> : <b>{title}</b>}
+      title={id ? <Button buttonRef={titleButton} variant="ghost" title={t("header.rename")} onClick={() => open("title")}>{title}</Button> : <b>{title}</b>}
       status={status ? <StatusMark status={status} label={statusLabel(t, status)} word={!phone} /> : undefined}
       actions={<Button icon label={t(settings ? "settings.close" : "settings.open")} aria-expanded={settings} data-settings-toggle onClick={onSettings}><Icon role="settings.applicationPanel" /></Button>}>
       <span class="menu"><Button icon label={t("threads.open")} onClick={onList}><Icon role="nav.openThreadList" /></Button></span>

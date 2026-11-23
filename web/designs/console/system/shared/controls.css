@@ -9,3 +9,4 @@
   .btn{min-width:var(--size-touch)}
   .srow-act{min-height:var(--size-touch)}
 }
+.choice-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8) var(--space-16)}
