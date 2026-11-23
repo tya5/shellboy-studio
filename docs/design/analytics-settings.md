@@ -117,7 +117,7 @@ aggregation does not present weighted totals or shares as final.
 `uncached + cached x n + output x m`, defaults `n = 0.1`, `m = 5`, kept per browser in the preferences. The
 page states that these aren't prices. No price is known, so no money is ever computed. `uncached` is
 `input - cached`; if a provider reports more cached than input the split isn't drawn and isn't clamped. A value
-the owner doesn't report stays absent: no bar, "No value" in the table. The daily tokens chart qualifies its accessible peak when records are missing; weighted totals and ratios are unavailable when their inputs cannot support the calculation.
+the owner doesn't report stays absent: no bar, "No value" in the table. The daily tokens chart qualifies its accessible peak when records are missing; weighted totals retain a conservative lower bound from known tokens when some usage is missing. Without a reliable input/cache split, the remaining known input uses the cheaper of the cached and uncached weights, so this fallback never overstates usage. The By Thread ranking uses that same value. Ratios remain unavailable without complete matching inputs.
 
 ## Charts
 

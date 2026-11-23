@@ -311,6 +311,7 @@ export interface DayFacts {
   summaryOutput: number | undefined;
   /** Conversation plus summary requests, with the reader's weights. */
   effective: number | undefined;
+  effectiveLowerBound: boolean;
   summaryEffective: number | undefined;
   rate: number | undefined;
   compactions: number;
@@ -326,11 +327,30 @@ function summaryEffectiveOf(g: UsageGroup, w: Weights): number | undefined {
   return g.summaryRequests === 0 ? 0 : effectiveTokens(g.summary, w);
 }
 
-export function groupEffective(g: UsageGroup, w: Weights): number | undefined {
-  const conversation = g.requests === 0 ? 0 : effectiveTokens(g.conversation, w);
-  const summary = summaryEffectiveOf(g, w);
-  if (conversation === undefined || summary === undefined || g.unknownPairs > 0) return undefined;
-  return conversation + summary;
+function effectiveBound(p: TokenParts, w: Weights, requests: number, unpaired = false) {
+  if (requests === 0) return { value: 0, lowerBound: false };
+  const exact = unpaired ? undefined : effectiveTokens(p, w);
+  if (exact !== undefined && Number.isFinite(exact)) return { value: exact, lowerBound: false };
+  const { input, cached, output } = p;
+  if (![input, cached, output].some(sum => sum.known !== undefined)) return { value: undefined, lowerBound: true };
+  // Without a reliable split, charge known cached input at its weight and remaining known input
+  // at the cheaper weight. Unknown output contributes nothing to this floor.
+  const c = cached.known ?? 0;
+  const value = c * w.cached + Math.max(0, (input.known ?? 0) - c) * Math.min(1, w.cached) + (output.known ?? 0) * w.output;
+  return { value: Number.isFinite(value) ? value : undefined, lowerBound: true };
+}
+
+function combineEffective(parts: readonly ReturnType<typeof effectiveBound>[]) {
+  const values = parts.flatMap(part => part.value === undefined ? [] : [part.value]);
+  const value = values.reduce((sum, n) => sum + n, 0);
+  return { value: values.length && Number.isFinite(value) ? value : undefined, lowerBound: parts.some(part => part.lowerBound) };
+}
+
+export function groupEffective(g: UsageGroup, w: Weights) {
+  return combineEffective([
+    effectiveBound(g.conversation, w, g.requests, g.unknownPairs > 0),
+    effectiveBound(g.summary, w, g.summaryRequests),
+  ]);
 }
 
 export const groupIncomplete = (g: UsageGroup): boolean =>
@@ -339,9 +359,10 @@ export const groupIncomplete = (g: UsageGroup): boolean =>
 export function dayFacts(dayKeys: readonly string[], groups: ReadonlyMap<string, UsageGroup>, w: Weights): DayFacts[] {
   return dayKeys.map((key) => {
     const g = groups.get(key);
-    if (!g) return { key, recorded: false, uncached: undefined, cached: undefined, output: undefined, summaryUncached: undefined, summaryCached: undefined, summaryOutput: undefined, effective: undefined, summaryEffective: undefined, rate: undefined, compactions: 0, requests: 0, incomplete: false, inconsistent: false };
+    if (!g) return { key, recorded: false, uncached: undefined, cached: undefined, output: undefined, summaryUncached: undefined, summaryCached: undefined, summaryOutput: undefined, effective: undefined, effectiveLowerBound: false, summaryEffective: undefined, rate: undefined, compactions: 0, requests: 0, incomplete: false, inconsistent: false };
     const c = splitParts(g.conversation);
     const s = splitParts(g.summary);
+    const effective = groupEffective(g, w);
     return {
       key,
       recorded: true,
@@ -351,7 +372,8 @@ export function dayFacts(dayKeys: readonly string[], groups: ReadonlyMap<string,
       summaryUncached: s.uncached,
       summaryCached: s.cached,
       summaryOutput: s.output,
-      effective: groupEffective(g, w),
+      effective: effective.value,
+      effectiveLowerBound: effective.lowerBound,
       summaryEffective: summaryEffectiveOf(g, w),
       rate: cacheRate(g.conversation, g.unknownPairs),
       compactions: g.compactions,
@@ -364,6 +386,7 @@ export function dayFacts(dayKeys: readonly string[], groups: ReadonlyMap<string,
 
 export interface PeriodTotals {
   effective: number | undefined;
+  effectiveLowerBound: boolean;
   summaryEffective: number | undefined;
   rate: number | undefined;
   compactions: number;
@@ -376,9 +399,11 @@ export interface PeriodTotals {
 export function periodTotals(groups: ReadonlyMap<string, UsageGroup>, w: Weights): PeriodTotals {
   const all = [...groups.values()];
   const total = totalGroups(all);
-  if (!total) return { effective: undefined, summaryEffective: undefined, rate: undefined, compactions: 0, summaryRequests: 0, requests: 0, incomplete: false, days: 0 };
+  if (!total) return { effective: undefined, effectiveLowerBound: false, summaryEffective: undefined, rate: undefined, compactions: 0, summaryRequests: 0, requests: 0, incomplete: false, days: 0 };
+  const effective = combineEffective(all.map(group => groupEffective(group, w)));
   return {
-    effective: groupEffective(total, w),
+    effective: effective.value,
+    effectiveLowerBound: effective.lowerBound,
     summaryEffective: summaryEffectiveOf(total, w),
     rate: cacheRate(total.conversation, total.unknownPairs),
     compactions: total.compactions,
