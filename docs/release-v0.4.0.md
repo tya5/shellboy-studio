@@ -6,7 +6,7 @@ Shellboy Core v0.15.0（protocol 18）と組み合わせて使用します。こ
 
 Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信が必要な項目を追いやすくしました。Core v0.15.0 は公開済みです。Studio v0.4.0 は準備中で、**未取り込み**と記した項目は収録済みではありません。
 
-比較範囲：[Studio v0.3.0 (`d32de25`) → `origin/main` (`ced0503`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..ced0503cb53f8bcc5094528eb5b2b3d1f26d6ccc) ／ Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`)。特記のない Issue 番号は Studio のものです。
+比較範囲：[Studio v0.3.0 (`d32de25`) → `origin/main` (`7c8d9da`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..7c8d9da28682cd6b3f0303f7c8af747f70ea34a0) ／ Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`)。特記のない Issue 番号は Studio のものです。
 
 ## Thread 一覧と状態表示
 
@@ -14,6 +14,7 @@ Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信�
 - 一覧の読み込み範囲より古いピン留めも表示し、全件が分からない件数は下限と分かる形で示します。一覧の外にあるピン留めにもモニターで状態の印が付き、設定画面にも共通のフッターを一つだけ表示します（#106、#110）。
 - 最後の Run が失敗した古い Thread や復旧待ちの Thread も、初回表示時に現在の状態をもとに件数とモニターに反映します（#102、Core #378）。
 - 「動作」の更新中も保留中の行と件数を残し、空表示のちらつきを抑えます（#108）。
+- サイドバーで選択した複数の Thread を一括削除できます。削除対象をプレビューで確認してから、選択した Thread を一度の操作でまとめて削除します（#36）。
 - **未取り込み・公開条件：** 開いている Thread が検索結果や読み込み範囲の外でも、その Thread 自身の情報から状態・エラー・再試行を表示し、エラー通知を一か所にまとめる修正（#103、#107）。
 
 ## 全画面のデザインシステム v2
@@ -55,7 +56,7 @@ Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信�
 
 ## 検証済み／未検証
 
-- **検証済み（CI のみ）：** Core v0.15.0 の [Rust checks](https://github.com/tya5/shellboy/actions/runs/45258958394) と [Release binaries](https://github.com/tya5/shellboy/actions/runs/45259022310)。比較先の Studio `ced0503` は [Checks](https://github.com/tya5/shellboy-studio/actions/runs/45275011488) で macOS・Windows・Linux のチェックと、固定した Core との組み合わせテストを通過しました。
+- **検証済み（CI のみ）：** Core v0.15.0 の [Rust checks](https://github.com/tya5/shellboy/actions/runs/45258958394) と [Release binaries](https://github.com/tya5/shellboy/actions/runs/45259022310)。Studio の以前の main スナップショット `ced0503` は [Checks](https://github.com/tya5/shellboy-studio/actions/runs/45275011488) で macOS・Windows・Linux のチェックと、固定した Core との組み合わせテストを通過しました。
 - **未検証：** [公開条件 #111](https://github.com/tya5/shellboy-studio/issues/111) の #103（#107 を含む）の取り込みは未完了です。最終ペアの候補 CI と端末確認も未実施です。Mac 実機での APFS コピーを使った移行、差し替え後の状態表示、配布 ZIP からの起動は未確認です。**Windows 実機は未確認です。** 根拠：[Core の更新差分メモ](https://github.com/tya5/shellboy-studio/issues/111#issuecomment-7113603358)。
 
 ---
@@ -68,7 +69,7 @@ exact pair; older Core versions are not a supported pairing.
 
 Studio makes it easier to see what your Threads are doing and what needs a reply. Core v0.15.0 is published; Studio v0.4.0 is still in preparation. Items marked **not landed** are not yet included.
 
-Compared: [Studio v0.3.0 (`d32de25`) → `origin/main` (`ced0503`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..ced0503cb53f8bcc5094528eb5b2b3d1f26d6ccc); Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`). Issue numbers refer to Studio unless marked Core.
+Compared: [Studio v0.3.0 (`d32de25`) → `origin/main` (`7c8d9da`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..7c8d9da28682cd6b3f0303f7c8af747f70ea34a0); Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`). Issue numbers refer to Studio unless marked Core.
 
 ## Thread list and status
 
@@ -76,6 +77,7 @@ Compared: [Studio v0.3.0 (`d32de25`) → `origin/main` (`ced0503`)](https://gith
 - Older pins appear even when they are outside the loaded pages. Counts that are only lower bounds are shown as such. Monitor displays status for pins outside the list, and Settings shares a single status footer with the rest of Studio (#106, #110).
 - Initial counts and Monitor include older Threads whose latest Run failed or that are waiting for recovery, based on their current state (#102, Core #378).
 - Activity keeps pending rows and counts visible during refresh instead of flashing an empty state (#108).
+- Select multiple Threads in the sidebar, preview what will be deleted, then confirm a single atomic deletion (#36).
 - **Not landed; release gate:** Show an open Thread’s own state, error, and retry controls even when it is absent from the list, and show the error in one place (#103, #107).
 
 ## Design system v2 across Studio
@@ -117,5 +119,5 @@ Conversation, sidebar, Threads, Branches, Monitor, Inbox, Analytics, Settings, S
 
 ## Verified / not verified
 
-- **Verified in CI only:** Core v0.15.0 [Rust checks](https://github.com/tya5/shellboy/actions/runs/45258958394) and [Release binaries](https://github.com/tya5/shellboy/actions/runs/45259022310). The compared Studio tip `ced0503` passed [Checks](https://github.com/tya5/shellboy-studio/actions/runs/45275011488) and exact-pair owner acceptance on macOS, Windows, and Linux.
+- **Verified in CI only:** Core v0.15.0 [Rust checks](https://github.com/tya5/shellboy/actions/runs/45258958394) and [Release binaries](https://github.com/tya5/shellboy/actions/runs/45259022310). The earlier Studio main snapshot `ced0503` passed [Checks](https://github.com/tya5/shellboy-studio/actions/runs/45275011488) and exact-pair owner acceptance on macOS, Windows, and Linux.
 - **Pending:** [Release gates #111](https://github.com/tya5/shellboy-studio/issues/111) #103 (including #107) has not landed. Final-pair candidate CI and device checks remain pending. The Mac test on an APFS copy, status checks after replacement, and launching the packaged desktop build have not been verified on a real device. **Windows has not been checked on a real device.** See the [Core upgrade audit](https://github.com/tya5/shellboy-studio/issues/111#issuecomment-7113603358).
