@@ -351,7 +351,7 @@ export interface HistoryItem {
   excerpt?: string;
   execution_count?: number;
   executions?: HistoryExecution[];
-  provenance?: { client_operation_id?: string; attempt_id?: AttemptId; notification?: NotificationDescriptor; message?: MessageProvenance; created_at?: string; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
+  provenance?: { client_operation_id?: string; attempt_id?: AttemptId; notification?: NotificationDescriptor; message?: MessageProvenance; created_at?: string; output_limit?: SavedOutputLimit; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
   /** Position on the Thread's selected path; `ordinal` ascends. */
   selection?: { ordinal?: number; [extra: string]: unknown };
   [extra: string]: unknown;
@@ -396,6 +396,11 @@ export interface UsageGetArgs {
   thread_id?: string;
   limit?: number;
   cursor?: string;
+}
+
+export interface SavedOutputLimit {
+  readonly stop: true;
+  readonly sent_max_tokens?: number | null;
 }
 
 export interface AttemptOutputLimit {

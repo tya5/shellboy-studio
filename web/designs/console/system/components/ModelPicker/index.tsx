@@ -15,9 +15,10 @@ export function ModelPicker({ model, details }: { model: AppModel; details: Deta
   const root = useRef<HTMLDivElement>(null);
   const pendingFocus = model.pendingSettingFocus.value;
   useEffect(() => {
-    if (!picker.open || pendingFocus !== "thread.maxTokens") return;
+    if (pendingFocus !== "thread.maxTokens") return;
+    if (!picker.open) { model.pendingSettingFocus.value = undefined; return; }
     const field = root.current?.querySelector<HTMLInputElement>('[data-thread-setting="maxTokens"]');
-    if (!field) return;
+    if (!field) { model.pendingSettingFocus.value = undefined; return; }
     field.focus();
     if (document.activeElement === field) model.pendingSettingFocus.value = undefined;
   }, [model, picker.open, pendingFocus]);

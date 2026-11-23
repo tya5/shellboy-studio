@@ -7,7 +7,7 @@ import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
 import { speakerOf, speakerDisplay as projectSpeakerDisplay, type Speaker } from "../../../ui-core/src/conversation";
-import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, workDisplayMetadata, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem, AttemptOutputLimit } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -193,7 +193,8 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
-        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} bodyPartial={item.source.kind === "text" && item.source.textComplete === false} bodyUnavailable={!nodeAuthoritative && item.source.kind === "text" && item.source.textComplete === false} nodeAuthoritative={nodeAuthoritative} row={{ type: "message", id: node.node_id!, itemIdentity: nodeAuthoritative ? undefined : item.source.kind === "text" ? item.source.itemIdentity : undefined, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") && body?.text === undefined ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
+        const savedLimit = item.source.kind === "text" ? outputLimitNoticeFacts(undefined, workDisplayMetadata(item)?.outputLimit) : undefined;
+        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} bodyPartial={item.source.kind === "text" && item.source.textComplete === false} bodyUnavailable={!nodeAuthoritative && item.source.kind === "text" && item.source.textComplete === false} nodeAuthoritative={nodeAuthoritative} row={{ type: "message", id: node.node_id!, itemIdentity: nodeAuthoritative ? undefined : item.source.kind === "text" ? item.source.itemIdentity : undefined, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{savedLimit ? <OutputLimitNotice model={model} fact={savedLimit} /> : null}{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") && body?.text === undefined ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
@@ -206,7 +207,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           return <div key={id} data-execution-id={id}>{hidden(item) ? null : step && display ? <StepView model={model} step={step} display={display} openPolicy={item.classification!.openPolicy} /> : <div class="caption muted" data-execution-unresolved="">{workRow(item)}</div>}</div>;
         })}</div>;
       }
-      if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
+      if (item.source.kind === "ordinaryEmpty") { const savedLimit = outputLimitNoticeFacts(undefined, workDisplayMetadata(item)?.outputLimit); return savedLimit ? <OutputLimitNotice model={model} fact={savedLimit} /> : <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>; }
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div data-thinking-marker="">{workRow(item)}</div>;
       if (item.source.kind === "interruption") return workRow(item);
       if (item.source.kind === "record") return <div data-internal-records="">{workRow(item)}</div>;
@@ -235,26 +236,31 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
   </div>;
 }
 
-function OutputLimitNotice({ model, fact }: { model: AppModel; fact: AttemptOutputLimit }) {
+export function OutputLimitNotice({ model, fact }: { model: AppModel; fact: { stop: true; sent_max_tokens?: number | null; source?: string; connection?: string } }) {
   const t = model.t.value;
-  const override = model.threadSettings.value?.maxTokensState.kind === "value";
+  const override = model.threadSettings.value?.maxTokensState.kind !== undefined && model.threadSettings.value.maxTokensState.kind !== "unset";
   const openSetting = () => {
     if (override) {
-      model.pendingSettingFocus.value = "thread.maxTokens";
       model.openModelPicker();
+      model.pendingSettingFocus.value = "thread.maxTokens";
       return;
     }
-    model.pendingSettingFocus.value = `connections.${fact.connection}.max_tokens`;
-    model.navigate({ view: "settings", section: "connections" });
+    const connection = fact.connection ?? model.threadSettings.value?.connection;
+    if (connection) model.navigateToSettingFocus({ view: "settings", section: "connections" }, `connections.${connection}.max_tokens`);
   };
   return <OutputLimitNoticeRow actions={<><Button variant="link" onClick={openSetting}>{t("convo.outputLimitAction")}</Button><Button variant="link" onClick={() => void model.send(t("convo.continue"))}>{t("convo.continue")}</Button></>}>
-    <Icon role="conversation.outputLimit" size="small" /><span>{t("convo.outputLimitNotice", { limit: fact.sent_max_tokens == null ? "" : `（${fact.sent_max_tokens}）` })}</span>
+    <Icon role="conversation.outputLimit" size="small" /><span>{t(fact.sent_max_tokens == null ? "convo.outputLimitNoticeUnknown" : "convo.outputLimitNotice", { limit: fact.sent_max_tokens == null ? "" : String(fact.sent_max_tokens) })}</span>
   </OutputLimitNoticeRow>;
+}
+
+function outputLimitNoticeFacts(live: AttemptOutputLimit | null | undefined, saved?: import("../../../data/src").SavedOutputLimit) {
+  const fact = live?.stop ? live : saved?.stop ? saved : undefined;
+  return fact ? { stop: true as const, ...(fact.sent_max_tokens !== undefined ? { sent_max_tokens: fact.sent_max_tokens } : {}), ...(live?.source ? { source: live.source } : {}), ...(live?.connection ? { connection: live.connection } : {}) } : undefined;
 }
 
 function OwnSendContent({model,snapshot,plan,trailing}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren}) {
   const projection=projectionFromDisplayPlan(plan);
-  const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow,{kind:"live"}>)=> { if ("kind" in message) return message.outputLimit?.stop ? <OutputLimitNotice model={model} fact={message.outputLimit} /> : null; return <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
+  const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow,{kind:"live"}>)=> { if ("kind" in message) { const fact = outputLimitNoticeFacts(message.outputLimit); return fact ? <OutputLimitNotice model={model} fact={fact} /> : null; } return <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>; };
   return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}
     localRegion={plan.localRegion.tailRows.length?{kind:"unqualified",tailRows:plan.localRegion.tailRows,renderRow:renderLocal}:undefined}

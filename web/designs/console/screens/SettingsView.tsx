@@ -19,11 +19,13 @@ export function SettingsView({ context }: { context: DesignContext }) {
   const editable = canEdit && !model.config.read.value.error && facts?.file.valid === true;
   const pendingSettingFocus = model.pendingSettingFocus.value;
   useEffect(() => {
-    if (section !== "connections" || !pendingSettingFocus?.startsWith("connections.")) return;
+    if (!pendingSettingFocus?.startsWith("connections.")) return;
+    if (section !== "connections") { model.pendingSettingFocus.value = undefined; return; }
+    if (!facts) return;
     const target = [...document.querySelectorAll<HTMLElement>("[data-setting-id]")]
       .find((element) => element.dataset.settingId === pendingSettingFocus);
     const field = target?.querySelector<HTMLInputElement>("input");
-    if (!target || !field) return;
+    if (!target || !field) { model.pendingSettingFocus.value = undefined; return; }
     target.scrollIntoView({ block: "center" });
     field.focus();
     if (document.activeElement === field) model.pendingSettingFocus.value = undefined;

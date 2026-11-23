@@ -205,6 +205,7 @@ export class AppModel {
   }
   clearThreadOutputLimit(): void { this.editThreadOutputLimit(""); }
   closeModelPicker(): void {
+    if (this.pendingSettingFocus.peek() === "thread.maxTokens") this.pendingSettingFocus.value = undefined;
     this.modelListCancel.cancel();
     batch(() => {
       this.pickerSession.value = undefined;
@@ -799,12 +800,22 @@ export class AppModel {
 
   /** The location changed from outside (a link, the back button). */
   applyRoute(route: Route): void {
+    if (formatRoute(this.route.peek()) !== formatRoute(route)) this.pendingSettingFocus.value = undefined;
     this.route.value = route;
   }
 
   navigate(route: Route): void {
+    if (formatRoute(this.route.peek()) !== formatRoute(route)) this.pendingSettingFocus.value = undefined;
     this.route.value = route;
     this.onNavigate?.(formatRoute(route));
+  }
+
+  navigateToSettingFocus(route: Route, settingId: string): void {
+    batch(() => {
+      this.pendingSettingFocus.value = settingId;
+      this.route.value = route;
+      this.onNavigate?.(formatRoute(route));
+    });
   }
 
   showView(view: ViewName): void {

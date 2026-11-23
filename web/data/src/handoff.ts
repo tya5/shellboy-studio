@@ -90,7 +90,7 @@ export class Handoff {
     this.terminal.add(attemptId);
     if (this.terminal.size > 256) this.terminal.delete(this.terminal.values().next().value!);
     const held = this.held.find(h => h.attemptId === attemptId);
-    if (outputLimit?.stop && held) {
+    if (outcome === "adopted" && outputLimit?.stop && held) {
       this.updateRecord(held, { ...held.record, status: "ended", outputLimit });
       if (this.active === attemptId) this.active = undefined;
       this.publish();

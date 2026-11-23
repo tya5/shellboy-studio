@@ -1,4 +1,4 @@
-import type {AttemptId, MessageProvenance, NotificationDescriptor} from './protocol';
+import type {AttemptId, MessageProvenance, NotificationDescriptor, SavedOutputLimit} from './protocol';
 const bytes=new TextEncoder();
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -6,6 +6,11 @@ export function admitAttemptId(value:unknown):value is AttemptId{return typeof v
 export function validHistoryProvenance(value:unknown, kind:unknown):boolean{
  if(!object(value))return true;
  if(Object.hasOwn(value,'attempt_id')&&!admitAttemptId(value.attempt_id))return false;
+ if(Object.hasOwn(value,'output_limit')) {
+  const limit=value.output_limit;
+  if(!object(limit)||Object.keys(limit).some(key=>!['stop','sent_max_tokens'].includes(key))||limit.stop!==true)return false;
+  if(Object.hasOwn(limit,'sent_max_tokens')&&limit.sent_max_tokens!==null&&(!Number.isSafeInteger(limit.sent_max_tokens)||(limit.sent_max_tokens as number)<0))return false;
+ }
  return !Object.hasOwn(value,'client_operation_id') || (kind==='user' && typeof value.client_operation_id==='string' && value.client_operation_id.length>0);
 }
 /** Optional metadata rejection cannot reject independent sender or body facts. */

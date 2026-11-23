@@ -20,3 +20,7 @@ Styles: style.css in this directory
 When a notice requests focus on the Thread output-limit override, the picker consumes
 `AppModel.pendingSettingFocus` after its panel mounts and clears it only after the
 field receives focus. Do not schedule focus from the caller with a timer.
+
+The model owns request cleanup: closing the picker clears a pending Thread field
+focus, and route changes cancel stale requests. A missing field also consumes the
+request rather than allowing a later picker visit to steal focus.
