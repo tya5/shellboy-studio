@@ -154,7 +154,8 @@ export function connectionCards(model: AppModel, search: RegisterSetting) {
     <>
       {names.map((name) => {
         const rows: Fact[] = CONNECTION_FIELDS.map((field) => {
-          const { key, kind, inheritNote } = field as (typeof CONNECTION_FIELDS)[number] & Pick<ConfigFieldSpec, "inheritNote">;
+          const { key, kind } = field;
+          const inheritNote = "inheritNote" in field ? field.inheritNote : undefined;
           const path = ["connections", name, key];
           const noteKeys: MessageKey[] = key === "api_key_env" ? ["config.keyNote"] : key === "max_tokens" ? ["config.outputTokensNote"] : inheritNote ? [inheritNote] : [];
           const { settingId, label } = search(fieldOf(path), `config.conn.${key}`, noteKeys, name);
@@ -162,7 +163,7 @@ export function connectionCards(model: AppModel, search: RegisterSetting) {
           const describedBy = key === "max_tokens" ? `connection-output-tokens-${encodeURIComponent(name)}` : undefined;
           const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : describedBy ? <span id={describedBy}>{t("config.outputTokensNote")}</span> : inheritNote ? t(inheritNote) : undefined;
           const value = configRowValue(t, facts, path);
-          return editable ? { settingId, label, control: <ConfigControl model={model} path={path} label={label} describedBy={describedBy} spec={{ kind, ...("options" in field ? { options: field.options } : {}), ...(key === "spill" ? { inherit: true } : {}) }} />, ...(note ? { note } : {}) } : { settingId, label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
+          return editable ? { settingId, label, control: <ConfigControl model={model} path={path} label={label} describedBy={describedBy} spec={{ kind, ...("options" in field ? { options: field.options } : {}), ...("inherit" in field ? { inherit: field.inherit } : {}) }} />, ...(note ? { note } : {}) } : { settingId, label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
         });
         if (editable)
           for (const { key, json } of CONNECTION_SECRETS) {
