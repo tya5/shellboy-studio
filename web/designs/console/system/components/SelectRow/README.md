@@ -28,4 +28,4 @@ The management list container has no inline padding. Rows fill the section-band 
 - **Why:** Design system v2: a tag is non-interactive owner data, so it uses the compact count-chip size, the mono face and neutral colour instead of a control-like box.
 - **Source:** [shadcn/ui Badge](https://ui.shadcn.com/docs/components/badge), [Material 3 Chips (input chips for removable tags)](https://m3.material.io/components/chips/overview)
 
-`size-chip-height` high, `space-chip-inline` padding, `type-code` face at `size-chip-text`, `muted` text, `line` border, `radius-s`. Badges sit `space-4` apart and `space-4` from the title.
+At least `size-chip-height` high; a long tag wraps (`overflow-wrap:anywhere`) and is never clipped. `space-chip-inline` padding, `type-code` face at `size-chip-text`, `muted` text, `line` border, `radius-s`. Badges sit `space-4` apart and `space-4` from the title.

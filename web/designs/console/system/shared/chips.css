@@ -1,2 +1,2 @@
 .chips{display:flex;flex-wrap:wrap;gap:var(--space-8)}
-.tag-badge{display:inline-flex;align-items:center;box-sizing:border-box;max-width:100%;height:var(--size-chip-height);padding-inline:var(--space-chip-inline);border:1px solid var(--line);border-radius:var(--radius-s);color:var(--muted);font:var(--type-code);font-size:var(--size-chip-text);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag-badge{display:inline-flex;align-items:center;box-sizing:border-box;max-width:100%;min-height:var(--size-chip-height);padding-inline:var(--space-chip-inline);border:1px solid var(--line);border-radius:var(--radius-s);color:var(--muted);font:var(--type-code);font-size:var(--size-chip-text);line-height:1;overflow-wrap:anywhere}
