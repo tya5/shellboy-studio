@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, folderName, formatRoute, statusLabel, type AppModel } from "../../../ui-core/src";
-import { Button, ConversationHeader, Field, Icon, Notice, ShellToggle, StatusMark, WorkSheet } from "../system/components";
+import { Button, ConversationHeader, Field, Icon, Notice, StatusMark, WorkSheet } from "../system/components";
 import type { MenuEntry } from "../system/components/Menu";
 import { threadMenuEntries } from "../system/components/thread-menu";
 
-export function ThreadHeader({ model, collapsed, settings, onSettings, onList, onPhonePanel, onDelete, onEditTags }: {
-  model: AppModel; collapsed: boolean; settings: boolean; onSettings: () => void; onList: () => void; onPhonePanel: () => void; onDelete: (id: string) => void; onEditTags: (id: string, archived: boolean) => void;
+export function ThreadHeader({ model, settings, onSettings, onList, onDelete, onEditTags }: {
+  model: AppModel; settings: boolean; onSettings: () => void; onList: () => void; onDelete: (id: string) => void; onEditTags: (id: string, archived: boolean) => void;
 }) {
   const t = model.t.value;
   const selected = model.selectedRow.value;
@@ -34,7 +34,6 @@ export function ThreadHeader({ model, collapsed, settings, onSettings, onList, o
     setValue(kind === "title" ? title : "");
     setEditor(kind);
   };
-  const panelKey = collapsed ? "panel.expand" : "panel.collapse";
   const entries: MenuEntry[] = id ? [
     { key: "rename", icon: "thread.rename", label: t("header.rename"), onSelect: (focus) => open("title", focus) },
     { key: "branches", icon: "nav.branches", label: t("view.branches"), href: formatRoute({ view: "branches", threadId: id }) },
@@ -42,7 +41,6 @@ export function ThreadHeader({ model, collapsed, settings, onSettings, onList, o
   ] : [];
   if (phone) entries.push(
     ...(cwd ? [{ key: "cwd", label: t("header.directory"), onSelect: (focus: HTMLElement | null) => open("cwd", focus) }] : []),
-    ...(id ? [{ key: "panel", label: t("panel.title"), onSelect: onPhonePanel }] : []),
     { key: "settings", icon: "settings.applicationPanel", label: t("settings.open"), onSelect: onSettings },
   );
   const submit = async () => {
@@ -61,8 +59,7 @@ export function ThreadHeader({ model, collapsed, settings, onSettings, onList, o
     <ConversationHeader folder={folderName(cwd)} label={t("thread.rowMenu")} entries={entries}
       title={id ? <Button buttonRef={titleButton} variant="quiet" title={t("header.rename")} onClick={() => open("title")}>{title}</Button> : <b>{title}</b>}
       status={status ? <StatusMark status={status} label={statusLabel(t, status)} word={!phone} /> : undefined}
-      actions={<>{id ? <ShellToggle panel expanded={!collapsed} label={t(panelKey)} onClick={() => model.togglePanel()} /> : null}
-        <Button icon label={t(settings ? "settings.close" : "settings.open")} aria-expanded={settings} data-settings-toggle onClick={onSettings}><Icon role="settings.applicationPanel" /></Button></>}>
+      actions={<Button icon label={t(settings ? "settings.close" : "settings.open")} aria-expanded={settings} data-settings-toggle onClick={onSettings}><Icon role="settings.applicationPanel" /></Button>}>
       <span class="menu"><Button icon label={t("threads.open")} onClick={onList}><Icon role="nav.openThreadList" /></Button></span>
     </ConversationHeader>
     {editor ? <WorkSheet open title={editorLabel} closeLabel={t("common.close")} onClose={() => { if (!busy) setEditor(undefined); }} getReturnFocusTarget={() => opener.current?.isConnected ? opener.current : titleButton.current}>
