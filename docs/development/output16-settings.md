@@ -74,7 +74,8 @@ Messages uses 32768 only if both are unset, whereas Responses and Chat Completio
 omit the Shellboy-owned limit. Summary length is independent. Core remains the
 authority for positive integer limits, native `extra_body` collisions and
 connection-switch validation. Studio adds no alias, fallback, inferred model
-limit, automatic request retry or output-limit diagnosis.
+limit or automatic request retry. The separate provenance-backed truncation mark
+is described above and does not infer from reply length.
 
 Issue 303 retired Thread `segment_chars`/`reduce_rounds` and global segment,
 rounds and map/reduce request-budget keys. They are removed from the typed
