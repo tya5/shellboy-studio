@@ -117,13 +117,16 @@ export function App({ context }: { context: DesignContext }) {
   const flat = !!(appliedFilter?.query || appliedFilter?.cwd || appliedFilter?.tags?.length
     || appliedFilter?.awaiting || (appliedFilter?.archived && appliedFilter.archived !== "exclude"));
   const pinned = model.data.pinnedThreads.value;
+  const pinnedIds = model.data.pinnedThreadIds.value;
   const sidebarRows = useMemo(() => {
     const exact = model.data.threadRows.value;
     const rows = new Map(list.items.map(row => [row.thread_id, exact.get(row.thread_id) ?? row]));
     for (const row of pinned) rows.set(row.thread_id, exact.get(row.thread_id) ?? row);
     return [...rows.values()];
   }, [list.items, pinned, model.data.threadRows.value]);
-  const groups = useMemo(() => sidebarGroups(sidebarRows, sidebarSelected, flat, list.items.map(row => model.data.threadRows.value.get(row.thread_id) ?? row)), [sidebarRows, sidebarSelected, flat, list.items, model.data.threadRows.value]);
+  const groups = useMemo(() => sidebarGroups(sidebarRows, pinnedIds, sidebarSelected, flat, list.items.map(row => model.data.threadRows.value.get(row.thread_id) ?? row)), [sidebarRows, pinnedIds, sidebarSelected, flat, list.items, model.data.threadRows.value]);
+  // Core's continuation facts: more listed pages, or a pinned read stopped at its bound.
+  const lowerBound = { pins: model.data.pinnedMore.value, all: list.nextCursor !== undefined };
   const revealGroups = JSON.stringify(groups.filter(group => group.rows.some(row => row.summary.thread_id === sidebarSelected)).map(group => group.key));
   const revealParents = JSON.stringify(groups.flatMap(group => group.rows.filter(row => row.reveal).map(row => row.key)));
   // Selection writes the same preferences as explicit disclosure; subsequent user folds win.
@@ -194,6 +197,7 @@ export function App({ context }: { context: DesignContext }) {
             {details?.cwd ? <span class="mono cwd">{details.cwd}</span> : null}
             <div class="right">
               {conn === "connected" ? <span>{t("conn.live")}</span> : null}
+              {desktop ? <Button onClick={() => model.data.link.launcherAction("exit")}>{t("launcher.exit")}</Button> : null}
             </div>
           </footer>;
   if (route.view === "settings") return <div class="app"><SettingsView context={context} />{statusFooter}</div>;
@@ -247,7 +251,7 @@ export function App({ context }: { context: DesignContext }) {
                 const open = !closedGroups.includes(group.key);
                 const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }), onToggle: () => setFold("sidebarClosedGroups", group.key, open) };
                 let hiddenBelow: number | undefined;
-                return <ThreadGroup key={group.key} label={label} count={list.loaded ? t("org.bandCount", { n: group.rows.length }) : list.loading ? <LoadingCount /> : ""} countLoading={!list.loaded && list.loading} fold={fold}>
+                return <ThreadGroup key={group.key} label={label} count={list.loaded ? t("org.bandCount", { n: `${group.count}${lowerBound[group.key] ? "+" : ""}` }) : list.loading ? <LoadingCount /> : ""} countLoading={!list.loaded && list.loading} fold={fold}>
                   {open ? group.rows.map((r, index) => {
                     if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
                     const id = r.summary.thread_id;
@@ -257,7 +261,7 @@ export function App({ context }: { context: DesignContext }) {
                     return <ThreadItem key={r.key} sidebar unread={unread} linkId={sidebarLinkId(r.key)}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
-                      depth={r.depth} current={id === sidebarSelected} pending={r.pending} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
+                      depth={r.depth} current={id === sidebarSelected} pending={r.pending} pendingExact={r.pendingExact} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
                       childrenFold={r.descendants ? { count: r.descendants, awaiting: r.awaiting, running: r.running, open: expanded,
                         label: t("sidebar.children", { n: r.descendants, awaiting: r.awaiting, running: r.running }),
                         awaitingLabel: t("sidebar.needsYou"), runningLabel: statusLabel(t, "running"),
@@ -301,22 +305,7 @@ export function App({ context }: { context: DesignContext }) {
             <AppsHost context={context} />
             {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} phonePanel={!!selected && phonePanel === selected} onClosePhonePanel={() => setPhonePanel(undefined)} onOpenPhonePanel={() => setPhonePanel(selected)} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
-          <footer class="status">
-            <StatusMark feedback
-              status={conn === "connected" ? "completed" : conn === "ownerDown" ? "recovery" : "waiting"}
-              label={t(conn === "connected" ? "conn.connected" : conn === "ownerDown" ? "conn.ownerDown" : "conn.connecting")}
-            />
-            {model.data.dataDir.value ? (
-              <span class="owner-dir">
-                {t("conn.ownerDir")} <span class="mono" title={model.data.dataDir.value}><bdi>{model.data.dataDir.value}</bdi></span>
-              </span>
-            ) : null}
-            {details?.cwd ? <span class="mono cwd">{details.cwd}</span> : null}
-            <div class="right">
-              {conn === "connected" ? <span>{t("conn.live")}</span> : null}
-              {desktop ? <Button onClick={() => model.data.link.launcherAction("exit")}>{t("launcher.exit")}</Button> : null}
-            </div>
-          </footer>
+          {statusFooter}
           <nav class="tabbar" aria-label={t("nav.views")}>
             {inboxNav}
             {conversationNav}

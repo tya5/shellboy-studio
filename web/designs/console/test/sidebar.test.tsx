@@ -424,3 +424,35 @@ it("shows an icon-free busy sidebar band and skeleton rows during the first Thre
     f.data.stop();
   }
 });
+
+it("shows every pinned Thread older than the loaded page and marks lower-bound counts with +", async () => {
+  const f = await fixtureModel({ route: "conversation", threadId: "new0", capabilities: ["thread.tags"], configure(db) {
+    db.threads = {};
+    // The owner lists newest first: 50 unpinned Threads, then 60 older pinned ones.
+    for (let n = 0; n < 50; n++) db.threads[`new${n}`] = summary(`new${n}`, n === 0 ? { awaiting_named_count: 17, awaiting_named_count_exact: false } : n === 1 ? { awaiting_named_count: 2 } : {});
+    for (let n = 0; n < 60; n++) db.threads[`old${n}`] = summary(`old${n}`, { tags: ["pin"] });
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+    const answer = db.answer.bind(db);
+    db.answer = call => {
+      const args = (call.args ?? {}) as { thread_ids?: string[]; tags?: string[]; limit?: number; cursor?: string };
+      if (call.command !== "thread.list" || args.thread_ids || args.tags) return answer(call);
+      const all = Object.values(db.threads), start = Number(args.cursor ?? 0), end = start + (args.limit ?? 50);
+      return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
+    };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const band = (name: string) => host.querySelector<HTMLElement>(`.side-list section[aria-label="${name}"]`)!;
+  const count = (name: string) => band(name).querySelector(".tgroup-count")?.textContent;
+  const row = (id: string) => band("All").querySelector(`a[href="#/conversation/${id}"]`)!;
+  try {
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    expect(f.data.threadList.peek().items).toHaveLength(50);
+    expect(band("Pinned").querySelectorAll("a.tree-link")).toHaveLength(60);
+    expect(band("Pinned").querySelector('a[href="#/conversation/old59"]')).not.toBeNull();
+    expect(count("Pinned")).toBe("Threads: 60");
+    expect(count("All")).toBe("Threads: 50+");
+    expect(row("new0").querySelector(".count")?.textContent).toBe("17+");
+    expect(row("new1").querySelector(".count")?.textContent).toBe("2");
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});

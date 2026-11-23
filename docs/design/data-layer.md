@@ -63,6 +63,7 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 | Item | Bound | Released |
 |---|---|---|
 | Thread list rows (`threadList`, sidebar, Monitor) | 1000 (`MAX_LIST_ROWS`), 50 per press of Show more; past it, search | Replaced by a changed search; a hint re-reads one page and keeps rows further down, which can stay stale until the next full read |
+| Sidebar pinned set (`pinnedThreadIds`) | 1000 (`MAX_LIST_ROWS`), pages of 50 of `thread.list` with the `pin` tag, walked on list hints and resync; `pinnedMore` says a continuation was left | Replaced by the next complete walk; cleared on owner change |
 | `rows`, `rowById` | Derived once per list change, from those rows | With the list |
 | Threads view | 5 pages of 200 (`ORG_MAX_PAGES`), re-read on a list change, one read at a time and one trailing; grouping is memoized | Mode or filter change |
 | Branches view | One family, at most 256 Threads (owner's bound); 4 pages, 3 restarts | Thread change |

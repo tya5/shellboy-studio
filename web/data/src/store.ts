@@ -183,6 +183,7 @@ export class ShellboyData {
   private readonly listSig = signal<ThreadListState>(emptyPaged());
   private readonly threadRowsSig = signal<ReadonlyMap<string, ThreadSummary>>(new Map());
   private readonly pinnedThreadIdsSig = signal<readonly string[]>([]);
+  private readonly pinnedMoreSig = signal(false);
   private readonly activeThreadIdsSig = signal<readonly string[]>([]);
   private readonly inboxThreadIdsSig = signal<readonly string[]>([]);
   private readonly pendingInboxRowIds = new Set<string>();
@@ -217,6 +218,8 @@ export class ShellboyData {
   readonly listThreadIds: ReadonlySignal<readonly string[]>;
   readonly threadListMeta: ReadonlySignal<Omit<ThreadListState, "items">>;
   readonly pinnedThreadIds: ReadonlySignal<readonly string[]>;
+  /** The pinned read stopped at MAX_LIST_ROWS with a continuation left: the pinned set is a lower bound. */
+  readonly pinnedMore: ReadonlySignal<boolean>;
   readonly activeThreadIds: ReadonlySignal<readonly string[]>;
   readonly inboxThreadIds: ReadonlySignal<readonly string[]>;
   readonly listFilter: ReadonlySignal<ListFilter>;
@@ -246,6 +249,7 @@ export class ShellboyData {
     this.listThreadIds = computed(() => this.listSig.value.items);
     this.threadListMeta = computed(() => { const { items: _ids, ...meta } = this.listSig.value; return meta; });
     this.pinnedThreadIds = this.pinnedThreadIdsSig;
+    this.pinnedMore = this.pinnedMoreSig;
     this.activeThreadIds = this.activeThreadIdsSig;
     this.inboxThreadIds = this.inboxThreadIdsSig;
     this.listFilter = this.filterSig;
@@ -555,7 +559,7 @@ export class ShellboyData {
     const previous = this.ownerSig.peek();
     if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) {
       this.discardAllPreviews("owner_restarted");
-      this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.activeThreadIdsSig.value = []; this.inboxThreadIdsSig.value = [];
+      this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.pinnedMoreSig.value = false; this.activeThreadIdsSig.value = []; this.inboxThreadIdsSig.value = [];
       this.pendingInboxRowIds.clear();
     }
     this.ownerSig.value = owner;
@@ -687,14 +691,25 @@ export class ShellboyData {
     }
   }
 
+  /** Every pinned Thread, whatever its age: the `pin` tag filter walked page by page up to MAX_LIST_ROWS. */
   private async readPinned(onSent: () => void): Promise<void> {
     if (this.listRefs === 0 || !this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) return;
     const epoch = this.readQualificationEpoch;
     const filter = this.filterSig.value;
-    const out = await this.operations.threadList({ ...listArgs(filter), tags: [...(filter.tags ?? []), "pin"], limit: PAGE_LIMIT }, { onSent });
-    if (!out.ok || epoch !== this.readQualificationEpoch || this.listRefs === 0) return;
-    this.pinnedThreadIdsSig.value = out.value.items.map(row => row.thread_id);
-    this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), out.value.items);
+    let rows: ThreadSummary[] = [];
+    let cursor: string | undefined;
+    do {
+      const out = await this.operations.threadList({ ...listArgs(filter), tags: [...(filter.tags ?? []), "pin"], ...(cursor ? { cursor } : {}) }, { onSent });
+      // A changed filter has already asked for a fresh read; keep the previous set until it lands.
+      if (!out.ok || epoch !== this.readQualificationEpoch || this.listRefs === 0 || filter !== this.filterSig.value) return;
+      rows = mergeRows(rows, out.value.items);
+      cursor = out.value.next_cursor;
+    } while (cursor && rows.length < MAX_LIST_ROWS);
+    batch(() => {
+      this.pinnedThreadIdsSig.value = rows.map(row => row.thread_id);
+      this.pinnedMoreSig.value = cursor !== undefined;
+      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), rows);
+    });
   }
 
   private async readList(onSent: () => void, shapeOnly = false): Promise<void> {

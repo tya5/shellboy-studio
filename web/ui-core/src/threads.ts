@@ -9,6 +9,8 @@ export interface ThreadRow {
   childCount: number;
   parentTitle: string | undefined;
   pending: number;
+  /** False when the owner says `pending` is a lower bound (`awaiting_named_count_exact: false`). */
+  pendingExact: boolean;
 }
 
 const statusOf = (s: ThreadSummary, pending: number): StatusKey | undefined =>
@@ -40,6 +42,7 @@ export function threadTree(items: ThreadSummary[], pending: ReadonlyMap<string, 
       childCount: kids.length,
       parentTitle: s.parent_id !== undefined ? known.get(s.parent_id)?.title : undefined,
       pending: count,
+      pendingExact: s.awaiting_named_count === undefined || s.awaiting_named_count_exact !== false,
     });
     for (const k of kids) walk(k, depth + 1);
   };

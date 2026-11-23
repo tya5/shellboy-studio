@@ -50,7 +50,7 @@ const flushPromises = async () => {
 const text = (el: Element) => el.textContent ?? "";
 
 describe("Desktop navigation", () => {
-  it("renders only the normal shell footer or the standalone Settings footer", async () => {
+  it("renders one status footer, with the desktop Exit, in the shell and on Settings", async () => {
     const { model, t, data } = await fixtureModel({ route: "monitor" });
     try {
       t.push({ t: "hello", bridge_version: "0.0.1", desktop: true, data_dir: "/temp/owner-a",
@@ -62,7 +62,7 @@ describe("Desktop navigation", () => {
       act(() => model.applyRoute({ view: "settings", section: "general" }));
       expect(footers()).toHaveLength(1);
       expect(footers()[0]?.textContent).toContain("/temp/owner-a");
-      expect(footers()[0]?.querySelector("button")).toBeNull();
+      expect(footers()[0]?.querySelector("button")?.textContent).toBe(model.t.value("launcher.exit"));
     } finally { model.dispose(); data.stop(); }
   });
 

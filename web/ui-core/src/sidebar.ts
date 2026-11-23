@@ -3,9 +3,10 @@ import { threadTree, type ThreadRow } from "./threads";
 
 export const SIDEBAR_PIN_TAG = "pin";
 export interface SidebarRow extends ThreadRow { key: string; descendants: number; awaiting: number; running: number; reveal: boolean; }
-export interface SidebarGroup { key: "pins" | "all"; rows: SidebarRow[]; }
+/** `count` is the band's Threads: pinned roots for Pins, listed rows for All. */
+export interface SidebarGroup { key: "pins" | "all"; rows: SidebarRow[]; count: number; }
 
-function groupsFor(items: readonly ThreadSummary[], selected?: string, flat = false, allItems: readonly ThreadSummary[] = items): SidebarGroup[] {
+function groupsFor(items: readonly ThreadSummary[], pinIds: ReadonlySet<string>, selected?: string, flat = false, allItems: readonly ThreadSummary[] = items): SidebarGroup[] {
   const tree = threadTree([...items]);
   const byId = new Map(tree.map((row, index) => [row.summary.thread_id, index]));
   const ends: number[] = [];
@@ -46,18 +47,23 @@ function groupsFor(items: readonly ThreadSummary[], selected?: string, flat = fa
     }
     return rows;
   };
-  const roots = items.filter(item => item.tags?.includes(SIDEBAR_PIN_TAG)).map(item => byId.get(item.thread_id)!);
+  const roots = items.filter(item => pinIds.has(item.thread_id)).map(item => byId.get(item.thread_id)!);
   const pins = roots.flatMap(index => project("pins", index, flat ? index + 1 : ends[index]!, tree[index]!.depth));
   const allIds = new Set(allItems.map(item => item.thread_id));
   const all = flat
     ? allItems.flatMap(item => { const index = byId.get(item.thread_id); return index === undefined ? [] : project("all", index, index + 1, 0); })
     : project("all", 0, tree.length, 0).filter(row => allIds.has(row.summary.thread_id));
-  return [...(pins.length ? [{ key: "pins" as const, rows: pins }] : []), { key: "all", rows: all }];
+  return [...(pins.length ? [{ key: "pins" as const, rows: pins, count: roots.length }] : []), { key: "all", rows: all, count: all.length }];
 }
 
-export function sidebarGroups(items: readonly ThreadSummary[], selected?: string, flat = false, allItems: readonly ThreadSummary[] = items): SidebarGroup[] {
-  const pinned = groupsFor(items, selected, flat, [] ).find(group => group.key === "pins");
+/**
+ * `items` holds every row a band may show (listed rows and the owner's pinned rows); `pinIds` is
+ * the owner's pinned set (`thread.list` with the `pin` tag), the only source of Pins membership.
+ */
+export function sidebarGroups(items: readonly ThreadSummary[], pinIds: readonly string[], selected?: string, flat = false, allItems: readonly ThreadSummary[] = items): SidebarGroup[] {
+  const pinSet = new Set(pinIds);
+  const pinned = groupsFor(items, pinSet, selected, flat, []).find(group => group.key === "pins");
   // Build the All tree from its own membership so hidden pin-only parents cannot affect depth or totals.
-  const all = groupsFor(allItems, selected, flat, allItems).find(group => group.key === "all")!;
-  return [...(pinned?.rows.length ? [{ key: "pins" as const, rows: pinned.rows }] : []), all];
+  const all = groupsFor(allItems, new Set(), selected, flat, allItems).find(group => group.key === "all")!;
+  return [...(pinned?.rows.length ? [pinned] : []), all];
 }

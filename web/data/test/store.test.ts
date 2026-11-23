@@ -540,3 +540,21 @@ describe("reads nobody needs are cancelled", () => {
     expect(data.threadList.value.loaded).toBe(true);
   });
 });
+
+describe("pinned set", () => {
+  it("walks the pin tag pages up to MAX_LIST_ROWS and says when more pins remain", async () => {
+    const { t, data, db } = await setup({ capabilities: ["history.window", "thread.tags"] });
+    for (let n = 0; n < MAX_LIST_ROWS + 1; n++) db.threads[`p${n}`] = summary(`p${n}`, { tags: ["pin"] });
+    data.trackThreadList();
+    for (let round = 0; round < 4; round++) await settle(t, db).catch(() => undefined);
+    const pinReads = t.calls("thread.list").filter(call => (call.args as { tags?: string[] }).tags?.includes("pin"));
+    expect(pinReads).toHaveLength(MAX_LIST_ROWS / PAGE_LIMIT);
+    expect(data.pinnedThreadIds.value).toHaveLength(MAX_LIST_ROWS);
+    expect(data.pinnedMore.value).toBe(true);
+    delete db.threads.p0;
+    t.push({ t: "changed", config_changed: false, thread_ids: [], list: true });
+    for (let round = 0; round < 4; round++) await settle(t, db).catch(() => undefined);
+    expect(data.pinnedThreadIds.value).toHaveLength(MAX_LIST_ROWS);
+    expect(data.pinnedMore.value).toBe(false);
+  });
+});
