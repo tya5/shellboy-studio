@@ -14,9 +14,9 @@ describe("status", () => {
   it("maps every owner activity word to one state, and unknown words to none", () => {
     for (const word of ["sending", "reflecting", "preparing", "awaiting_model", "retrying", "receiving", "tools", "running", "background", "continuing", "stopping"])
       expect(statusOfActivity(word)).toBe("running");
-    expect(statusOfActivity("recovery")).toBe("recovery");
+    for (const word of ["recovery", "failed"]) expect(statusOfActivity(word)).toBe("error");
     expect(statusOfActivity("waiting")).toBe("waiting");
-    expect(statusOfActivity("completed")).toBe("completed");
+    for (const word of ["completed", "stopped", "idle"]) expect(statusOfActivity(word)).toBe("idle");
     expect(statusOfActivity("new_word")).toBeUndefined();
   });
   it("activity never means a person is awaited; only the adapter does", () => {
@@ -75,7 +75,7 @@ describe("threads", () => {
   it("urgency puts what needs a person first and counts by state", () => {
     const rows = threadTree([s("x", { activity: "completed" }), s("y", { activity: "recovery" }), s("z", { activity: "tools" }), s("q", { activity: "idle" })], new Map([["q", 1]]));
     expect(byUrgency(rows).map((r) => r.summary.thread_id)).toEqual(["q", "y", "z", "x"]);
-    expect(countByStatus(rows)).toEqual({ completed: 1, recovery: 1, running: 1, awaiting: 1 });
+    expect(countByStatus(rows)).toEqual({ idle: 1, error: 1, running: 1, awaiting: 1 });
   });
 });
 

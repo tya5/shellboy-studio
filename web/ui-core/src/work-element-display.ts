@@ -1,11 +1,11 @@
-import { statusOfShell, type StatusKey } from "./status";
+import { statusOfShell, type ShellStatusKey } from "./status";
 import { CANONICAL_CASES, workDisplayMetadata, type NormalizedSavedItem, type WorkDisplayMetadata, type CanonicalCase, type ProjectedSavedItem } from "./conversation-items";
 export type WorkTypeIconRole = NonNullable<CanonicalCase["iconRole"]>;
 export interface WorkElementDisplay {
   readonly iconRole: WorkTypeIconRole;
   readonly typeAccessibleLabel: string;
   readonly contentLabel: { readonly text: string; readonly context: readonly { readonly name: string; readonly value: string }[] };
-  readonly state: { readonly source: "wire" | "client"; readonly value: string; readonly executionStatus?: StatusKey; readonly exitCode?: number | null } | null;
+  readonly state: { readonly source: "wire" | "client"; readonly value: string; readonly executionStatus?: ShellStatusKey; readonly exitCode?: number | null } | null;
   readonly detailPolicy: "none" | "unavailable" | "actual-safe-typed" | "existing-shell-output";
 }
 /** Issuer-qualified inputs captured inside the capability-bound accepted plan. */

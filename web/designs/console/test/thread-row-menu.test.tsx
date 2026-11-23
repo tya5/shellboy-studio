@@ -58,11 +58,12 @@ function selectRow(title: string, checked = false) {
 describe("Thread row menu and delete", () => {
   it("offers Stop only while running and Retry only in recovery", () => {
     const model = menuModel();
-    const labels = (status: "running" | "recovery" | "idle") => threadMenuEntries(model, row, status, vi.fn()).filter((entry): entry is Exclude<MenuEntry, { separator: true }> => !("separator" in entry)).filter((entry) => !entry.disabled).map((entry) => entry.label);
+    const labels = (status: "running" | "error" | "idle", activity = status === "error" ? "recovery" : status) => threadMenuEntries(model, { ...row, activity }, status, vi.fn()).filter((entry): entry is Exclude<MenuEntry, { separator: true }> => !("separator" in entry)).filter((entry) => !entry.disabled).map((entry) => entry.label);
     expect(labels("running")).toContain("action.stop");
     expect(labels("running")).not.toContain("action.retry");
-    expect(labels("recovery")).toContain("action.retry");
-    expect(labels("recovery")).not.toContain("action.stop");
+    expect(labels("error")).toContain("action.retry");
+    expect(labels("error")).not.toContain("action.stop");
+    expect(labels("error", "failed")).not.toContain("action.retry");
     expect(labels("idle")).not.toContain("action.stop");
     expect(labels("idle")).not.toContain("action.retry");
     const entries = threadMenuEntries(model, row, "running", vi.fn());

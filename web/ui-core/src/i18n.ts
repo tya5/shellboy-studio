@@ -1,6 +1,5 @@
 // All UI wording. English is the default; Japanese stays available. Activity words reuse
 // Shellboy's own labels (src/activity.rs at the pinned revision) for the same meanings.
-import type { StatusKey } from "./status";
 
 export type Lang = "en" | "ja";
 export const LANGS: readonly Lang[] = ["en", "ja"];
@@ -79,6 +78,8 @@ const en = {
   "status.stopped": "Stopped",
   "status.completed": "Completed",
   "status.idle": "Ready",
+  "status.error": "Error",
+  "status.quiet": "No action needed",
   "conn.connected": "Connected",
   "conn.connecting": "Connecting",
   "conn.ownerDown": "Shellboy not reachable",
@@ -1220,6 +1221,8 @@ const ja: Record<MessageKey, string> = {
   "status.stopped": "中断済み",
   "status.completed": "完了",
   "status.idle": "入力できます",
+  "status.error": "エラー",
+  "status.quiet": "印なし",
   "conn.connected": "接続中",
   "conn.connecting": "接続しています",
   "conn.ownerDown": "Shellboyに接続できません",
@@ -2297,7 +2300,6 @@ export function translator(lang: Lang): Translate {
   };
 }
 
-export const statusLabel = (t: Translate, key: StatusKey): string => t(`status.${key}` as MessageKey);
 
 const ACTIVITY: Record<string, Record<Lang, string>> = {
   idle: { en: "Ready for input", ja: "入力できます" },

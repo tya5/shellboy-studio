@@ -92,10 +92,13 @@ Styles: style.css in this directory
 - `panel.attachment`: the Possessions tab and its attachment rows; denotes a saved attachment, not a download.
 
 Sidebar and shared state roles (Orca sidebar and Lucide semantics):
-- `status.running`: work in progress (circle dot; same outer diameter as every StatusMark).
+- `status.running`: in-progress Thread (open rotating arc; stationary when motion is reduced).
+- `status.shellRunning`: an active shell (circle-dot).
+- `status.error`: Thread recovery or failure (circle and exclamation).
+- `status.waiting`: a Run inside its own wait (circle and center dot).
 - `status.awaiting`: needs a human answer (circle help; same outer diameter as every StatusMark).
 - `status.complete`: completed (circle check), and `status.failed`: failed (circle alert); all use the same outer diameter.
-- `status.idle`: ready for input with no active Run (empty circle, same full-size outline as other status marks).
+- `status.idle`: no Thread action needed (empty circle for completed, stopped and idle).
 - `thread.pinned`: the pinned group or pin action.
 - `thread.children`: the child disclosure and count.
 - `sidebar.filter`: opens list filter controls.

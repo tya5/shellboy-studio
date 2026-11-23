@@ -19,7 +19,7 @@ import { ConversationCharacter } from "../system/components";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, ContextRing, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
@@ -121,7 +121,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
   const renderWorkGroup = (group: ConversationWorkGroup, children: ComponentChildren) => {
     const steps = allSteps.filter(step => group.executionIds.includes(step.executionId));
     const active = steps.some(step => step.status === "running");
-    const failures = steps.filter(step => step.state === "failed" || step.status === "failed" || step.status === "recovery" || (typeof step.exitCode === "number" && step.exitCode !== 0)).length;
+    const failures = steps.filter(step => step.state === "failed" || step.status === "failed" || (typeof step.exitCode === "number" && step.exitCode !== 0)).length;
     const unknown = group.unknownToolCount > 0 || steps.length !== group.executionIds.length;
     const completed = group.executionIds.length > 0 && !unknown && steps.every(step => step.status === "completed");
     const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
@@ -141,7 +141,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
         next.set(membershipKey(group), open);
         return next;
       });
-    }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}`}><Icon role="work.group" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
+    }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}`}><Icon role="work.group" /><span class="tool-group-label">{label}</span>{status ? <StatusMark shell status={status} label={activityStatusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   const workRow = (item: ConversationItem) => {
     const bundle=capturedWorkElementDisplay(item, planByKey.get(item.key)?.work);
@@ -155,12 +155,12 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
-    const failed = steps.some(step => step.state === "failed" || step.status === "recovery" || (typeof step.exitCode === "number" && step.exitCode !== 0));
+    const failed = steps.some(step => step.state === "failed" || (typeof step.exitCode === "number" && step.exitCode !== 0));
     const members = projection.items.filter(item => summary.memberKeys.includes(item.key));
     const missingExecution = members.some(item => item.source.kind !== "tool" || !(item.source.executionIds?.length || item.source.executionId)) || steps.length !== summary.executionIds.length;
     const status = active ? "running" : failed ? "failed" : summary.executionIds.length > 0 && !missingExecution ? "completed" : undefined;
     const label = [t(summary.memberKeys.length === 1 ? "tools.countOne" : "tools.count", { n: summary.memberKeys.length }), ...(missingExecution ? [t("work.textUnavailable")] : []), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
-    return <section class="steps"><StepRow group open={opened(summary)} command={label} status={status ? <StatusMark status={status} label={statusLabel(t, status)} /> : <span class="muted caption">{t("work.textUnavailable")}</span>} onToggle={open => {
+    return <section class="steps"><StepRow group open={opened(summary)} command={label} status={status ? <StatusMark shell status={status} label={activityStatusLabel(t, status)} /> : <span class="muted caption">{t("work.textUnavailable")}</span>} onToggle={open => {
       setOpenMemberships(previous => {
         const next = new Map([...previous].filter(([key]) => memberships.has(key)));
         next.set(membershipKey(summary), open);
@@ -278,10 +278,10 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const t = model.t.value;
   const work = model.work.value;
   const row = model.selectedRow.value;
-  const status = model.replyPages.asked_by.value.items.some(r => r.recipient.kind === "name" && r.recipient.name === "human") ? "awaiting" : row?.status;
+  const status = model.replyPages.asked_by.value.items.some(r => r.recipient.kind === "name" && r.recipient.name === "human") ? "awaiting" : row?.status === "awaiting" ? "awaiting" : activityStatus(row?.summary.activity);
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
-  return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><ConversationCharacter name={statusCharacter(status)} running={status === "running"} /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>
+  return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><ConversationCharacter name={statusCharacter(status)} running={status === "running"} /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : activityStatusLabel(t, status)}</span>
     {running ? <>
       <span data-status-description>{running.label}</span>
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
@@ -582,7 +582,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("details.title")}</h3></div>
       {step || running ? <><div class="cmd"><Icon role="work.command" /><span>{command ?? running?.label}</span></div>
         <KeyValue rows={[
-          ...(step?.status ? [{ key: t("details.status"), value: <StatusMark status={step.status} label={statusLabel(t, step.status)} /> }] : []),
+          ...(step?.status ? [{ key: t("details.status"), value: <StatusMark shell status={step.status} label={activityStatusLabel(t, step.status)} /> }] : []),
           ...(elapsed ? [{ key: t("details.duration"), value: elapsed, mono: true }] : []),
           ...(typeof step?.exitCode === "number" ? [{ key: t("details.exit"), value: step.exitCode, mono: true }] : []),
           ...(started ? [{ key: t("details.started"), value: started, mono: true }] : []),

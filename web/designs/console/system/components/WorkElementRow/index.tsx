@@ -1,5 +1,5 @@
 import { StatusMark } from "../StatusMark";
-import type { StatusKey } from "../../../../../ui-core/src/status";
+import type { ShellStatusKey } from "../../../../../ui-core/src/status";
 import type { ComponentChildren } from "preact";
 import { Icon, type IconRole } from "../Icon";
 import type { WorkElementDisplay } from "../../../../../ui-core/src/work-element-display";
@@ -12,7 +12,7 @@ export interface FormattedWorkElementDisplay {
   readonly typeAccessibleLabel: string;
   readonly contentLabel: string;
   readonly state: string | null;
-  readonly executionStatus: StatusKey | undefined;
+  readonly executionStatus: ShellStatusKey | undefined;
   readonly stateSourceLabel: "CLIENT" | null;
   readonly detailPolicy: WorkElementDisplay["detailPolicy"];
 }
@@ -63,7 +63,7 @@ export function WorkElementRow(props: WorkElementRowProps) {
     <>
       <span class="work-element-row__icon"><Icon role={display.iconRole} /></span>
       <span class="work-element-row__content">{display.contentLabel}{display.visibleContext.map((value, index) => <span key={index} class="work-element-row__context"> · {value}</span>)}</span>
-      {display.state !== null && <span class="work-element-row__state">{display.stateSourceLabel !== null && <span>{display.stateSourceLabel}{" "}</span>}{display.executionStatus === undefined ? display.state : <StatusMark status={display.executionStatus} label={display.state} />}</span>}
+      {display.state !== null && <span class="work-element-row__state">{display.stateSourceLabel !== null && <span>{display.stateSourceLabel}{" "}</span>}{display.executionStatus === undefined ? display.state : <StatusMark shell status={display.executionStatus} label={display.state} />}</span>}
     </>
   );
   if (props.detailPolicy === "none" || props.detailPolicy === "unavailable") {

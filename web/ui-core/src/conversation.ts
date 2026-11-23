@@ -3,7 +3,7 @@ import { senderFact } from "../../data/src/sender";
 // Pure rendering from strictly decoded selected-path history-window DTOs.
 import { type HistoryItem, type ShellEntry, HISTORY_WINDOW_EXCERPT_CHARS } from "../../data/src/protocol";
 import { parseTime } from "./format";
-import { statusOfShell, type StatusKey } from "./status";
+import { statusOfShell, type ShellStatusKey } from "./status";
 import { senderHeaderDisplay, type SenderHeaderDisplay } from "./sender-display";
 import type { SenderTitle } from "./sender-titles";
 
@@ -13,7 +13,7 @@ export interface StepRow {
   /** The model's one-line account of the call, when the owner reports it. */
   description?: string;
   commandTruncated: boolean;
-  status: StatusKey | undefined;
+  status: ShellStatusKey | undefined;
   state: string | undefined;
   exitCode: number | null | undefined;
   startedAt: string | undefined;

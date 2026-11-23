@@ -4,7 +4,7 @@ import '../../system/tokens/console.css';
 import '../../system/tokens/light.css';
 import '../../system/components.css';
 import '../../system/layout.css';
-const status = <StatusMark status="completed" label="Completed" />;
+const status = <StatusMark shell status="completed" label="Completed" />;
 const tool = (command: string, open = false) => <StepRow open={open} command={command} status={status} duration="1.2s" onToggle={() => {}}><pre class="log">{`$ ${command}\n3 files checked\nDone`}</pre></StepRow>;
 function group(title: string, children: preact.ComponentChildren) {
   return <StepRow open command={title} group status={status} onToggle={() => {}}><div class="step-group-list">{children}</div></StepRow>;

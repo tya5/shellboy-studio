@@ -147,12 +147,13 @@ describe("components name roles, never values", () => {
   it("every custom property used exists", () => {
     for (const m of css.matchAll(/var\(--([\w-]+)/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });
-  it("only loading rows, thinking dots and the active summary arc move, with reduced motion respected", () => {
+  it("only loading rows, thinking dots, the active summary arc and the running status arc move, with reduced motion respected", () => {
     const animations = [...css.matchAll(/([^{}]+)\{([^{}]*\banimation\s*:\s*([^;}]+)[^{}]*)\}/g)]
       .filter((match) => match[3]!.trim() !== "none")
       .map((match) => match[1]!.trim());
-    expect(animations.sort()).toEqual([".character-status[data-running] circle", ".context-ring-activity", ".loadrow"]);
+    expect(animations.sort()).toEqual([".character-status[data-running] circle", ".context-ring-activity", ".loadrow", ".status-shape[data-running-arc] svg"]);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.context-ring-activity\{animation:none;stroke-dasharray:1 9\}/);
+    expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\.status-shape\[data-running-arc\] svg\{animation:status-arc-spin/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadrow\{animation:none\}/);
     expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\s*\.character-status\[data-running\] circle\{[^}]*animation:character-hop/);
   });
@@ -194,7 +195,8 @@ describe("screens use the system only", () => {
   });
   it("the status mark differs in shape between states, not only colour", () => {
     const text = readSystemCss("components.css");
-    for (const rule of [/\.st\.bad \.dot\{[^}]*rotate\(45deg\)/, /\.st\.ok \.i\{/, /\.st\.fail \.i\{/, /\.st\.halt \.dot\{[^}]*border-radius:2px/, /\.st\.hold \.dot\{/]) expect(text).toMatch(rule);
+    expect(text).toContain(".status-shape:not([data-running-arc]) svg>*{vector-effect:non-scaling-stroke;stroke-width:1.5px}");
+    expect(text).toContain(".status-shape[data-running-arc] svg>circle{stroke-width:2.4}");
   });
 });
 
