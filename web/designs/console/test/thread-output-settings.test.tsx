@@ -15,7 +15,7 @@ it.each([true,false])('actual dialog shows own and owner-effective output limit,
  try{
   await act(async()=>{render(<App context={context}/>,host);r.model.openModelPicker();await settle(r.t,r.db);});
   const dialog=host.querySelector('[role="dialog"]')!;expect(dialog).not.toBeNull();
-  const input=dialog.querySelector<HTMLInputElement>('[aria-label="Maximum output tokens (Thread override)"]')!;
+  const input=dialog.querySelector<HTMLInputElement>('[aria-label="Maximum output tokens"]')!;
   expect(input).not.toBeNull();expect(input.value).toBe('');expect(input.placeholder).toContain('8192');expect(input.disabled).toBe(!capable);
   expect(dialog.textContent).not.toContain('Summary segment');expect(dialog.textContent).not.toContain('reduction rounds');
   expect(r.t.calls('thread.set')).toHaveLength(0);

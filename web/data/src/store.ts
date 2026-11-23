@@ -480,7 +480,7 @@ export class ShellboyData {
           entry?.live.apply(f); }
         break;
       case "attempt_end":
-        this.entries.get(f.thread_id)?.live.end(f.attempt_id, f.outcome);
+        this.entries.get(f.thread_id)?.live.end(f.attempt_id, f.outcome, f.output_limit);
         break;
       case "live_end": {
         const entry = this.entries.get(f.thread_id);

@@ -150,3 +150,22 @@ it('OrderedHistory real owner path preserves A/B without parent rerender',async(
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
  }finally{render(null,host);f.model.dispose();f.data.stop();}
 });
+
+it('renders a provider output-limit notice under the streamed partial reply only when its attempt ends with stop evidence', async () => {
+ const f=await publicConversationFixture({nodes:[]});
+ const attempt='attempt-output-limit';
+ try {
+  await act(async()=>{
+   f.t.push({t:'live',thread_id:'lead',attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:'partial reply'}]});
+   await flush();
+   f.t.push({t:'attempt_end',thread_id:'lead',attempt_id:attempt,outcome:'adopted',seq:1,output_limit:{stop:true,sent_max_tokens:4096,source:'connection',connection:'c'}});
+   await flush();
+   render(<CurrentSavedView fixture={f}/>,host);
+  });
+  const status=host.querySelector('[role="status"].output-limit-notice');
+  expect(host.textContent).toContain('partial reply');
+  expect(status?.textContent).toContain('4096');
+  expect(status?.textContent).toContain('Continue');
+  expect(host.querySelectorAll('[role="status"].output-limit-notice')).toHaveLength(1);
+ } finally {render(null,host);f.model.dispose();f.data.stop();}
+});

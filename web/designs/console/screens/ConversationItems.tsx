@@ -41,7 +41,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly PositionedOwnSendRow[]; readonly renderRow: (row: PendingOwnMessage) => ComponentChildren };
+  localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly PositionedOwnSendRow[]; readonly renderRow: (row: PendingOwnMessage | Extract<PositionedOwnSendRow, { kind: "live" }>) => ComponentChildren };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -97,7 +97,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       localByPosition.set(tail.afterSequenceIndex, group);
     }
     const renderLocalAt = (position: number) => (localByPosition.get(position) ?? []).map(tail => {
-      if (tail.kind === "live") return content(tail.item, false, false);
+      if (tail.kind === "live") return <Fragment key={`conversation:${tail.item.key}`}>{content(tail.item, false, false)}{localRegion!.renderRow(tail)}</Fragment>;
       const id = tail.row.messageId;
       const key = id === undefined ? `own:${tail.row.operationId}` : canonicalSavedItemKey(id, JSON.stringify([id, "/content/0"]));
       return <Fragment key={`conversation:${key}`}>{row(key, localRegion!.renderRow(tail.row))}</Fragment>;

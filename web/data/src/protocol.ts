@@ -45,7 +45,7 @@ export type ServerFrame =
   | { t: "result"; id: number; response?: OwnerResponse; error?: BridgeError }
   | { t: "changed"; thread_ids: string[]; list: boolean; config_changed: boolean }
   | { t: "live"; thread_id: string; attempt_id: string; input_through_node_id?: string | null; gap: boolean; deltas: { offset: number; reasoning: boolean; text: string }[] }
-  | { t: "attempt_end"; thread_id: string; attempt_id: string; outcome: "adopted" | "not_adopted"; seq: number }
+  | { t: "attempt_end"; thread_id: string; attempt_id: string; outcome: "adopted" | "not_adopted"; output_limit?: AttemptOutputLimit | null; seq: number }
   | { t: "live_end"; thread_id: string }
   | { t: "resync" }
   | { t: "owner"; event: OwnerEvent; owner: OwnerState }
@@ -118,7 +118,8 @@ export function parseServerFrame(text: string): ParsedFrame {
       return { ok: true, frame: v as unknown as ServerFrame };
     case "attempt_end":
       if (typeof v.thread_id !== "string" || typeof v.attempt_id !== "string"
-        || (v.outcome !== "adopted" && v.outcome !== "not_adopted") || !Number.isSafeInteger(v.seq)) return bad("bad fields");
+        || (v.outcome !== "adopted" && v.outcome !== "not_adopted") || !Number.isSafeInteger(v.seq)
+        || (v.output_limit !== undefined && v.output_limit !== null && !validAttemptOutputLimit(v.output_limit))) return bad("bad fields");
       return { ok: true, frame: v as unknown as ServerFrame };
     case "live_end":
       if (typeof v.thread_id !== "string") return bad("bad fields");
@@ -385,6 +386,8 @@ export interface ShellEntry {
 
 /** `usage.get` arguments the UI uses. The owner rejects a grouped period over 31 days. */
 export interface UsageGetArgs {
+  /** One exact persisted model attempt. */
+  attempt_id?: string;
   /** Saved node timestamp, inclusive; mutually exclusive with since. Not an ordinal cut. */
   since_node_id?: string;
   group_by?: "day" | "hour" | "thread";
@@ -395,6 +398,21 @@ export interface UsageGetArgs {
   thread_id?: string;
   limit?: number;
   cursor?: string;
+}
+
+export interface AttemptOutputLimit {
+  stop: boolean;
+  sent_max_tokens?: number | null;
+  source?: "thread_override" | "connection" | "default" | "extra_body" | null;
+  connection: string;
+}
+
+function validAttemptOutputLimit(value: unknown): value is AttemptOutputLimit {
+  if (!isObject(value) || typeof value.stop !== "boolean" || typeof value.connection !== "string") return false;
+  if (value.sent_max_tokens !== undefined && value.sent_max_tokens !== null
+    && (!Number.isSafeInteger(value.sent_max_tokens) || (value.sent_max_tokens as number) < 0)) return false;
+  return value.source === undefined || value.source === null
+    || ["thread_override", "connection", "default", "extra_body"].includes(String(value.source));
 }
 
 export interface CompactListArgs {

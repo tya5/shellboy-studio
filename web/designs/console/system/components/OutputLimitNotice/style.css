@@ -1,0 +1,4 @@
+.output-limit-notice{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-8) var(--space-12);border:1px solid var(--line);border-radius:var(--radius);color:var(--muted);background:var(--note-bg);font:var(--type-label)}
+.output-limit-notice-content{display:flex;align-items:center;gap:var(--space-8);flex:1;min-width:0;overflow-wrap:anywhere}
+.output-limit-notice-actions{display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap}
+@container app (max-width:899px){.output-limit-notice{align-items:flex-start;flex-direction:column}.output-limit-notice-actions{width:100%;justify-content:flex-end}}

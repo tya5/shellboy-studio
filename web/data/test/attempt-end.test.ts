@@ -17,3 +17,13 @@ it('stages the held replay and keeps the prior cut until history commits', () =>
   handoff.commitReplacement();
   expect(handoff.records.peek().map(r => r.attemptId)).toEqual(['next']);
 });
+
+it('retains output-limit evidence only on the matching ended attempt', () => {
+  const handoff = new Handoff(fn => fn(), () => 0);
+  const text = (id: string) => handoff.apply({ attempt_id: id, gap: false, deltas: [{ offset: 0, reasoning: false, text: id }] });
+  text('limited'); text('ordinary');
+  const fact = { stop: true, sent_max_tokens: 1234, source: 'connection' as const, connection: 'mock' };
+  handoff.end('limited', 'adopted', fact);
+  handoff.end('ordinary', 'adopted');
+  expect(handoff.records.peek().map(record => [record.attemptId, record.outputLimit])).toEqual([['limited', fact], ['ordinary', undefined]]);
+});

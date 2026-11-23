@@ -1,5 +1,6 @@
 import { batch, computed, signal, type ReadonlySignal } from '@preact/signals-core';
 import { LiveText, type LiveFrame, type Preview, type PreviewDiscardReason, type Schedule } from './live';
+import type { AttemptOutputLimit } from './protocol';
 
 /** ADR-C1: UTF-8 retained text accounting, not a JavaScript heap guarantee. */
 export const MAX_HANDOFF_RECORDS = 8;
@@ -14,6 +15,7 @@ export interface HandoffRecord {
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
+  readonly outputLimit?: AttemptOutputLimit;
 }
 interface Held {
   admitted: number; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord
@@ -83,14 +85,20 @@ export class Handoff {
     h.admitted += incoming;
     h.source.apply(frame);
   }
-  end(attemptId: string, outcome: "adopted" | "not_adopted"): void {
+  end(attemptId: string, outcome: "adopted" | "not_adopted", outputLimit?: AttemptOutputLimit | null): void {
     if (this.terminal.has(attemptId)) return;
     this.terminal.add(attemptId);
     if (this.terminal.size > 256) this.terminal.delete(this.terminal.values().next().value!);
-    if (outcome === "not_adopted") {
+    const held = this.held.find(h => h.attemptId === attemptId);
+    if (outputLimit?.stop && held) {
+      this.updateRecord(held, { ...held.record, status: "ended", outputLimit });
+      if (this.active === attemptId) this.active = undefined;
+      this.publish();
+      held.source.finish();
+    } else if (outcome === "not_adopted") {
       if (this.active === attemptId) this.active = undefined;
       this.releaseAccepted(attemptId);
-    } else this.held.find(h => h.attemptId === attemptId)?.source.finish();
+    } else held?.source.finish();
   }
 
   finish(): void {

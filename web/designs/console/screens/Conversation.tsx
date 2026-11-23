@@ -8,7 +8,7 @@ import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
 import { speakerOf, speakerDisplay as projectSpeakerDisplay, type Speaker } from "../../../ui-core/src/conversation";
 import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
-import type { HistoryItem } from "../../../data/src/protocol";
+import type { HistoryItem, AttemptOutputLimit } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import { projectionFromDisplayPlan, type ConversationDisplayPlan } from "../../../ui-core/src/conversation-display-plan";
@@ -21,7 +21,7 @@ import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, Composer, ContextRing, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
+import { BranchMark, Button, Composer, ContextRing, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
 
 /** Internal immutable publication seam; deliberately not a Core transport type. */
 export interface ConversationSnapshot {
@@ -85,7 +85,7 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return "message";
 }
 
-export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow[]; readonly renderRow: (row: import("../../../ui-core/src/model").PendingOwnMessage) => ComponentChildren } }) {
+export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow[]; readonly renderRow: (row: import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow, { kind: "live" }>) => ComponentChildren } }) {
   const projection = displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection;
   const planEntries = displayPlan?.entries ?? [];
   const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
@@ -235,10 +235,28 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
   </div>;
 }
 
+function OutputLimitNotice({ model, fact }: { model: AppModel; fact: AttemptOutputLimit }) {
+  const t = model.t.value;
+  const override = model.threadSettings.value?.maxTokensState.kind === "value";
+  const openSetting = () => {
+    if (override) { model.openModelPicker(); window.setTimeout(() => document.querySelector<HTMLElement>('[data-thread-setting="maxTokens"]')?.focus(), 0); return; }
+    model.navigate({ view: "settings", section: "connections" });
+    window.setTimeout(() => {
+      const id = `connections.${fact.connection}.max_tokens`;
+      const target = [...document.querySelectorAll<HTMLElement>("[data-setting-id]")].find(el => el.dataset.settingId === id);
+      target?.scrollIntoView({ block: "center" });
+      target?.querySelector<HTMLElement>("input")?.focus();
+    }, 0);
+  };
+  return <OutputLimitNoticeRow actions={<><Button variant="link" onClick={openSetting}>{t("convo.outputLimitAction")}</Button><Button variant="link" onClick={() => void model.send(t("convo.continue"))}>{t("convo.continue")}</Button></>}>
+    <Icon role="conversation.outputLimit" size="small" /><span>{t("convo.outputLimitNotice", { limit: fact.sent_max_tokens == null ? "" : `（${fact.sent_max_tokens}）` })}</span>
+  </OutputLimitNoticeRow>;
+}
+
 function OwnSendContent({model,snapshot,plan,trailing}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren}) {
   const projection=projectionFromDisplayPlan(plan);
-  const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage)=> <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
-    {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>;
+  const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow,{kind:"live"}>)=> { if ("kind" in message) return message.outputLimit?.stop ? <OutputLimitNotice model={model} fact={message.outputLimit} /> : null; return <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
+    {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>; };
   return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}
     localRegion={plan.localRegion.tailRows.length?{kind:"unqualified",tailRows:plan.localRegion.tailRows,renderRow:renderLocal}:undefined}
     trailing={trailing}/>;
