@@ -27,6 +27,7 @@ export function Markdown({ text, copyLabel, copiedLabel }: { text: string; copyL
   return (
     <div
       class="message-markdown"
+      data-reading-body=""
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={(e) => {
         const target = e.target as HTMLElement;

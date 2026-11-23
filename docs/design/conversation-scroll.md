@@ -36,7 +36,12 @@ epoch and capability. Live and local wrappers do not disqualify saved anchors.
 A live preview can hand its row offset to a unique saved assistant successor
 only when committed attempt provenance and visible text continuity both match.
 Model height compensation and path recovery are fallbacks, not preservation of
-the original rendered anchor. This remains item-level, not paragraph-level.
+the original rendered anchor. Inside a saved prose item, the anchor prefers the
+first visible top-level paragraph when its rendered text is unique in that body.
+Reapply its offset only if the same qualified item still renders one exact
+match. Missing, changed, or ambiguous text uses model/origin fallback, not the
+item top as a substitute for the lost paragraph. This does not track individual
+lines within a paragraph or assign anchors to code blocks.
 A clicked tool heading takes priority during its own open/close operation.
 Following takes priority over heading anchoring, so opening a tool at the tail
 keeps the actual end in view.

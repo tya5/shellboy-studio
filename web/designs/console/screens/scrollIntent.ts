@@ -119,8 +119,28 @@ function readingItems(box: HTMLElement, context: ReadingContext): HTMLElement[] 
   return items;
 }
 
+/** Only prose paragraphs in this item's own rendered body, not its chrome or nested items. */
+function bodyParagraphs(item: HTMLElement): HTMLElement[] {
+  const bodies = [...item.querySelectorAll<HTMLElement>('[data-reading-body]')]
+    .filter(body => body.closest('[data-item-key]') === item && !body.closest('[hidden]'));
+  if (bodies.length !== 1) return [];
+  return [...bodies[0]!.querySelectorAll<HTMLElement>(':scope > p')];
+}
+
+function captureParagraph(item: HTMLElement, viewport: DOMRect): { text: string; offset: number } | undefined {
+  const paragraphs = bodyParagraphs(item);
+  for (const paragraph of paragraphs) {
+    const rect = paragraph.getBoundingClientRect();
+    if (rect.height <= 0 || rect.bottom <= viewport.top || rect.top >= viewport.bottom) continue;
+    const text = paragraph.textContent;
+    if (text?.trim() && paragraphs.filter(candidate => candidate.textContent === text).length === 1)
+      return { text, offset: rect.top - viewport.top };
+    return;
+  }
+}
+
 type CanonicalAnchor = { key: string; offset: number; epoch: number; capability: object } &
-  ({ kind: 'saved'; node: string } | { kind: 'preview'; attempt: string; text: string });
+  ({ kind: 'saved'; node: string; paragraph?: { text: string; offset: number } } | { kind: 'preview'; attempt: string; text: string });
 
 export class ReadingAnchor {
   private canonical: CanonicalAnchor | undefined;
@@ -132,7 +152,8 @@ export class ReadingAnchor {
       if (!context?.isCurrent() || context.revision === undefined) return;
       const items = readingItems(box, context);
       if (!items) return;
-      const top = box.getBoundingClientRect().top;
+      const viewport = box.getBoundingClientRect();
+      const top = viewport.top;
       for (const item of items) {
         const key = item.dataset.itemKey!;
         const attempt = item.dataset.handoffAttempt;
@@ -146,7 +167,10 @@ export class ReadingAnchor {
           const text = context.previewText?.(key, attempt);
           if (text && items.filter(other => other.dataset.handoffAttempt === attempt).length === 1)
             this.canonical = { ...anchor, kind: 'preview', attempt, text };
-        } else if (item.dataset.node) this.canonical = { ...anchor, kind: 'saved', node: item.dataset.node };
+        } else if (item.dataset.node) {
+          const paragraph = element === item ? captureParagraph(item, viewport) : undefined;
+          if (context.isCurrent()) this.canonical = { ...anchor, kind: 'saved', node: item.dataset.node, paragraph };
+        }
         return;
       }
       return;
@@ -173,6 +197,16 @@ export class ReadingAnchor {
         // Requalify the exact key and node in the current rendered cut, regardless of revision.
         const match = savedItems.find(item => item.dataset.itemKey === canonical.key && item.dataset.node === canonical.node);
         if (match) element = canonicalElement(match);
+        if (canonical.paragraph) {
+          if (!match || element !== match) return;
+          const { text, offset } = canonical.paragraph;
+          const paragraphs = bodyParagraphs(match).filter(p => p.textContent === text);
+          if (paragraphs.length !== 1) return;
+          const rect = paragraphs[0]!.getBoundingClientRect();
+          if (rect.height <= 0) return;
+          const delta = rect.top - box.getBoundingClientRect().top - offset;
+          return context.isCurrent() ? delta : undefined;
+        }
       } else {
         const previews = items.filter(item => item.dataset.handoffAttempt === canonical.attempt);
         if (previews.length) {
