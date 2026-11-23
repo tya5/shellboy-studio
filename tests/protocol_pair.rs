@@ -17,11 +17,17 @@ fn thread_list_accepts_created_order_and_cursor() {
         serde_json::from_value(json!({"order":"created","cursor":"next"})).unwrap();
     assert_eq!(args.order, ThreadListOrder::Created);
     assert_eq!(args.cursor.as_deref(), Some("next"));
+    let targeted: ThreadListArgs =
+        serde_json::from_value(json!({"thread_ids":["t1","t2"]})).unwrap();
+    assert_eq!(
+        targeted.thread_ids.as_deref(),
+        Some(["t1".to_owned(), "t2".to_owned()].as_slice())
+    );
 }
 
 #[test]
 fn exact_protocol_fifteen_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 15);
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 16);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});

@@ -472,8 +472,19 @@ export class AppModel {
       for (const p of this.pending.items.value) map.set(p.threadId, (map.get(p.threadId) ?? 0) + 1);
       return map;
     });
-    this.rows = computed(() => threadTree(this.data.threadList.value.items, pendingByThread.value));
-    this.rowById = computed(() => new Map(this.rows.value.map((r) => [r.summary.thread_id, r])));
+    this.rows = computed(() => {
+      const exact = this.data.threadRows.value;
+      const seen = new Set(this.data.threadList.value.items.map(row => row.thread_id));
+      const rows = this.data.threadList.value.items.map(row => exact.get(row.thread_id) ?? row);
+      for (const row of exact.values()) if (!seen.has(row.thread_id)) rows.push(row);
+      return threadTree(rows, pendingByThread.value);
+    });
+    this.rowById = computed(() => {
+      const rows = new Map(this.rows.value.map(row => [row.summary.thread_id, row]));
+      const exact = this.data.threadRows.value;
+      for (const [id, summary] of exact) if (!rows.has(id)) rows.set(id, threadTree([summary], pendingByThread.value)[0]!);
+      return rows;
+    });
     this.counts = computed(() => countByStatus(this.rows.value));
     this.pendingCount = computed(() => this.pending.items.value.length);
     this.missingPins = new MissingPins(this.ops);

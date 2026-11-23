@@ -475,6 +475,8 @@ export type ArchivedFilter = "exclude" | "include" | "only";
 export type Deliver = "next" | "now";
 
 export interface ThreadListArgs {
+  /** Return exact summaries without paging. */
+  thread_ids?: string[];
   order?: "updated" | "created";
   awaiting?: "human";
   limit?: number;
