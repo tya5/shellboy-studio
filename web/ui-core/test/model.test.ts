@@ -10,7 +10,7 @@ describe("AppModel over the fake transport", () => {
     expect(model.selectedId.value).toBe("lead");
     expect(model.conversation.value.map((r) => r.type)).toEqual(["message", "note", "note", "note", "note", "steps", "note", "note"]);
     expect(model.conversation.value.filter(row => row.type === "message").some(row => row.text.includes("cargo test"))).toBe(false);
-    expect(model.context.value).toEqual({ inputTokens: 41200, threshold: 200000, state: "normal", fill: 41200 * 100 / 200000, lastCompactionAt: undefined });
+    expect(model.context.value).toEqual({ inputTokens: 41200, threshold: 200000, state: "normal", fill: 41200 * 100 / 200000 });
   });
 
   it("rejects a late full-body fetch after navigation cancellation", async () => {

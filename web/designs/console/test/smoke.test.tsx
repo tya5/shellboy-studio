@@ -495,6 +495,28 @@ describe("Conversation", () => {
     act(() => button("spill", "Undo").click());
     expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "lead", spill: "off" });
   });
+  it("clears an unreadable output override without calling it unset or offering a guessed Undo", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"], configure(db) {
+      db.details.lead = { ...db.details.lead!, max_tokens: Number.MAX_SAFE_INTEGER + 1 };
+    } });
+    const el = draw(model);
+    act(() => model.setPanelTab("settings"));
+    const row = () => el.querySelector<HTMLElement>('[data-setting-id="thread.max_tokens"]')!;
+    expect(row().textContent).toContain(model.t.value("common.notReadable"));
+    expect(row().textContent).toContain("Set for this Thread");
+    expect(row().textContent).not.toContain("Not set");
+    act(() => [...row().querySelectorAll("button")].find(b => b.textContent === "Reset to default")!.click());
+    const call = t.calls("thread.set").at(-1)!;
+    expect(call.args).toEqual({ thread_id: "lead", max_tokens: "" });
+    const readback = { ...db.details.lead!, max_tokens: null, effective_max_tokens: 32768 };
+    db.answered.add(call.id);
+    await act(async () => { t.ok(call.id, readback); });
+    expect(row().textContent).toContain("Set for this Thread");
+    db.details.lead = readback;
+    await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await settle(t, db); });
+    expect(row().textContent).toContain("32768Default");
+    expect(row().textContent).not.toContain("Undo");
+  });
   it("omits the usage and context elements when the owner reports nothing", async () => {
     const { model, t, db } = await fixtureModel();
     const lead = db.details.lead as unknown as Record<string, unknown>;

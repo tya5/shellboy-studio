@@ -58,6 +58,9 @@ try{
   assert(analysis.includes('圧縮')&&!analysis.includes('gpt-6.2-sol')&&!analysis.includes('保存'));
   const analytics=await call('Page.captureScreenshot',{format:'png'});
   await writeFile(`${process.env.SHOTS}/analytics-${width}-${theme}.png`,Buffer.from(analytics.data,'base64'));
+  await evaluate("(() => { const tab=document.querySelector('#panel-tab-settings'); tab.focus(); tab.click(); return true; })()");
+  await until(()=>evaluate("!!document.querySelector('#panel-page-settings:not([hidden]) [data-setting-id]')"));
+  assert(await evaluate("!document.querySelector('#panel-page-settings [data-highlighted]') && document.activeElement === document.querySelector('#panel-tab-settings')"));
   console.log(JSON.stringify({width,theme,facts}));
  }
 

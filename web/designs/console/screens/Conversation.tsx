@@ -20,7 +20,7 @@ import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
-import { ThreadSettingsPanel } from "./ThreadSettingsPanel";
+import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
@@ -631,7 +631,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   </section>;
 }
 
-function RightPanel({ model, panelCollapsed = false, phone, destination }: { model: AppModel; panelCollapsed?: boolean; phone?: boolean; destination?: { field: "connection" } | undefined }) {
+function RightPanel({ model, panelCollapsed = false, phone, destination, clearDestination }: { model: AppModel; panelCollapsed?: boolean; phone?: boolean; destination?: SettingsDestination | undefined; clearDestination: () => void }) {
   const t = model.t.value;
   const supportsAttachments = model.data.capabilities.value.includes(CAPABILITY_ATTACHMENT_PAGE);
   const owner = model.data.owner.value;
@@ -688,7 +688,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination }: { mod
     focusAfterBack.current = { tab, restore };
     model.closePanelDetail();
   };
-  const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);
+  const select = (id: string) => { clearDestination(); model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab); };
   return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-phone-panel={phone || undefined} data-panel-rail={panelCollapsed ? "" : undefined}>
     <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
     <div class="panel-pages">
@@ -734,9 +734,19 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
   const details = model.details.value;
   const context = model.context.value;
   const root = useRef<HTMLDivElement>(null);
-  const [settingsDestination, setSettingsDestination] = useState<{ field: "connection" }>();
+  const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>();
+  const clearDestination = () => setSettingsDestination(undefined);
+  const tab = model.panelTab.value;
+  useLayoutEffect(() => {
+    if (settingsDestination && (settingsDestination.thread !== handle?.threadId || tab !== "settings")) clearDestination();
+  }, [settingsDestination, handle, tab]);
+  const destination = settingsDestination?.thread === handle?.threadId ? settingsDestination : undefined;
   const openThreadPanel = (tab: "info" | "settings") => {
-    setSettingsDestination(tab === "settings" ? { field: "connection" } : undefined);
+    if (tab === "settings" && handle) {
+      const request: SettingsDestination = { thread: handle.threadId, field: "connection",
+        consume: () => setSettingsDestination(current => current === request ? undefined : current) };
+      setSettingsDestination(request);
+    } else clearDestination();
     const pane = root.current?.parentElement?.querySelector<HTMLElement>("[data-panel-root]");
     model.setPanelTab(tab);
     if (pane && getComputedStyle(pane).display === "none") onOpenPhonePanel?.();
@@ -811,8 +821,8 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
       {handle && !phonePanel && onPanelWidth ? <LayoutSeparator side="right" label={t("panel.resize")} controls="conversation-right-panel"
         width={readRightPanelWidth(rightPanelWidth)} min={RIGHT_PANEL_WIDTH_MIN} max={RIGHT_PANEL_WIDTH_MAX}
         disabled={panelCollapsed} onWidth={onPanelWidth} /> : null}
-      {handle && !phonePanel ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} destination={settingsDestination} /> : null}
-      {handle && phonePanel ? <WorkSheet open title={t("panel.title")} closeLabel={t("common.close")} onClose={() => onClosePhonePanel?.()} getReturnFocusTarget={() => document.querySelector<HTMLElement>("[data-conversation-header] [aria-haspopup=menu]")}><RightPanel key={handle.threadId} model={model} phone destination={settingsDestination} /></WorkSheet> : null}
+      {handle && !phonePanel ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} destination={destination} clearDestination={clearDestination} /> : null}
+      {handle && phonePanel ? <WorkSheet open title={t("panel.title")} closeLabel={t("common.close")} onClose={() => onClosePhonePanel?.()} getReturnFocusTarget={() => document.querySelector<HTMLElement>("[data-conversation-header] [aria-haspopup=menu]")}><RightPanel key={handle.threadId} model={model} phone destination={destination} clearDestination={clearDestination} /></WorkSheet> : null}
       <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );

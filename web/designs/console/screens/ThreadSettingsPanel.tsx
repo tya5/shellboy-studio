@@ -5,7 +5,9 @@ import { Button, ButtonGroup, Field, Section, SettingRow } from "../system/compo
 import { SettingFeedbackLine } from "./SettingsConfig";
 
 type FieldName = Parameters<AppModel["ops"]["setThreadSetting"]>[1];
-type Value = string | number | boolean | undefined;
+const unreadable = Symbol("unreadable override");
+type Value = string | number | boolean | typeof unreadable | undefined;
+export type SettingsDestination = { thread: string; field: FieldName; consume(): void };
 type Row = { field: FieldName; label: MessageKey; own: Value; inherited?: Value; defaultable?: boolean };
 const settingId = (field: FieldName) => `thread.${field}`;
 
@@ -21,7 +23,7 @@ function rows(details: ThreadDetails): { section: MessageKey; entries: Row[] }[]
       { field: "connection", label: "model.connection", own: d.connection },
       { field: "model", label: "details.model", own: d.model },
       { field: "effort", label: "model.effort", own: d.effort },
-      { field: "max_tokens", label: "threadSettings.max", own: d.maxTokens, inherited: d.effectiveMaxTokens, defaultable: d.maxTokensState.kind !== "unknown" },
+      { field: "max_tokens", label: "threadSettings.max", own: d.maxTokensState.kind === "unknown" ? unreadable : d.maxTokens, inherited: d.effectiveMaxTokens, defaultable: true },
     ] },
     { section: "set.section.compaction", entries: [
       { field: "auto_compact_at", label: "thread.auto", own: d.autoCompactAt, inherited: d.effectiveAutoCompactAt, defaultable: true },
@@ -33,22 +35,26 @@ function rows(details: ThreadDetails): { section: MessageKey; entries: Row[] }[]
 }
 
 function wireValue(value: Value) {
-  return typeof value === "boolean" ? value ? "on" : "off" : String(value ?? "");
+  return typeof value === "boolean" ? value ? "on" : "off" : value === unreadable ? "" : String(value ?? "");
 }
 
-export function ThreadSettingsPanel({ model, details, destination }: { model: AppModel; details: ThreadDetails; destination?: { field: FieldName } | undefined }) {
+export function ThreadSettingsPanel({ model, details, destination }: { model: AppModel; details: ThreadDetails; destination?: SettingsDestination | undefined }) {
   const t = model.t.value;
   const root = useRef<HTMLDivElement>(null);
+  const [highlight, setHighlight] = useState<FieldName>();
   useLayoutEffect(() => {
     if (!destination) return;
     const row = root.current?.querySelector<HTMLElement>(`[data-setting-id="${settingId(destination.field)}"]`);
-    row?.scrollIntoView?.({ block: "nearest" });
-    row?.querySelector("button")?.focus({ preventScroll: true });
+    if (!row) return;
+    setHighlight(destination.field);
+    row.scrollIntoView?.({ block: "nearest" });
+    row.querySelector("button")?.focus({ preventScroll: true });
+    destination.consume();
   }, [destination]);
   const enabled = model.data.capabilities.value.includes("thread.settings") && model.data.owner.value.state === "connected";
   return <div class="stack" ref={root}>
     {rows(details).map(({ section, entries }) => <Section key={section} title={t(section)}>
-      {entries.map(row => <ThreadSetting key={row.field} model={model} row={row} details={details} enabled={enabled} highlighted={destination?.field === row.field} />)}
+      {entries.map(row => <ThreadSetting key={row.field} model={model} row={row} details={details} enabled={enabled} highlighted={highlight === row.field} />)}
     </Section>)}
   </div>;
 }
@@ -88,7 +94,7 @@ function ThreadSetting({ model, row, details, enabled, highlighted }: { model: A
   const close = () => { returnFocus.current = true; setEdit(undefined); };
   const save = async (value: string) => {
     if (!enabled || busy) return;
-    if (row.field !== "title" && value === wireValue(row.own)) { close(); return; }
+    if (row.field !== "title" && row.own !== unreadable && value === wireValue(row.own)) { close(); return; }
     const scope = lifetime.current;
     const handle = model.handle.peek();
     const owner = model.data.owner.peek();
@@ -105,10 +111,10 @@ function ThreadSetting({ model, row, details, enabled, highlighted }: { model: A
   };
   const inherited = row.defaultable && row.own === undefined;
   const value = inherited ? row.inherited : row.own;
-  const displayed = typeof value === "boolean" ? t(value ? "config.on" : "config.off")
+  const displayed = value === unreadable ? t("common.notReadable") : typeof value === "boolean" ? t(value ? "config.on" : "config.off")
     : value === undefined || value === "" ? t(row.field === "title" ? "threadSettings.automatic" : "config.notSet") : String(value);
   const saved = undo && Object.is(undo.expected, row.own) ? undo : undefined;
-  const undoValue = row.field !== "title" && saved && !Object.is(saved.expected, saved.previous) ? saved : undefined;
+  const undoValue = row.field !== "title" && saved && saved.previous !== unreadable && !Object.is(saved.expected, saved.previous) ? saved : undefined;
   const feedback = busy || error || saved ? <SettingFeedbackLine text={busy ? t("common.loading") : error ?? t("config.applyNow")}
     undoLabel={t("config.undo")} busy={!enabled || busy} onUndo={undoValue && !error ? () => void save(wireValue(undoValue.previous)) : undefined} /> : null;
   return <SettingRow settingId={settingId(row.field)} label={label} highlighted={highlighted} feedback={feedback}
