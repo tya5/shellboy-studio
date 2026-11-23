@@ -975,6 +975,53 @@ describe("Branches", () => {
     });
     return { ...made, el };
   };
+  it("loads split, first-request, and latest-answer excerpts for visible branch rows only", async () => {
+    let read = 0;
+    const observers: Array<{ callback: IntersectionObserverCallback; target?: Element }> = [];
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: IntersectionObserverCallback) { observers.push({ callback }); }
+      observe(target: Element) { observers.at(-1)!.target = target; }
+      disconnect() {}
+      unobserve() {}
+      trigger(target: Element) { observers.at(-1)!.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+    });
+    const made = await fixtureModel({ route: "branches", configure(db) {
+      db.history["fork-a"] = [
+        { node_id: "split-node", kind: "assistant_response", excerpt: "Split answer", selection: { ordinal: 100 } },
+        { node_id: "request-node", kind: "user", excerpt: "First request after split", selection: { ordinal: 101 } },
+        { node_id: "latest-node", kind: "assistant_response", excerpt: "Latest model answer\nsecond line\nthird line", selection: { ordinal: 102 } },
+      ];
+      const answer = db.answer.bind(db);
+      db.answer = call => {
+        if (call.command !== "history.window") return answer(call);
+        read++;
+        const args = call.args as { thread_id: string; node_id?: string };
+        return { ok: true, result: { thread_id: args.thread_id, revision: 1, total: 103, items: args.node_id
+          ? [{ node_id: "n100", kind: "assistant_response", excerpt: "Split answer", selection: { ordinal: 100 } }, { node_id: "n101", kind: "user", excerpt: "First request after split", selection: { ordinal: 101 } }]
+          : [{ node_id: "n102", kind: "assistant_response", excerpt: "Latest model answer\nsecond line\nthird line", selection: { ordinal: 102 } }] } };
+      };
+    } });
+    const el = draw(made.model);
+    await act(async () => { await settle(made.t, made.db); });
+    const row = [...el.querySelectorAll<HTMLElement>(".blist .brow")].find(item => item.querySelector("a")?.textContent === "last asked")!;
+    await act(async () => { await flushPromises(); });
+    expect(row.querySelector(".loadrows")).not.toBeNull();
+    await act(async () => {
+      // Happy DOM does not perform layout; explicitly witness the mounted visible row.
+      const observer = observers.find(candidate => candidate.target === row.querySelector(".brow-text"))!;
+      observer.callback([{ isIntersecting: true, target: row } as unknown as IntersectionObserverEntry], {} as IntersectionObserver);
+      await settle(made.t, made.db);
+    });
+    expect(read).toBe(2);
+    expect(made.t.calls("history.window")).toHaveLength(2);
+    expect(new Set(made.t.calls("history.window").map(call => (call.args as { thread_id: string }).thread_id))).toEqual(new Set(["fork-a"]));
+    expect(row.textContent).toContain("Split answer");
+    expect(row.textContent).toContain("First request after split");
+    expect(row.textContent).toContain("Latest model answer");
+    expect(row.textContent).not.toContain("third line");
+    expect(row.querySelector(".loadrows")).toBeNull();
+    made.model.dispose();
+  });
   it("does not issue history-window reads or invent excerpts without the capability", async () => {
     const made = await fixtureModel({ route: "branches", capabilities: [] });
     const el = draw(made.model);
@@ -990,6 +1037,8 @@ describe("Branches", () => {
     expect(text(el.querySelector(".bgraph-svg")!)).toContain("101 nodes");
     expect(text(el)).toContain("no shared prefix");
     expect(text(el)).not.toContain("thread.branches");
+    expect(text(el)).not.toContain("Not shown");
+    expect(text(el)).not.toContain("Source:");
     expect(el.querySelectorAll(".blist .brow").length).toBe(4);
     expect(el.querySelector(".bgraph-svg .bg-tip")!.getAttribute("href")).toBe("#/conversation/lead");
   });

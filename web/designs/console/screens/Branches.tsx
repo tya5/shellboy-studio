@@ -2,7 +2,7 @@ import { BranchCompare } from "./BranchCompare";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CAPABILITY_HISTORY_WINDOW } from "../../../data/src";
 import { branchLayout, branchTitle, formatClock, formatRoute, statusLabel, type AppModel, type BranchFamily, type BranchItem, type BranchTarget, type GraphPoint, type RewindFacts, type Translate } from "../../../ui-core/src";
-import { BranchGraph, BranchList, Button, ButtonGroup, Check, EmptyState, Field, KeyValue, Notice } from "../system/components";
+import { BranchGraph, BranchList, Button, ButtonGroup, Check, EmptyState, Field, KeyValue, LoadingRows, Notice } from "../system/components";
 
 const tipRoute = (i: BranchItem) => formatRoute({ view: "conversation", threadId: i.threadId });
 
@@ -10,6 +10,7 @@ function BranchExcerpt({ model, item }: { model: AppModel; item: BranchItem }) {
   const ref = useRef<HTMLDivElement>(null);
   const [saved, save] = useState<{ item?: BranchItem; facts: { split?: string; request?: string; answer?: string } }>({ facts: {} });
   const facts = saved.item === item ? saved.facts : {};
+  const loaded = saved.item === item;
   const supported = model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW) && model.data.owner.value.state === "connected" && !model.data.threadList.value.stale && !model.data.threadList.value.loading && !model.branches.state.value.loading && !model.branches.state.value.error;
   useEffect(() => {
     if (!supported || !ref.current) return;
@@ -24,7 +25,13 @@ function BranchExcerpt({ model, item }: { model: AppModel; item: BranchItem }) {
   }, [model, item, supported]);
   if (!supported) return null;
   const t = model.t.value;
-  return <div ref={ref} class="branch-excerpts"><p><b>{t("branches.splitExcerpt")}</b> {facts.split ?? t("branches.excerptUnknown")}</p><p><b>{t("branches.firstRequest")}</b> {facts.request ?? t("branches.excerptUnknown")}</p><p><b>{t("branches.latestAnswer")}</b> {facts.answer ?? t("branches.excerptUnknown")}</p></div>;
+  return <div ref={ref} class="branch-excerpts" aria-busy={!loaded}>
+    {!loaded ? <LoadingRows label={t("common.loading")} rows={item.divergence ? 3 : 1} /> : <>
+      {item.divergence ? <p><b>{t("branches.splitExcerpt")}</b> {facts.split ?? t("branches.excerptUnknown")}</p> : null}
+      {item.divergence ? <p><b>{t("branches.firstRequest")}</b> {facts.request ?? t("branches.excerptUnknown")}</p> : null}
+      <p><b>{t("branches.latestAnswer")}</b> {facts.answer ?? t("branches.excerptUnknown")}</p>
+    </>}
+  </div>;
 }
 
 function RewindPreview({ t, facts }: { t: Translate; facts: RewindFacts }) {
@@ -207,8 +214,6 @@ export function Branches({ model }: { model: AppModel }) {
               })}
             />
             <div class="band" role="group" aria-label={t("view.branches")}><Button variant="ghost" disabled={excerptPage === 0} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage - 1); }}>{t("branches.previousBatch")}</Button><Button variant="ghost" disabled={(excerptPage + 1) * 8 >= items.length} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage + 1); }}>{t("threads.more")}</Button></div>
-            <div class="muted caption">{t("branches.hint")}</div>
-
           </>
         ) : null}
       </div>
