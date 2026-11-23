@@ -519,7 +519,7 @@ describe("Conversation", () => {
       const row = el.querySelector<HTMLElement>(`[data-setting-id="thread.${key}"]`)!;
       const action = (name: string) => [...row.querySelectorAll("button")].find(button => button.textContent === name)!;
       act(() => action("Change").click());
-      expect(row.querySelector("input, select")?.value).toBe(prefill);
+      expect(row.querySelector<HTMLInputElement | HTMLSelectElement>("input, select")?.value).toBe(prefill);
       await act(async () => { action("Save").click(); });
       expect(row.querySelector("input, select")).toBeNull();
       expect(row.textContent).toContain("Default");
