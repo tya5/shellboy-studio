@@ -7,6 +7,8 @@ import type { OpError, Outcome } from "./errors";
 import { Link, type ConnectionState, type LinkEvent } from "./link";
 import { microtaskSchedule, type Preview, type PreviewDiscardReason, type Schedule } from "./live";
 import { ACTIVE_STATUS_PAGE_LIMIT, Cancel, Operations } from "./operations";
+import { isActiveThreadActivity } from "./activity";
+
 import type {
   HistoryItem,
   HistoryWindowArgs,
@@ -152,12 +154,8 @@ function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary
 }
 
 
-const activeActivities = new Set([
-  "awaiting", "background", "continuing", "failed", "preparing", "receiving", "recovery",
-  "reflecting", "retrying", "running", "sending", "stopping", "tools", "waiting",
-]);
 const isActiveSummary = (row: ThreadSummary): boolean =>
-  (row.awaiting_named_count ?? 0) > 0 || activeActivities.has(row.activity);
+  (row.awaiting_named_count ?? 0) > 0 || isActiveThreadActivity(row.activity);
 
 function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[]): Map<string, ThreadSummary> {
   const next = new Map(previous);

@@ -1,3 +1,5 @@
+import { isActiveThreadActivity } from "../../data/src";
+
 import type { Translate } from "./i18n";
 
 /** Thread marks group owner activities by what needs attention. Awaiting is supplied by the pending adapter. */
@@ -6,6 +8,7 @@ export type ShellStatusKey = "running" | "completed" | "failed" | "stopped";
 type ActivityStatus = Exclude<StatusKey, "error"> | ShellStatusKey | "recovery";
 
 export const STATUS_KEYS: readonly StatusKey[] = ["awaiting", "error", "running", "waiting", "idle"];
+export { isActiveThreadActivity } from "../../data/src";
 
 const BY_ACTIVITY: Record<string, ActivityStatus> = {
   idle: "idle",
@@ -34,6 +37,7 @@ export function activityStatus(activity: string | undefined): ActivityStatus | u
 }
 
 export function statusOfActivity(activity: string | undefined): StatusKey | undefined {
+  if (isActiveThreadActivity(activity)) return "running";
   const status = activityStatus(activity);
   switch (status) {
     case "recovery": case "failed": return "error";

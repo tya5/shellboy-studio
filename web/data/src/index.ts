@@ -15,3 +15,4 @@ export * from "./pairing";
 export * from "./human-inbox";
 
 export * from "./artifacts";
+export * from "./activity";

@@ -23,15 +23,21 @@ describe("AppModel over the fake transport", () => {
       expect(t.calls("status").some(call => (call.args as { limit?: number }).limit === 200)).toBe(true);
       expect(model.rows.value.map(row => row.summary.thread_id)).toContain("cold");
       expect(model.rows.value.find(row => row.summary.thread_id === "cold")?.summary.activity).toBe("tools");
-      expect(model.counts.value.running).toBeGreaterThan(0);
+      expect(model.counts.value.running).toBe(2);
       const inboxRead = data.readActiveRows(["inbox"]);
       await settle(t, db); await inboxRead;
       expect(model.rows.value.map(row => row.summary.thread_id)).toContain("inbox");
-      db.threads.changed = summary("changed", { activity: "tools" });
+      db.threads.changed = summary("changed", { activity: "awaiting_model" });
       t.push({ t: "changed", thread_ids: ["changed"], list: true, config_changed: false });
       await settle(t, db);
       expect(model.rows.value.map(row => row.summary.thread_id)).toContain("changed");
-      expect(model.counts.value.running).toBeGreaterThan(0);
+      expect(model.counts.value.running).toBe(3);
+      expect(data.activeThreadIds.value).toContain("changed");
+      db.threads.changed = summary("changed", { activity: "idle" });
+      t.push({ t: "changed", thread_ids: ["changed"], list: true, config_changed: false });
+      await settle(t, db);
+      expect(data.activeThreadIds.value).not.toContain("changed");
+      expect(model.counts.value.running).toBe(2);
       t.push({ t: "resync" }); await settle(t, db);
       expect(model.rows.value.map(row => row.summary.thread_id)).toContain("inbox");
     } finally { model.dispose(); }
