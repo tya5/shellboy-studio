@@ -2976,8 +2976,8 @@ dependencies = [
 
 [[package]]
 name = "shellboy"
-version = "0.13.1"
-source = "git+https://github.com/tya5/shellboy?rev=b851fad2b61d47f197531d2dcfd7be8a99fad6e2#b851fad2b61d47f197531d2dcfd7be8a99fad6e2"
+version = "0.15.0"
+source = "git+https://github.com/tya5/shellboy?rev=318abee0609eeb3b15a3a21b74b85f816c7d3ea0#318abee0609eeb3b15a3a21b74b85f816c7d3ea0"
 dependencies = [
  "arboard",
  "base64 0.23.1",
@@ -3016,7 +3016,7 @@ dependencies = [
 
 [[package]]
 name = "shellboy-studio"
-version = "0.2.7"
+version = "0.4.0"
 dependencies = [
  "axum",
  "clap",

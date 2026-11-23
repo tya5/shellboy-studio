@@ -12,8 +12,8 @@ import tomllib
 from urllib.parse import parse_qs, urlsplit
 
 OFFICIAL = "https://github.com/tya5/shellboy"
-# Core main b851fad2 includes the exact thread.list(thread_ids) contract.
-VERSION = "0.13.1"
+# Core v0.15.0 exact release pairing.
+VERSION = "0.15.0"
 
 
 def require(condition, message):
