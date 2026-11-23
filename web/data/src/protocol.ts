@@ -230,6 +230,7 @@ export interface TurnDetails {
 export interface EndMessageMarker { node_id: string | null }
 
 export interface ThreadDetails {
+  summarizing?: boolean;
   last_end_message?: EndMessageMarker | null;
   max_tokens?: number | null;
   effective_max_tokens?: number;

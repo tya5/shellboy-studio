@@ -786,7 +786,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             start={details ? <ModelPicker model={model} details={details} /> : undefined}
             context={context ? <ContextRing fill={context.fill} state={context.state} label={t("context.title")} stateLabel={t(`context.state.${context.state}`)} rows={[
               { key: t("context.input"), value: context.inputTokens === undefined ? unknown : formatTokens(context.inputTokens) },
-              { key: t("context.threshold"), value: context.threshold === 0 ? t("context.state.disabled") : formatTokens(context.threshold) },
+              { key: t("context.threshold"), value: context.threshold === undefined ? unknown : context.threshold === 0 ? t("context.state.disabled") : formatTokens(context.threshold) },
               { key: t("context.status"), value: t(`context.state.${context.state}`) },
               ...(context.lastCompactionAt !== undefined ? [{ key: t("context.last"), value: new Date(context.lastCompactionAt).toLocaleString() }] : []),
             ]} /> : undefined}

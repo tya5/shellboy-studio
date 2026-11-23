@@ -3,3 +3,7 @@
 .context-ring[data-context-state=threshold]{color:var(--wait)}
 .context-ring[data-context-state=disabled]{color:var(--muted)}
 .context-ring-popover{padding:var(--space-12)}
+.context-ring[data-context-state=summarizing]{color:var(--wait)}
+.context-ring-activity{stroke-dasharray:25 75;stroke-linecap:round;transform-origin:center;animation:context-ring-spin var(--motion-spin) linear infinite}
+@keyframes context-ring-spin{from{transform:rotate(-90deg)}to{transform:rotate(270deg)}}
+@media(prefers-reduced-motion:reduce){.context-ring-activity{animation:none;stroke-dasharray:1 9}}

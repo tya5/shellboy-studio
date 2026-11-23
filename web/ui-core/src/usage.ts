@@ -6,12 +6,12 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
-export type ContextRingState = "normal" | "threshold" | "disabled";
+export type ContextRingState = "normal" | "threshold" | "disabled" | "summarizing";
 export interface ContextFacts {
   inputTokens: number | undefined;
-  threshold: number;
+  threshold: number | undefined;
   state: ContextRingState;
-  fill: number;
+  fill: number | undefined;
   lastCompactionAt: number | undefined;
 }
 
@@ -28,15 +28,17 @@ function lastCompletedCompaction(last: unknown): number | undefined {
 }
 
 export function contextFacts(d: ThreadDetails | undefined): ContextFacts | undefined {
-  const inputTokens = num(obj(obj(d?.context_usage)?.last_successful_attempt)?.input_tokens);
-  const threshold = num(d?.effective_auto_compact_at);
-  if (threshold === undefined || threshold < 0 || (threshold > 0 && (inputTokens === undefined || inputTokens < 0))) return;
-  return {
-    inputTokens, threshold,
-    state: threshold === 0 ? "disabled" : inputTokens! >= threshold ? "threshold" : "normal",
-    fill: threshold === 0 ? 0 : Math.min(100, inputTokens! * 100 / threshold),
-    lastCompactionAt: lastCompletedCompaction(d?.last_compaction),
-  };
+  const input = num(obj(obj(d?.context_usage)?.last_successful_attempt)?.input_tokens);
+  const limit = num(d?.effective_auto_compact_at);
+  const inputTokens = input !== undefined && input >= 0 ? input : undefined;
+  const threshold = limit !== undefined && limit >= 0 ? limit : undefined;
+  const lastCompactionAt = lastCompletedCompaction(d?.last_compaction);
+  // A current owner fact does not depend on a previous input measurement.
+  if (d?.summarizing === true) return { inputTokens, threshold, state: "summarizing", fill: undefined, lastCompactionAt };
+  if (threshold === 0) return { inputTokens, threshold, state: "disabled", fill: 0, lastCompactionAt };
+  if (threshold === undefined || inputTokens === undefined) return;
+  return { inputTokens, threshold, state: inputTokens >= threshold ? "threshold" : "normal",
+    fill: Math.min(100, inputTokens * 100 / threshold), lastCompactionAt };
 }
 
 export interface Measured {

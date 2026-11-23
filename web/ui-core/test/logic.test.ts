@@ -159,6 +159,14 @@ describe("usage facts", () => {
     expect(contextFacts(d({ context_usage: { last_successful_attempt: { input_tokens: 1200 } }, effective_auto_compact_at: 200000 }))).toEqual({ inputTokens: 1200, threshold: 200000, state: "normal", fill: 1200 * 100 / 200000, lastCompactionAt: undefined });
     expect(usageFacts({})).toBeUndefined();
   });
+  it("uses only a true current owner flag for indeterminate summary activity", () => {
+    const measured = { effective_auto_compact_at: 100, context_usage: { last_successful_attempt: { input_tokens: 150 } } };
+    expect(contextFacts(d({ ...measured, summarizing: true }))).toMatchObject({ state: "summarizing", fill: undefined, inputTokens: 150 });
+    expect(contextFacts(d({ summarizing: true }))).toMatchObject({ state: "summarizing", threshold: undefined, fill: undefined });
+    expect(contextFacts(d({ summarizing: true, effective_auto_compact_at: 0 }))?.state).toBe("summarizing");
+    expect(contextFacts(d({ ...measured, summarizing: false }))?.state).toBe("threshold");
+    expect(contextFacts(d({ ...measured, activity: "summarizing" }))?.state).toBe("threshold");
+  });
   it("a sum with unknown records is marked partial and gives no percentage", () => {
     const make = (unknown: number) =>
       usageFacts({ model_attempts: { completed: { count: 2, input_tokens: { known_sum: 2400, unknown_count: 0 }, cached_tokens: { known_sum: 1600, unknown_count: unknown }, output_tokens: { known_sum: null, unknown_count: 2 } } } });
