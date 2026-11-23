@@ -11,7 +11,7 @@ const ownerB = { ...connected, info: { ...(connected.state === "connected" ? con
 async function fixture() {
   const t = new FakeTransport(); let seq = 0;
   // #96 row reads (active `status`, `thread.list(thread_ids)`) are not under test here; answer them so they free their slots.
-  t.onCall = c => { if (c.command === "status" || (c.command === "thread.list" && (c.args as { thread_ids?: string[] }).thread_ids)) queueMicrotask(() => t.ok(c.id, { items: [] })); };
+  t.onCall = c => { if (c.command === "status" || (c.command === "thread.list" && (c.args as { thread_ids?: string[] }).thread_ids)) queueMicrotask(() => { if (t.handlers) t.ok(c.id, { items: [] }); }); };
   const data = new ShellboyData({ transport: t, newId: () => `uuid-${++seq}` });
   // The Cancel of each human-page read, as the shared page owner hands it to the operation.
   const reads: Cancel[] = []; const messageList = data.operations.messageList.bind(data.operations);
