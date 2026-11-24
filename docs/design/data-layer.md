@@ -139,7 +139,7 @@ data.connection  // 'connecting' | 'open' | 'closed'      data.failedAttempts
 data.owner       // {state:'unknown'} | {state:'connected', info} | {state:'unreachable'}
 data.capabilities, data.bridgeVersion, data.invalidFrames, data.bridgeError
 data.threadList  // PagedState<ThreadSummary>              data.listFilter
-data.trackThreadList(): Handle; data.setListFilter({query?, archived?}); data.loadMoreThreads(); data.refreshThreadList()
+data.trackThreadList(): Handle; data.setListFilter({query?, archived?, awaiting?, tags?, cwd?}); Needs-you is exclusive with query, tags and cwd: enabling it clears them, and changing any of them clears Needs-you. data.loadMoreThreads(); data.refreshThreadList()
 const h = data.openThread(id)   // ThreadHandle; h.detail, h.history, h.preview (signals)
 h.refresh(); h.loadOlderHistory(); h.close()
 // operations (data.operations), each returns Outcome<T> = {ok,value}|{ok:false,error:OpError}

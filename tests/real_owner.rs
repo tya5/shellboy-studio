@@ -230,6 +230,20 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
             .expect("the exact pinned Core accepts a constrained membership read");
     }
 
+    owner
+        .call(
+            Command::ThreadList(ThreadListArgs {
+                order: ThreadListOrder::Created,
+                archived: shellboy::protocol::ArchivedFilter::Include,
+                limit: 50,
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("the exact pinned Core accepts created order with archived-only");
+
     let refused = owner
         .call(
             Command::ThreadList(ThreadListArgs {
@@ -245,6 +259,24 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
         .expect_err("Core rejects creation ordering with query");
     assert!(
         refused.message.contains("order=created cannot be combined"),
+        "{refused}"
+    );
+
+    let refused = owner
+        .call(
+            Command::ThreadList(ThreadListArgs {
+                awaiting: Some("human".into()),
+                query: Some("never-match".into()),
+                limit: 50,
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect_err("Core rejects awaiting with query");
+    assert!(
+        refused.message.contains("awaiting cannot be combined"),
         "{refused}"
     );
 }

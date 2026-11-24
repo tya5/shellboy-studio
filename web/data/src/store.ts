@@ -54,6 +54,20 @@ export interface PagedState<T> {
 
 export type ListFilter = Pick<ThreadListArgs, "query" | "archived" | "awaiting" | "tags" | "cwd">;
 
+/** Keep Needs-you exclusive with Core's query, tag and directory constraints. */
+export function normalizeFilter(previous: ListFilter, next: ListFilter): ListFilter {
+  const awaitingChanged = previous.awaiting !== next.awaiting;
+  const otherChanged = previous.query !== next.query || previous.cwd !== next.cwd
+    || JSON.stringify(previous.tags) !== JSON.stringify(next.tags);
+  if (next.awaiting && awaitingChanged)
+    return { ...next, query: undefined, tags: undefined, cwd: undefined };
+  if (next.awaiting && otherChanged)
+    return { ...next, awaiting: undefined };
+  if (next.awaiting && (next.query !== undefined || !!next.tags?.length || next.cwd !== undefined))
+    return { ...next, query: undefined, tags: undefined, cwd: undefined };
+  return next;
+}
+
 interface ThreadListState extends PagedState<string> {
   /** Filter that produced the published rows and cursor, not the pending request. */
   filter?: Readonly<ListFilter>;
@@ -325,15 +339,7 @@ export class ShellboyData {
 
   /** A read for the old filter is no use: it's cancelled, and one for the new filter follows. */
   setListFilter(filter: ListFilter): void {
-    const previous = this.filterSig.peek();
-    const awaitingChanged = previous.awaiting !== filter.awaiting;
-    const otherFilterChanged = previous.query !== filter.query || previous.cwd !== filter.cwd
-      || JSON.stringify(previous.tags) !== JSON.stringify(filter.tags);
-    const next = filter.awaiting && otherFilterChanged && !awaitingChanged
-      ? { ...filter, awaiting: undefined }
-      : filter.awaiting && awaitingChanged
-        ? { ...filter, query: undefined, tags: undefined, cwd: undefined }
-        : filter;
+    const next = normalizeFilter(this.filterSig.peek(), filter);
     this.filterSig.value = { ...next };
     this.listCancel?.cancel();
     if (this.listRefs > 0 && this.canRead()) void this.refresher.requestFresh("list");
@@ -739,7 +745,10 @@ export class ShellboyData {
     if (this.listRefs === 0 || !this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) return;
     const epoch = this.readQualificationEpoch;
     const filter = this.filterSig.value;
-    if (filter.awaiting) return;
+    if (filter.awaiting) {
+      this.pinnedErrorSig.value = undefined;
+      return;
+    }
     let rows: ThreadSummary[] = [];
     let cursor: string | undefined;
     do {

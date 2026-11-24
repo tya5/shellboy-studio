@@ -7,11 +7,20 @@ import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { summary, details, settle, flush } from "../../../data/test/harness";
+import { sidebarGroups } from "../../../ui-core/src/sidebar";
 import { loadPrefs } from "../../../ui-core/src/prefs";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 import { StatusMark } from "../system/components/StatusMark";
 import { ThreadGroup } from "../system/components/ThreadGroup";
+
+it("orders the complete pin band by creation time without changing filtered All order", () => {
+  const recent = summary("recent", { tags: ["pin"], created_at: "2024-01-01T00:00:00Z" });
+  const older = summary("older", { tags: ["pin"], created_at: "2020-01-01T00:00:00Z" });
+  const groups = sidebarGroups([recent, older], ["recent", "older"], undefined, true, [recent, older]);
+  expect(groups[0]!.rows.map(row => row.summary.thread_id)).toEqual(["older", "recent"]);
+  expect(groups[1]!.rows.map(row => row.summary.thread_id)).toEqual(["recent", "older"]);
+});
 
 it("keeps status updates in place, persists child folds, and adds a pinned copy only after the owner event", async () => {
   const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags", "thread.cwds"], configure(db) {
@@ -102,6 +111,38 @@ it("keeps the owner's created order on status hints and inserts a new Thread at 
     await act(() => hint("new"));
     expect(order()).toEqual(["new", "other", "lead", "child"]);
     expect(f.t.calls("thread.list").at(-1)?.args).toMatchObject({ order: "created" });
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("keeps Needs-you and search exclusive in sidebar controls", async () => {
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags", "thread.cwds"], configure(db) {
+    db.threads = { lead: summary("lead", { tags: ["pin"] }) };
+    db.details.lead = details("lead");
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const context = { model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<typeof prefs.value>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false };
+  const applyFilter = async () => { await new Promise(resolve => setTimeout(resolve, 230)); await act(async () => { await settle(f.t, f.db); }); };
+  try {
+    await act(async () => { render(<App context={context} />, host); await settle(f.t, f.db); });
+    const search = host.querySelector<HTMLInputElement>(".side-search input")!;
+    await act(async () => { search.value = "needle"; search.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(search.value).toBe("needle");
+    await applyFilter();
+    expect(f.data.listFilter.value.query).toBe("needle");
+    await act(async () => { host.querySelector<HTMLButtonElement>('.side-search button[aria-label="Filters"]')!.click(); });
+    const needsYou = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent?.includes("Awaiting you"))!;
+    await act(async () => { needsYou.click(); });
+    expect(search.value).toBe("");
+    await applyFilter();
+    expect(f.data.listFilter.value.awaiting).toBe("human");
+    expect(host.querySelector('.side-list section[aria-label="Pinned"]')).toBeNull();
+    await act(async () => { search.value = "again"; search.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(search.value).toBe("again");
+    expect(host.querySelector(".filter-chip-list")?.textContent ?? "").not.toContain("Awaiting you");
+    await applyFilter();
+    expect(f.data.listFilter.value.query).toBe("again");
+    expect(f.data.listFilter.value.awaiting).toBeUndefined();
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
