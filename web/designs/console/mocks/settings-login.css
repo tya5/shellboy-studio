@@ -1,0 +1,11 @@
+body { margin:0; color:var(--fg); background:var(--stage); font:var(--type-body); }
+.login-mock { max-inline-size:68rem; margin:auto; padding:var(--space-16); }
+.login-mock h1, .login-mock h2 { font:var(--type-heading); }
+.login-fixture-controls { display:grid; gap:var(--space-12); grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr)); }
+.login-settings-frame { block-size:30rem; border:1px solid var(--line-strong); border-radius:var(--radius); }
+.login-settings-phone { inline-size:min(100%,390px); }
+.login-switch { min-block-size:var(--size-touch); justify-content:flex-start; }
+.login-switch-track { display:flex; align-items:center; inline-size:2rem; padding:var(--space-2); border:1px solid var(--line-strong); border-radius:2rem; background:var(--inset); }
+.login-switch-track::before { content:""; inline-size:1rem; block-size:1rem; border-radius:50%; background:var(--muted); }
+.login-switch[aria-checked=true] .login-switch-track { justify-content:flex-end; background:var(--accent-bg); border-color:var(--accent); }
+.login-switch[aria-checked=true] .login-switch-track::before { background:var(--accent); }
