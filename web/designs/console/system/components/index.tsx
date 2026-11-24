@@ -82,3 +82,5 @@ export { EffortControl } from "./ModelPicker/EffortControl";
 
 export { ContextRing } from "./ContextRing";
 export { ConversationHeader } from "./ConversationHeader";
+
+export { Switch } from "./Switch";

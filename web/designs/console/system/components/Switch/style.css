@@ -1,0 +1,5 @@
+.setting-switch{min-block-size:var(--size-touch);min-inline-size:var(--size-touch);justify-content:flex-start}
+.setting-switch-track{box-sizing:border-box;display:flex;align-items:center;inline-size:var(--size-control);padding:var(--space-2);border:1px solid var(--line-strong);border-radius:var(--size-control);background:var(--inset)}
+.setting-switch-track::before{content:"";inline-size:var(--size-icon-small);block-size:var(--size-icon-small);border-radius:var(--size-icon-small);background:var(--muted)}
+.setting-switch[aria-checked=true] .setting-switch-track{justify-content:flex-end;background:var(--accent-bg);border-color:var(--accent)}
+.setting-switch[aria-checked=true] .setting-switch-track::before{background:var(--accent)}

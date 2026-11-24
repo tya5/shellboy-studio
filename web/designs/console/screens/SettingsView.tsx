@@ -109,7 +109,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "studio":
         search("studio.startup", "studio.startup.open", ["studio.startup.hint"]);
         return <>
-          {section === "studio" ? <LoginStartup t={t} /> : null}
+          <LoginStartup t={t} />
           <Section settingId={search("studio.pair", "pair.title", ["pair.help"]).settingId} title={t("pair.title")} sub={t("pair.help")}>
             {model.pairing.value.error ? <Notice tone="bad">{t("pair.error")}</Notice> : null}
             {!model.pairing.value.hosts.length ? <p>{t("pair.noHosts")}</p> : model.pairing.value.hosts.map(host => {

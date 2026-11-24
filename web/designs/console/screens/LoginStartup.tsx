@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import type { MessageKey, Translate } from "../../../ui-core/src/i18n";
-import { Button, Section, SettingRow } from "../system/components";
+import { Section, SettingRow, Switch } from "../system/components";
 
 const details = {
   on: "studio.startup.on", off: "studio.startup.off", approval: "studio.startup.approval",
@@ -30,18 +30,16 @@ export function LoginStartup({ t }: { t: Translate }) {
   const [result, show] = useState<Readback>();
   const [busy, pending] = useState(true);
   const current = useRef<AbortController>();
-  const writing = useRef(false);
+  const statusId = useId();
 
   async function refresh(enabled?: boolean) {
-    if (writing.current) return;
-    current.current?.abort();
+    if (current.current) return;
     const request = new AbortController();
     current.current = request;
-    writing.current = enabled !== undefined;
     pending(true);
     const next = await readOS(request.signal, enabled);
     if (request.signal.aborted) return;
-    writing.current = false;
+    current.current = undefined;
     show(next);
     pending(false);
   }
@@ -53,7 +51,7 @@ export function LoginStartup({ t }: { t: Translate }) {
     return () => {
       window.removeEventListener("focus", onFocus);
       current.current?.abort();
-      writing.current = false;
+      current.current = undefined;
     };
   }, []);
 
@@ -62,12 +60,11 @@ export function LoginStartup({ t }: { t: Translate }) {
   const known = state === "on" || state === "off" || state === "approval";
   return <Section title={t("studio.startup.title")}>
     <SettingRow settingId="studio.startup" label={label} description={t("studio.startup.hint")}
-      feedback={<span role="status">{busy ? t("studio.startup.checking") : <>
-        {result?.refused ? `${t("studio.startup.refused")} ` : ""}{state ? t(details[state]) : null}
+      feedback={<span id={statusId} role="status">{busy ? t("studio.startup.checking") : <>
+        {result?.refused ? `${t("studio.startup.refused")} ` : ""}{state === "on" ? t("studio.startup.enabled") : state === "off" ? t("studio.startup.notRegistered") : state ? t(details[state]) : null}
       </>}</span>}
-      control={known && <Button role="switch" aria-label={label} aria-checked={state === "on"}
-        disabled={busy || state === "approval"} onClick={() => void refresh(state !== "on")}>
-        {t(state === "on" ? "studio.startup.on" : "studio.startup.off")}
-      </Button>} />
+      control={known && <Switch label={label} checked={state === "on"} describedBy={statusId}
+        stateLabel={t(state === "on" ? "studio.startup.on" : "studio.startup.off")}
+        disabled={busy || state === "approval"} onChange={enabled => void refresh(enabled)} />} />
   </Section>;
 }

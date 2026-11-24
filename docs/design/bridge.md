@@ -32,6 +32,10 @@ default, resolved by Shellboy's own `resolve_cli_data_dir`), `--config-dir` (tok
 location, default the OS config directory plus `shellboy-studio`), `--allow-host NAME`
 (repeatable), `--apps-dir` (default `apps` in the data directory, `apps.md`), `--debug`. Apps are served on this same port, under `/a/`.
 
+## Desktop startup registration
+
+`GET /login-startup` reads effective OS login registration; authenticated loopback desktop `POST /login-startup` requests a change and returns fresh OS readback. The OS owns this state: the bridge and client do not persist it or recreate an item removed outside Studio. An unreadable state remains unknown; unsupported launchers and remote clients cannot write. This endpoint does not register or supervise Core.
+
 ## Bounds (limits, not performance claims)
 
 | What | Bound | Owner / end |

@@ -59,6 +59,7 @@
 @import "./components/ConversationCharacter/style.css";
 @import "./components/Button/style.css";
 @import "./components/Check/style.css";
+@import "./components/Switch/style.css";
 @import "./components/Disclosure/style.css";
 @import "./components/GuideCopy/style.css";
 @import "./components/LayoutSeparator/style.css";
