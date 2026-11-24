@@ -239,7 +239,7 @@ export function Branches({ model }: { model: AppModel }) {
   const previewing = (rewind.kind === "ready" || rewind.kind === "rewinding" || rewind.kind === "failed") && target && rewind.target.threadId === target.threadId && rewind.target.nodeId === target.nodeId;
   const leaving = graph && previewing && targetOrdinal !== undefined ? leavingRows(graph, target!.threadId, targetOrdinal) : new Set<string>();
   const targetLane = target ? nameOf(target.threadId) : "";
-  const actions = target ? <PointActions key={`${target.threadId}|${target.nodeId}`} model={model} target={target} lane={targetLane} ordinal={targetOrdinal} at={targetExcerpt} /> : null;
+  const actions = target ? <PointActions key={JSON.stringify([target.threadId, target.nodeId, b.targetRevision.value])} model={model} target={target} lane={targetLane} ordinal={targetOrdinal} at={targetExcerpt} /> : null;
 
   const firstRows = new Set<string>();
   const seenLanes = new Set<string>();

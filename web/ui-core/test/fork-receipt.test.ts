@@ -114,3 +114,38 @@ it("partial-send error notification invalidation cannot publish stale done",asyn
   f.t.ownerError(f.t.calls("message.send")[0]!.id,"thread_busy");await p;
   expect(f.b.fork.value.kind).not.toBe("done");expect(f.t.calls("thread.branches")).toHaveLength(0);stop();f.link.stop();
 });
+
+it.each(["fork", "rewind"] as const)("%s joins an in-flight mutation and explicitly reuses its receipt after a lost reply", async action => {
+  const f = fixture();
+  try {
+    f.b.state.value = { ...f.b.state.peek(), threadId: "parent" };
+    const command = action === "fork" ? "thread.fork" : "thread.rewind";
+    if (action === "rewind") {
+      const preview = f.b.previewRewind(f.target);
+      f.t.ok(f.t.calls(command)[0]!.id, { thread_id: "parent", node_id: "point", dry_run: true });
+      await preview;
+      expect(f.b.rewind.value.kind).toBe("ready");
+    }
+    const submit = () => action === "fork" ? f.b.forkAt(f.target) : f.b.confirmRewind();
+    const mutations = () => f.t.calls(command).filter(call => call.operation_id);
+    const first = submit();
+    const joined = submit();
+    expect(mutations()).toHaveLength(1);
+    const original = mutations()[0]!;
+    f.t.drop();
+    await Promise.all([first, joined]);
+    f.t.open();
+    await flush();
+    expect(mutations()).toHaveLength(1);
+    const retry = submit();
+    expect(mutations()).toHaveLength(2);
+    const replay = mutations()[1]!;
+    expect(replay.operation_id).toBe(original.operation_id);
+    expect(replay.args).toEqual({ thread_id: "parent", node_id: "point" });
+    expect(replay.args).toEqual(original.args);
+    f.t.ok(replay.id, action === "fork" ? child : { thread_id: "parent", node_id: "point", branch_thread_id: "kept" });
+    await retry;
+    expect(f.b[action].value.kind).toBe("done");
+    expect(f.t.calls("message.send")).toHaveLength(0);
+  } finally { f.link.stop(); }
+});

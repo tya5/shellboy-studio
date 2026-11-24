@@ -3,7 +3,7 @@
 // IDs, so a re-read with the same facts yields the same rows and keys, and an appended message changes only the
 // lane's last stretch and tip. Message text comes from bounded `history.window` reads, cached by node ID.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, type HistoryItem, type Operations } from "../../data/src";
+import { Cancel, type HistoryItem, type HistoryWindowResult, type Operations } from "../../data/src";
 import type { BranchFamily, BranchItem } from "./branches";
 
 export type LaneRowKind = "start" | "message" | "split" | "run" | "tip";
@@ -181,6 +181,7 @@ export class LaneReader {
   /** Runs being opened ("Show more"), by row key, and runs whose last attempt failed. */
   readonly opening: Signal<ReadonlySet<string>> = signal(new Set());
   readonly openFailed: Signal<ReadonlySet<string>> = signal(new Set());
+  private revisions = new Map<string, number>();
   private nodes = new Map<string, NodeExcerpt>();
   private failed = new Set<string>();
   private positions = new Map<string, Map<number, string>>();
@@ -194,6 +195,7 @@ export class LaneReader {
 
   constructor(private readonly ops: Operations, private readonly supported: () => boolean) {}
 
+  revision(threadId: string): number | undefined { return this.revisions.get(threadId); }
   node(nodeId: string | undefined): NodeExcerpt | undefined { return nodeId === undefined ? undefined : this.nodes.get(nodeId); }
   /** The read for this need ended without text: show it as unknown, do not retry until reset. */
   failedFor(need: LaneNeed): boolean { return this.failed.has(needKey(need)); }
@@ -219,7 +221,9 @@ export class LaneReader {
     return id !== undefined && this.nodes.has(id);
   }
 
-  private remember(threadId: string, items: readonly HistoryItem[]): void {
+  private remember(threadId: string, { revision, items }: HistoryWindowResult): boolean {
+    if (revision < (this.revision(threadId) ?? 0)) return false;
+    this.revisions.set(threadId, revision);
     let at = this.positions.get(threadId);
     if (!at) this.positions.set(threadId, at = new Map());
     for (const i of items) {
@@ -229,6 +233,7 @@ export class LaneReader {
       this.nodes.set(i.node_id, excerptOf(i));
     }
     while (this.nodes.size > LANE_NODES_MAX) this.nodes.delete(this.nodes.keys().next().value!);
+    return true;
   }
 
   private drain(): void {
@@ -251,14 +256,14 @@ export class LaneReader {
     }
   }
 
-  private async readNeed(need: LaneNeed, cancel: Cancel): Promise<readonly HistoryItem[] | undefined> {
+  private async readNeed(need: LaneNeed, cancel: Cancel): Promise<HistoryWindowResult | undefined> {
     const args = need.kind === "node"
       ? { thread_id: need.threadId, node_id: need.nodeId, before: 0, after: 0, excerpt_chars: LANE_EXCERPT_CHARS }
       : need.split !== undefined
         ? { thread_id: need.threadId, node_id: need.split, before: 0, after: 1, excerpt_chars: LANE_EXCERPT_CHARS }
         : { thread_id: need.threadId, ordinal: need.start, before: 0, after: 0, excerpt_chars: LANE_EXCERPT_CHARS };
     const out = await this.ops.historyWindow(args, { cancel });
-    return out.ok && out.value.thread_id === need.threadId ? out.value.items : undefined;
+    return out.ok && out.value.thread_id === need.threadId ? out.value : undefined;
   }
 
   /** "Show more" on a run: opens up to LANE_PAGE positions from `from`, guarded by the node before it when known. */
@@ -278,12 +283,29 @@ export class LaneReader {
       set(this.opening, false);
       const items = out.ok && out.value.thread_id === threadId ? out.value.items.filter((i) => i.node_id && i.selection?.ordinal !== undefined && i.selection.ordinal >= from && i.selection.ordinal <= to) : [];
       if (!items.length) { set(this.openFailed, true); return; }
-      this.remember(threadId, items);
+      if (!out.ok || !this.remember(threadId, { ...out.value, items })) return;
       let shown = this.openedAt.get(threadId);
       if (!shown) this.openedAt.set(threadId, shown = new Set());
       for (const i of items) if (!shown.has(i.selection!.ordinal!)) { shown.add(i.selection!.ordinal!); this.openedCount++; }
       this.version.value = this.version.peek() + 1;
     });
+  }
+
+  /** Admit the open point from its targeted refresh, not from cached membership. */
+  refreshPoint(threadId: string, window: HistoryWindowResult): boolean {
+    if (!this.remember(threadId, window)) return false;
+    this.version.value = this.version.peek() + 1;
+    return true;
+  }
+
+  /** A targeted owner read disproved a cached position, even if the lane grew. */
+  invalidatePath(threadId: string, revision?: number): void {
+    if (revision !== undefined && revision > (this.revision(threadId) ?? 0)) this.revisions.set(threadId, revision);
+    const opened = this.openedAt.get(threadId);
+    this.openedCount -= opened?.size ?? 0;
+    this.openedAt.delete(threadId);
+    this.positions.delete(threadId);
+    this.version.value = this.version.peek() + 1;
   }
 
   /**
@@ -319,6 +341,7 @@ export class LaneReader {
     this.openedAt.clear();
     this.openedCount = 0;
     this.sizes.clear();
+    this.revisions.clear();
     if (clearNodes) this.nodes.clear();
     old.cancel();
     batch(() => {

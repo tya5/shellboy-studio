@@ -13,7 +13,7 @@ describe("reading a family", () => {
     expect(f.rootId).toBe("lead");
     const [root, child] = f.items;
     expect(root).toMatchObject({ state: "current", pathNodes: 226, divergence: undefined });
-    expect(child).toMatchObject({ parentId: "lead", divergence: { nodeId: "n100", ordinal: 100, parentContinues: true, request: "step 21" }, nodesAfterDivergence: 12 });
+    expect(child).toMatchObject({ parentId: "lead", divergence: { nodeId: "n100", ordinal: 100, request: "step 21" }, nodesAfterDivergence: 12 });
     expect(child!.title).toBeUndefined();
     expect(branchTitle(child!)).toBe("last asked");
   });
@@ -60,7 +60,13 @@ describe("routes", () => {
 
 describe("Branches over the fake transport", () => {
   const branches = async (route: "branches" | "conversation" = "branches") => {
-    const made = await fixtureModel({ route });
+    const made = await fixtureModel({ route, configure(db) {
+      const answer = db.answer.bind(db);
+      db.answer = call => call.command === "history.window" && (call.args as { node_id?: string }).node_id === "n100"
+        ? { ok: true, result: { thread_id: "lead", revision: 1, total: 226,
+            items: [{ node_id: "n100", kind: "user", excerpt: "step 21", selection: { ordinal: 100 } }] } }
+        : answer(call);
+    } });
     await settle(made.t, made.db);
     return made;
   };

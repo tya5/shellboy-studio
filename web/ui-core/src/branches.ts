@@ -14,9 +14,7 @@ export interface BranchItem {
   depth: number;
   state: "current" | "ancestor" | "branch";
   running: boolean;
-  /** The Thread holds a pruned replacement: those originals are gone. */
-  prunedOriginals: boolean;
-  divergence: { nodeId: string; ordinal: number; parentContinues: boolean; request: string | undefined } | undefined;
+  divergence: { nodeId: string; ordinal: number; request: string | undefined } | undefined;
   /** `no_shared_prefix`: a child that shares no first node with its parent. */
   divergenceUnknown: string | undefined;
   tipNodeId: string | undefined;
@@ -44,8 +42,7 @@ export function readBranchItem(v: unknown): BranchItem | undefined {
     depth: num(o.depth) ?? 0,
     state,
     running: o.running === true,
-    prunedOriginals: o.pruned_originals === true,
-    divergence: d && nodeId && ordinal !== undefined ? { nodeId, ordinal, parentContinues: d.parent_continues === true, request: str(obj(d.request)?.text) } : undefined,
+    divergence: d && nodeId && ordinal !== undefined ? { nodeId, ordinal, request: str(obj(d.request)?.text) } : undefined,
     divergenceUnknown: str(o.divergence_unknown),
     tipNodeId: str(tip?.node_id),
     tipAt: str(tip?.at),

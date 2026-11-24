@@ -145,8 +145,10 @@ describe("Branches screen", () => {
     expect(el.querySelector<HTMLElement>(".branch-lanes > li[data-selected]")?.dataset.key).toBe("rel|split|r6");
     expect(scroller.scrollTop).toBe(120);
     expect(loadingSeen).toBe(false);
-    // Text is kept by node ID: a refresh reads no excerpt again.
-    expect(t.calls("history.window").length).toBe(reads);
+    // Only the open point is checked. All other excerpts stay mounted and cached.
+    expect(t.calls("history.window").slice(reads).map(call => call.args)).toEqual(Array.from({ length: 2 }, () => ({
+      thread_id: "rel", node_id: "r6", before: 0, after: 0, excerpt_chars: 160,
+    })));
   });
 
   it("a new message appends: earlier rows stay mounted, only the lane's last stretch and tip change", async () => {
@@ -161,6 +163,46 @@ describe("Branches screen", () => {
     expect(text(tip)).toContain("#13 on Streaming output");
     expect(text(row("stream|run|10"))).toContain("2 more messages (#11–#12)");
     expect(rows().map((r) => r.dataset.key)).toEqual([...before.keys()]);
+  });
+
+  it("closes an opened message removed by a rewind and longer append in one refresh", async () => {
+    const { el, row, point, refresh, flush, family, model } = await open();
+    const unaffected = row("stream|tip");
+    await act(async () => { row("rel|run|6")!.querySelector<HTMLButtonElement>(".lanes-run")!.click(); });
+    await flush();
+    await act(async () => { point("Add the upgrade notes")!.click(); });
+    expect(el.querySelector(".lanes-actions")).not.toBeNull();
+    family.paths.rel!.splice(7, 7, ...Array.from({ length: 8 }, (_, i) => ({ node_id: `new-${i}`, kind: "user", excerpt: `Replacement ${i}` })));
+    family.revisions.rel = 20;
+    await refresh();
+    expect(model.branches.target.value).toBeUndefined();
+    expect(el.querySelector(".lanes-actions, .branch-pinned, .loadrows")).toBeNull();
+    expect(point("Add the upgrade notes")).toBeUndefined();
+    expect(text(row("rel|tip"))).toContain("Replacement 7");
+    expect(row("stream|tip")).toBe(unaffected);
+  });
+
+  it("re-keys actions and withdraws the rewind preview when a surviving point's path revision changes", async () => {
+    const { el, row, point, button, refresh, flush, family, model, t } = await open();
+    const split = row("rel|split|r6");
+    await act(async () => { point("Compare provider behavior")!.click(); });
+    const input = el.querySelector(".lanes-actions input");
+    family.revisions.rel = 19;
+    await refresh();
+    expect(el.querySelector(".lanes-actions input")).not.toBe(input);
+    await act(async () => { button("Rewind Release notes to here")!.click(); });
+    await flush();
+    expect(model.branches.rewind.value.kind).toBe("ready");
+    // Core's revision is authoritative even when the family summary is byte-for-byte unchanged.
+    family.revisions.rel = 20;
+    await refresh();
+    expect(model.branches.targetRevision.value).toBe(20);
+    expect(model.branches.rewind.value.kind).toBe("idle");
+    expect(t.calls("thread.rewind")).toHaveLength(1);
+    expect(row("rel|split|r6")).toBe(split);
+    expect(el.querySelector(".lanes-actions input")).not.toBeNull();
+    expect(el.querySelector(".lanes-actions input")).not.toBe(input);
+    expect(el.querySelector(".loadrows, [data-leaving]")).toBeNull();
   });
 
   it("Show opens a run with one guarded read; loading shows only on that run", async () => {

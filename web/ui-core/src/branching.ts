@@ -1,7 +1,7 @@
 // Branch family reads and mutations are explicit and never optimistic.
 import { batch, signal, type Signal } from "@preact/signals-core";
 import { Cancel, type Operations, type OpError, type Outcome } from "../../data/src";
-import { LaneReader } from "./branch-lanes";
+import { LANE_EXCERPT_CHARS, LaneReader } from "./branch-lanes";
 import { readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
 import { CAPABILITY_TAGS, checkTag, TAGS_PER_CALL, type TagInvalid } from "./org";
 
@@ -75,7 +75,6 @@ interface BranchReceipt<T> {
 interface BranchAttempt {
   owner: string | undefined;
   key: string;
-  threadId: string;
   uncertain: boolean;
   receipt: BranchReceipt<unknown>;
 }
@@ -162,6 +161,7 @@ export class Branches {
   readonly fork: Signal<ForkState> = signal({ kind: "idle" });
   /** The point the panel acts on. A point belongs to the lane it sits on; any other node to the viewed Thread. */
   readonly target: Signal<BranchTarget | undefined> = signal(undefined);
+  readonly targetRevision = signal<number | undefined>(undefined);
   private familyGeneration = 0;
   private running = false;
   private again = false;
@@ -170,7 +170,7 @@ export class Branches {
   /** Bounded excerpt reads behind the lane rows; kept by node ID across family re-reads. */
   readonly lanes: LaneReader;
 
-  constructor(private readonly ops: Operations, private readonly owner: () => string | undefined = () => "synthetic-owner", private readonly view?: () => string | undefined, historyWindow: () => boolean = () => true) {
+  constructor(private readonly ops: Operations, private readonly owner: () => string | undefined = () => "synthetic-owner", private readonly view?: () => string | undefined, private readonly historyWindow: () => boolean = () => true) {
     this.lanes = new LaneReader(ops, historyWindow);
   }
   private currentView(): string | undefined { return this.view ? this.view() : this.state.peek().threadId; }
@@ -227,9 +227,34 @@ export class Branches {
           if (!this.again) this.state.value = { ...this.state.peek(), loading: false };
           continue;
         }
-        if (out.ok) this.lanes.familyChanged(out.family);
-        // A failed re-read keeps the last family, marked with the error.
-        this.state.value = out.ok ? { threadId: id, loading: this.again, family: out.family, error: undefined } : { ...this.state.peek(), loading: this.again, error: out.error };
+        const target = this.target.peek();
+        // Family summaries do not carry selection_revision. Verify only the open point.
+        const point = out.ok && target && this.historyWindow()
+          ? await this.ops.historyWindow({ thread_id: target.threadId, node_id: target.nodeId,
+              before: 0, after: 0, excerpt_chars: LANE_EXCERPT_CHARS }, { cancel: this.cancel })
+          : undefined;
+        if (generation !== this.familyGeneration || ownerGeneration !== this.ownerGeneration) continue;
+        batch(() => {
+          if (out.ok) this.lanes.familyChanged(out.family);
+          if (target && target === this.target.peek() && point) {
+            if (point.ok && point.value.thread_id === target.threadId && point.value.items.length === 1 && point.value.items[0]?.node_id === target.nodeId) {
+              if (this.lanes.refreshPoint(target.threadId, point.value) && this.targetRevision.peek() !== point.value.revision) {
+                this.targetRevision.value = point.value.revision;
+                const rewind = this.rewind.peek().kind;
+                if (rewind === "ready" || rewind === "previewing" || rewind === "refused") this.clearPreview();
+              }
+            } else if (point.ok || (point.error.kind === "owner" && ["cursor_expired", "thread_not_found"].includes(point.error.code))) {
+              const details = !point.ok && point.error.kind === "owner" ? point.error.details : undefined;
+              const revision = details && typeof details === "object" && "revision" in details ? details.revision : undefined;
+              this.lanes.invalidatePath(target.threadId, typeof revision === "number" && Number.isSafeInteger(revision) ? revision : undefined);
+              this.choose(undefined);
+            } else if (this.rewind.peek().kind === "ready" || this.rewind.peek().kind === "previewing") {
+              this.clearPreview();
+            }
+          }
+          // A failed re-read keeps the last family, marked with the error.
+          this.state.value = out.ok ? { threadId: id, loading: this.again, family: out.family, error: undefined } : { ...this.state.peek(), loading: this.again, error: out.error };
+        });
       } while (this.again);
     } finally {
       this.running = false;
@@ -242,6 +267,13 @@ export class Branches {
       const s = this.state.peek();
       if (!s.family && !s.loading) void this.read(threadId);
     }
+  }
+
+  private clearPreview(): void {
+    const previous = this.previewCancel;
+    this.previewCancel = new Cancel();
+    this.rewind.value = { kind: "idle" };
+    previous.cancel();
   }
 
   clearActions(): void {
@@ -261,6 +293,7 @@ export class Branches {
     const cur = this.target.peek();
     if (next ? sameTarget(cur, next) : cur === undefined) return;
     batch(() => {
+      this.targetRevision.value = next ? this.lanes.revision(next.threadId) : undefined;
       this.target.value = next ? { ...next } : undefined;
       this.clearActions();
     });
@@ -274,12 +307,7 @@ export class Branches {
     const owners = (family?.items ?? []).filter((i) => i.divergence?.nodeId === nodeId && i.parentId !== undefined && ids.has(i.parentId)).map((i) => ({ threadId: i.parentId! }));
     const owner = owners.find((p) => p.threadId === viewed) ?? owners[0];
     const next = nodeId !== undefined && viewed !== undefined ? { threadId: owner?.threadId ?? viewed, nodeId } : undefined;
-    const cur = this.target.peek();
-    if (next ? sameTarget(cur, next) : cur === undefined) return;
-    batch(() => {
-      this.target.value = next;
-      this.clearActions();
-    });
+    this.choose(next);
   }
 
   /** Shows what would change. Nothing is written. */
@@ -313,7 +341,7 @@ export class Branches {
     if (!attempt || attempt.key !== key) {
       if (s.kind !== "ready" && s.kind !== "failed") return;
       if (!this.owner()) { this.refusal("No current owner; rewind was not sent"); return; }
-      attempt = { owner: this.owner(), key, threadId: target.threadId, target: { ...target }, text, facts: s.facts, uncertain: true, receipt: { id: this.ops.mutationId() } };
+      attempt = { owner: this.owner(), key, target: { ...target }, text, facts: s.facts, uncertain: true, receipt: { id: this.ops.mutationId() } };
       this.rewindAttempt = attempt;
     }
     if (attempt.running) return attempt.running;
@@ -373,7 +401,7 @@ export class Branches {
     }
     if (!attempt || attempt.key !== key) {
       if (!this.owner()) { this.refusal("No current owner; fork was not sent"); return; }
-      attempt = { owner: this.owner(), key, threadId: target.threadId, target: { ...target }, text,
+      attempt = { owner: this.owner(), key, target: { ...target }, text,
         uncertain: true, receipt: { id: this.ops.mutationId() } };
       this.forkAttempt = attempt;
     }

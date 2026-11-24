@@ -651,10 +651,16 @@ head is position 0, a split or tip is one node, all `excerpt_chars` 160. Show
 reads at most 24 positions after the node before the run (`ordinal` +
 `expect_node_id`), at most 480 opened positions per view. Excerpts are kept by
 node ID (node text is immutable), at most 2048, oldest out first, so a family
-re-read never repeats or clears them. An owner change clears everything and
+re-read does not bulk reload or clear them. An owner change clears everything and
 cancels reads in flight; leaving the view drops queued reads and positions;
 late results never publish. A shorter path or a non-growing new tip drops that
-lane's positions. The two-line comparison keeps its own bounded reads
+lane's positions. Because the family read has no path revision, each successful
+family refresh checks at most the one open action point with a node-scoped
+`history.window`. An unchanged revision preserves the open actions and focus;
+a new revision re-keys only the action subtree and withdraws a stale preview.
+Owner refusal of membership drops that lane's cached positions and closes the
+point. The model's mutation receipts survive these projection changes. The
+two-line comparison keeps its own bounded reads
 (`branch-compare.ts`: one anchor read and one 50-row page per side, four pages
 held, one page per explicit Show more).
 
