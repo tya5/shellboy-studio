@@ -92,7 +92,8 @@ it.each([390, 1280])("keeps title and Close outside the single scrolling body at
   await act(async () => render(<WorkSheet open title="Long selection" closeLabel="Close" onClose={() => {}} getReturnFocusTarget={() => null}><ul>{Array.from({length: 30}, (_, i) => <li key={i}>Preview row {i}</li>)}</ul></WorkSheet>, host));
   const dialog = host.querySelector("dialog")!;
   expect(dialog.querySelector(".work-sheet-head h2")?.textContent).toBe("Long selection");
-  expect(dialog.querySelector(".work-sheet-head button")?.textContent).toBe("Close");
+  const close = dialog.querySelector(".work-sheet-head button[aria-label='Close']");
+  expect(close?.querySelector("svg")).not.toBeNull();
   expect(dialog.querySelectorAll(".work-sheet-body")).toHaveLength(1);
   expect(layoutCss).toMatch(/\.work-sheet\{[^}]*display:flex;flex-direction:column[^}]*max-height:80dvh/);
   expect(layoutCss).toMatch(/\.work-sheet-body\{[^}]*flex:1[^}]*min-height:0;overflow:auto/);

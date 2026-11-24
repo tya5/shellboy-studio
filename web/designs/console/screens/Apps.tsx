@@ -3,7 +3,7 @@ import { Rich } from "./Rich";
 import { appTabKey } from "../../../ui-core/src/apps";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { APP_TEMPLATES, formatRoute, readAppMessage, validAppInstance, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
-import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, Notice } from "../system/components";
+import { AppCard, AppFrame, AppTabs, AppRequest, Button, IconButton, EmptyState, Notice } from "../system/components";
 
 function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
   const t = model.t.value;
@@ -21,7 +21,7 @@ function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
             <>
               {tab.thread && tab.threadState !== "missing" ? <Button variant="ghost" disabled={tab.send.kind === "sending"} onClick={() => void apps.sendErrors(tab.name, tab.instance)}>{t("apps.sendErrors")}</Button> : null}
               <Button variant="ghost" onClick={() => void apps.reload(tab.name, tab.instance)}>{t("apps.reopen")}</Button>
-              <Button variant="ghost" onClick={() => apps.dismissErrors(tab.name, tab.instance)}>{t("apps.dismiss")}</Button>
+              <IconButton glyph="settings.close" label={t("apps.dismiss")} onClick={() => apps.dismissErrors(tab.name, tab.instance)} />
             </>
           }
         >
@@ -64,7 +64,7 @@ function AppList({ context }: { context: DesignContext }) {
     <div class="apps-list">
       <div class="head">
         <h1>{t("view.apps")}</h1>
-        <div class="app-list-actions"><Button variant="ghost" disabled={list.loading} onClick={() => void apps.refresh()}>{t("common.refresh")}</Button><Button variant="primary" aria-pressed={creating} onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button></div>
+        <div class="app-list-actions"><IconButton glyph="action.retry" label={t("common.refresh")} disabled={list.loading} onClick={() => void apps.refresh()} /><Button variant="primary" aria-pressed={creating} onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button></div>
       </div>
       {creating ? <AppRequest key={draft} title={t("apps.createTitle")} requestLabel={t("apps.request")} cwdLabel={t("apps.cwd")} reviewLabel={t("apps.preview")} previewLabel={t("apps.previewLabel")} sendLabel={t("apps.createSend")} prompt={t("apps.prompt")} busy={model.appRequestState.value.kind === "sending"} disabled={model.connection.value !== "connected" || model.appRequestState.value.kind === "unconfirmed"} error={model.appRequestState.value.message ? t("apps.createError", { message: model.appRequestState.value.message }) : undefined} folders={model.appFolders.value} defaultCwd={model.selectedRow.value?.summary.cwd ?? ""} templates={templates} templatesLabel={t("apps.templates")} filterLabel={t("apps.folderFilter")} listLabel={t("apps.folderList")} manualLabel={t("apps.folderManual")} initialDraft={draft} onSend={(text, cwd) => model.createAppRequest(text, cwd)} /> : null}
       {creating && apps.folders.value.truncated ? <Notice>{t("apps.folderTruncated")}</Notice> : null}

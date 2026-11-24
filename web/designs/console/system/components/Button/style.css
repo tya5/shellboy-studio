@@ -8,5 +8,5 @@
 .btn-ghost:disabled{background:transparent}
 .btn-ghost.btn-icon .i{color:var(--muted)}
 @container app (max-width:899px){
-  .btn-icon{width:var(--size-touch)}
+  .btn-icon{width:var(--size-touch);min-height:var(--size-touch)}
 }

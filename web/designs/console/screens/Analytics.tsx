@@ -3,7 +3,7 @@ import {
   ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, rankingParts, periodTotals, PERIODS, readWeights, shortDay,
   splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
 } from "../../../ui-core/src";
-import { Button, ButtonGroup, Chart, DataTable, Field, Notice, PageHeader, RangeBar, RankedBar, RankedBarLegend, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
+import { Button, ButtonGroup, IconButton, Chart, DataTable, Field, Notice, PageHeader, RangeBar, RankedBar, RankedBarLegend, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
 import { IndexPane, MemoryPane, StoragePane } from "./Resources";
 import { tokenTotal } from "./usage-label";
 
@@ -88,7 +88,7 @@ function ModelUsage({ model, threadId, title, onClose }: { model: AppModel; thre
   useEffect(() => { void walk.start(); return () => walk.reset(); }, [walk]);
   const state = walk.state.value;
   const label = t("usage.models", { thread: title });
-  return <Section title={label} sub={t("usage.modelScope")} actions={<Button variant="ghost" onClick={onClose}>{t("usage.closeModels")}</Button>} source={<code>usage.get group_by=model</code>}>
+  return <Section title={label} sub={t("usage.modelScope")} actions={<IconButton glyph="settings.close" label={t("usage.closeModels")} onClick={onClose} />} source={<code>usage.get group_by=model</code>}>
     <WalkNotice t={t} state={state} onStop={() => walk.stop()} onContinue={() => void walk.continue()} onRetry={() => void walk.start()} />
     <Coverage t={t} walk={state} />
     {state.capped ? <Notice tone="wait">{t("usage.unfinished")}</Notice> : null}
@@ -301,7 +301,7 @@ function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSec
             </Button>
           ))}
         </ButtonGroup>
-        <Button variant="ghost" disabled={walk.status === "loading"} onClick={() => i.refreshUsage()}>{t("common.refresh")}</Button>
+        <IconButton glyph="action.retry" label={t("common.refresh")} disabled={walk.status === "loading"} onClick={() => i.refreshUsage()} />
       </div>
     } />
   );

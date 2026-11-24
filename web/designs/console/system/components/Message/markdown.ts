@@ -5,12 +5,12 @@ import MarkdownIt from "markdown-it";
 
 const SAFE_LINK = /^(https?:|mailto:)/i;
 
-export function createRenderer(copyLabel: string): (text: string) => string {
+export function createRenderer(_copyLabel: string): (text: string) => string {
   const md = new MarkdownIt({ html: false, linkify: false, breaks: false });
   md.validateLink = (url) => SAFE_LINK.test(url.trim());
   const escape = md.utils.escapeHtml;
   md.renderer.rules.fence = (tokens, i) =>
-    `<div class="message-code"><button type="button" class="btn" data-copy>${escape(copyLabel)}</button><pre><code>${escape(tokens[i]!.content)}</code></pre></div>`;
+    `<div class="message-code" data-copy><pre><code>${escape(tokens[i]!.content)}</code></pre></div>`;
   md.renderer.rules.code_block = md.renderer.rules.fence;
   md.renderer.rules.link_open = (tokens, i, options, _env, self) => {
     tokens[i]!.attrSet("target", "_blank");

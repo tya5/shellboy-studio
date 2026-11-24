@@ -40,7 +40,6 @@
 .output-actions.output-header{flex-wrap:nowrap;gap:0;min-block-size:var(--size-control);padding-inline-start:var(--space-8);border:thin solid var(--line);border-radius:var(--radius-s) var(--radius-s) 0 0}
 .output-heading{flex:1;min-inline-size:0;font:var(--type-caption);color:var(--muted);overflow-wrap:anywhere}
 .output-header + .output-log .log{border-radius:0 0 var(--radius-s) var(--radius-s);border-block-start:0}
-.output-format{justify-self:start}
 .output-reclaimed{padding:var(--space-8);border:thin dashed var(--line-strong)}
 @container app (max-width:899px){
  .shell-step-command code{padding-block:calc((var(--size-touch) - 1lh) / 2)}

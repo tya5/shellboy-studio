@@ -25,7 +25,8 @@
 .message-markdown td{padding:var(--space-4) var(--space-8);border:1px solid var(--line);text-align:left}
 .message-markdown .message-code{position:relative;margin:var(--space-8) 0;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--inset)}
 .message-markdown .message-code pre{margin:0;padding:var(--space-8) var(--space-12);padding-right:var(--size-code-copy-room);overflow-x:auto;font:var(--type-log)}
-.message-markdown .message-code .btn{position:absolute;top:var(--space-4);right:var(--space-4);background:var(--panel)}
+.message-markdown .message-code-copy{position:absolute;inset-block-start:var(--space-4);inset-inline-end:var(--space-4)}
+.message-markdown .message-code-copy .btn{background:var(--panel)}
 .msg:hover .msg-acts .quiet{opacity:1}
 @container app (max-width:899px){
   .message-markdown .message-code pre{min-height:calc(var(--size-touch) + 2 * var(--space-4))}

@@ -27,7 +27,7 @@ import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } fro
 import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, CopyButton, Tooltip, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
+import { BranchMark, Button, CopyButton, IconButton, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
 
 type OpenThreadSettings = (field: SettingsDestination["field"]) => void;
 
@@ -223,11 +223,11 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           const source = item.source;
           const handle = model.handle.value;
           const record = source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-          return <div data-live-overlay={assistantTextMembership(item)==="live-presence" ? "" : undefined}><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} live={assistantTextMembership(item)==="live-presence" || displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial"}>
+          return <div data-live-overlay={assistantTextMembership(item)==="live-presence" ? "" : undefined}><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} copyFailedLabel={t("output.copyFailed")} live={assistantTextMembership(item)==="live-presence" || displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial"}>
             {record ? <LiveRecordChrome model={model} record={record} /> : null}
           </Message></div>;
         }
-        if (!node) return <Markdown text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} live={!item.source.nodeId && item.source.kind === "text" && item.source.textComplete === false} />;
+        if (!node) return <Markdown text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} copyFailedLabel={t("output.copyFailed")} live={!item.source.nodeId && item.source.kind === "text" && item.source.textComplete === false} />;
         const nodeAuthoritative = allProseNode(node);
         const firstProseItem = node.items?.find(item => item.kind === "text")?.item_identity;
         const body = nodeAuthoritative ? model.bodyState(node.node_id!) : undefined;
@@ -417,12 +417,12 @@ const InlineShellOutput = memo(function InlineShellOutput({ onDetails, ...props 
   return <div class="shell-step-output">
     <div class="output-actions output-header">
       <span class="output-heading">{title}</span>
-      <Tooltip label={t("output.wrapLines")}><Button variant="ghost" icon label={t("output.wrapLines")} aria-pressed={wrap} disabled={!available} onClick={() => setWrap(value => !value)}><Icon role="output.wrap" size="small" /></Button></Tooltip>
+      <IconButton glyph="output.wrap" label={t("output.wrapLines")} aria-pressed={wrap} disabled={!available} onClick={() => setWrap(value => !value)} />
       <CopyButton text={text} label={t("output.copyOutput")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} />
-      <Tooltip label={t("output.openDetails")}><Button variant="ghost" icon label={t("output.openDetails")} onClick={event => onDetails(event.currentTarget)}><Icon role="output.openDetails" size="small" /></Button></Tooltip>
+      {available && rendered ? <IconButton glyph="output.format" label={t("output.formatted")} aria-pressed={!raw} onClick={() => setRaw(value => !value)} /> : null}
+      <IconButton glyph="output.openDetails" label={t("output.openDetails")} onClick={event => onDetails(event.currentTarget)} />
     </div>
     {body}
-    {available && rendered ? <div class="output-format"><Button variant="ghost" onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button></div> : null}
   </div>;
 });
 
@@ -520,7 +520,7 @@ function BodyReadMessage({model,node,displayText}:{model:AppModel;node:HistoryIt
   const t = model.t.value;
   const speaker = speakerOf(node);
   const sender = speakerDisplay(speaker, model);
-  return <Message bot={speaker.kind === "shellboy"} who={sender.header ? { ...sender.header, role: t("convo.modelSender") } : sender.label} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, itemIdentity)?.text ?? displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+  return <Message bot={speaker.kind === "shellboy"} who={sender.header ? { ...sender.header, role: t("convo.modelSender") } : sender.label} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, itemIdentity)?.text ?? displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} copyFailedLabel={t("output.copyFailed")}>
     <MessageRelation relationship={messageRelationship(node.provenance?.message, node.node_id)} t={t} />
     {sender.claim ? <div class="caption">{sender.claim}</div> : null}
     <BodyReadButton model={model} nodeId={node.node_id!} itemIdentity={itemIdentity} typedNode={nodeAuthoritative} unavailable={!nodeAuthoritative && node.items !== null} />
@@ -558,7 +558,7 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
   const body = model.bodyState(row.id, row.itemIdentity);
   const renderedText = body?.text ?? authorizedText;
   return (
-    <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={renderedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+    <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={renderedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} copyFailedLabel={t("output.copyFailed")}>
       <MessageRelation relationship={relationship} t={t} />
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
         {senderDisplay.claim ? <div>{senderDisplay.claim}</div> : null}

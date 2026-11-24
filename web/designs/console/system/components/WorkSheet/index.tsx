@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { Button } from "../Button";
+import { Button, IconButton } from "../Button";
 import { useId, useLayoutEffect, useRef } from "preact/hooks";
 
 export function WorkSheet({ open, title, closeLabel, onClose, children, role = "dialog", dismissOnOutside = true, describedBy, focusCloseOnOpen = false, getReturnFocusTarget }: { open: boolean; title: string; closeLabel: string; onClose: () => void; children: ComponentChildren; role?: "dialog" | "alertdialog"; dismissOnOutside?: boolean; describedBy?: string; focusCloseOnOpen?: boolean; getReturnFocusTarget: () => HTMLElement | null }) {
@@ -33,7 +33,7 @@ export function WorkSheet({ open, title, closeLabel, onClose, children, role = "
       if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose();
     }
   }} onCancel={(event) => { event.preventDefault(); onClose(); }}>
-    <div class="work-sheet-head"><h2 id={titleId}>{title}</h2><Button buttonRef={closeButton} onClick={onClose}>{closeLabel}</Button></div>
+    <div class="work-sheet-head"><h2 id={titleId}>{title}</h2>{role === "alertdialog" ? <Button buttonRef={closeButton} onClick={onClose}>{closeLabel}</Button> : <IconButton glyph="settings.close" buttonRef={closeButton} label={closeLabel} onClick={onClose} />}</div>
     <div id={bodyId} class="work-sheet-body">{children}</div>
   </dialog>;
 }

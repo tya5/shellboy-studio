@@ -21,3 +21,5 @@ focus (for example, the Cancel action of an alert dialog) without replacing Butt
 styles and semantics with a raw button.
 
 Styles: style.css in this directory
+
+Use `IconButton` for familiar secondary actions with a required accessible label, visible hover/keyboard Tooltip, and a direct touch target. Keep text for primary actions, recovery, or when the scope is not conveyed by an icon.

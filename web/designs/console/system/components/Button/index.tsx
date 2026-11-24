@@ -1,3 +1,5 @@
+import { Icon, type IconRole } from "../Icon";
+import { Tooltip } from "../Tooltip";
 import type { ComponentChildren, JSX, Ref } from "preact";
 
 type Variant = "outline" | "primary" | "ghost" | "warn" | "stop";
@@ -24,4 +26,8 @@ export function Button({
       {children}
     </button>
   );
+}
+
+export function IconButton({ glyph, label, tooltip = label, ...props }: Omit<Parameters<typeof Button>[0], "children" | "icon" | "label"> & { glyph: IconRole; label: string; tooltip?: string }) {
+  return <Tooltip label={tooltip}><Button variant="ghost" {...props} icon label={label}><Icon role={glyph} size="small" /></Button></Tooltip>;
 }

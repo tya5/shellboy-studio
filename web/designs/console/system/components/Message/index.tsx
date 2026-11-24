@@ -3,20 +3,12 @@ import { h, type ComponentChild, type ComponentChildren } from "preact";
 import { memo } from "preact/compat";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { Icon } from "../Icon";
+import { CopyButton } from "../CopyButton";
 
 type Create = (copyLabel: string) => (text: string) => string;
 let loaded: Create | undefined;
 let loading: Promise<Create> | undefined;
 const loadRenderer = (): Promise<Create> => (loading ??= import("./markdown").then((m) => (loaded = m.createRenderer)));
-
-function copyFrom(button: HTMLElement, copied: string): void {
-  const code = button.parentElement?.querySelector("code")?.textContent ?? "";
-  const original = button.textContent;
-  void navigator.clipboard?.writeText(code).then(() => {
-    button.textContent = copied;
-    setTimeout(() => (button.textContent = original), 1500);
-  });
-}
 
 export function splitStableMarkdown(text: string): { stable: string[]; tail: string } {
   const stable: string[] = [];
@@ -38,7 +30,7 @@ export function splitStableMarkdown(text: string): { stable: string[]; tail: str
   return { stable, tail: lines.slice(start).join("\n") };
 }
 
-function htmlNodes(html: string): ComponentChildren {
+function htmlNodes(html: string, copyLabel: string, copiedLabel: string, copyFailedLabel?: string): ComponentChildren {
   const template = document.createElement("template");
   template.innerHTML = html;
   const convert = (node: Node): ComponentChild => {
@@ -46,17 +38,22 @@ function htmlNodes(html: string): ComponentChildren {
     if (!(node instanceof Element)) return "";
     const props: Record<string, string> = {};
     for (const attribute of [...node.attributes]) props[attribute.name === "class" ? "className" : attribute.name] = attribute.value;
-    return h(node.tagName.toLowerCase() as "div", props, [...node.childNodes].map(convert));
+    const children = [...node.childNodes].map(convert);
+    if (node.matches("div.message-code[data-copy]")) {
+      const code = node.querySelector("pre > code");
+      if (code) children.unshift(<span class="message-code-copy"><CopyButton text={code.textContent ?? ""} label={copyLabel} copiedLabel={copiedLabel} failedLabel={copyFailedLabel} /></span>);
+    }
+    return h(node.tagName.toLowerCase() as "div", props, children);
   };
   return [...template.content.childNodes].map(convert);
 }
 
-export const MarkdownBlock = memo(function MarkdownBlock({ text, copyLabel, create }: { text: string; copyLabel: string; copiedLabel: string; create: Create }) {
-  const children = useMemo(() => htmlNodes(create(copyLabel)(text)), [create, copyLabel, text]);
+export const MarkdownBlock = memo(function MarkdownBlock({ text, copyLabel, copiedLabel, copyFailedLabel, create }: { text: string; copyLabel: string; copiedLabel: string; copyFailedLabel?: string; create: Create }) {
+  const children = useMemo(() => htmlNodes(create(copyLabel)(text), copyLabel, copiedLabel, copyFailedLabel), [create, copyLabel, copiedLabel, copyFailedLabel, text]);
   return <>{children}</>;
 });
 
-export function Markdown({ text, copyLabel, copiedLabel, live = false, renderer }: { text: string; copyLabel: string; copiedLabel: string; live?: boolean; renderer?: Create }) {
+export function Markdown({ text, copyLabel, copiedLabel, copyFailedLabel, live = false, renderer }: { text: string; copyLabel: string; copiedLabel: string; copyFailedLabel?: string; live?: boolean; renderer?: Create }) {
   const [create, setCreate] = useState<Create | undefined>(() => renderer ?? loaded);
   useEffect(() => {
     if (!create) void loadRenderer().then((c) => setCreate(() => c));
@@ -65,10 +62,10 @@ export function Markdown({ text, copyLabel, copiedLabel, live = false, renderer 
   if (!create) return <div class="message-markdown message-plain">{text}</div>;
   const occurrences = new Map<string, number>();
   const keyed = (block: string) => { const occurrence = occurrences.get(block) ?? 0; occurrences.set(block, occurrence + 1); return `markdown:${block}:${occurrence}`; };
-  return <div class="message-markdown" data-reading-body="" onClick={e => { const target = e.target as HTMLElement; if (target.hasAttribute("data-copy")) copyFrom(target, copiedLabel); }}>{blocks.stable.map(block => <MarkdownBlock key={keyed(block)} text={block} copyLabel={copyLabel} copiedLabel={copiedLabel} create={create} />)}{blocks.tail ? <MarkdownBlock key={keyed(blocks.tail)} text={blocks.tail} copyLabel={copyLabel} copiedLabel={copiedLabel} create={create} /> : null}</div>;
+  return <div class="message-markdown" data-reading-body="">{blocks.stable.map(block => <MarkdownBlock key={keyed(block)} text={block} copyLabel={copyLabel} copiedLabel={copiedLabel} copyFailedLabel={copyFailedLabel} create={create} />)}{blocks.tail ? <MarkdownBlock key={keyed(blocks.tail)} text={blocks.tail} copyLabel={copyLabel} copiedLabel={copiedLabel} copyFailedLabel={copyFailedLabel} create={create} /> : null}</div>;
 }
 
-export function Message({ bot, who, at, text, copyLabel, copiedLabel, live = false, children }: { bot: boolean; who: string | {readonly label:string;readonly href:string;readonly sourceId:string;readonly role:string;readonly fallbackId?:string}; at?: string | undefined; text: string; copyLabel: string; copiedLabel: string; live?: boolean; children?: ComponentChildren }) {
+export function Message({ bot, who, at, text, copyLabel, copiedLabel, copyFailedLabel, live = false, children }: { bot: boolean; who: string | {readonly label:string;readonly href:string;readonly sourceId:string;readonly role:string;readonly fallbackId?:string}; at?: string | undefined; text: string; copyLabel: string; copiedLabel: string; copyFailedLabel?: string; live?: boolean; children?: ComponentChildren }) {
   return (
     <div class="msg">
       <div class={bot ? "av message-bot" : "av"}>
@@ -79,7 +76,7 @@ export function Message({ bot, who, at, text, copyLabel, copiedLabel, live = fal
           {typeof who === "string" ? who : <a href={who.href} title={who.sourceId} aria-label={`${who.role}: ${who.label} (${who.sourceId})`}>{who.label}{who.fallbackId ? <> <code class="sender-id">{who.fallbackId}</code></> : null}</a>}
           {at ? <small class="mono">{at}</small> : null}
         </div>
-        <Markdown text={text} copyLabel={copyLabel} copiedLabel={copiedLabel} live={live} />
+        <Markdown text={text} copyLabel={copyLabel} copiedLabel={copiedLabel} copyFailedLabel={copyFailedLabel} live={live} />
         {children}
       </div>
     </div>

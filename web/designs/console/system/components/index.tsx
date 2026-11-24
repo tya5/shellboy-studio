@@ -4,7 +4,7 @@ export { BrandLogo } from "./BrandLogo";
 export { Disclosure } from "./Disclosure";
 export { WorkElementRow } from "./WorkElementRow";
 export { StatusMark } from "./StatusMark";
-export { Button } from "./Button";
+export { Button, IconButton } from "./Button";
 export { Popover } from "./Popover";
 export { Menu, type MenuEntry } from "./Menu";
 export { LayoutSeparator } from "./LayoutSeparator";

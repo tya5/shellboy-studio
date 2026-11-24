@@ -2,7 +2,7 @@ import { CoreSettings } from "./CoreSettings";
 import { useEffect } from "preact/hooks";
 import { GuideRegistrationView, guideSearchRows } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, fieldOf, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, translator, type ConfigKey, type MessageKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
-import { Button, EffortControl, FactList, Notice, PageHeader, PairingQr, Section, SubView, type Fact, type IconRole } from "../system/components";
+import { Button, CopyButton, EffortControl, FactList, Notice, PageHeader, PairingQr, Section, SubView, type Fact, type IconRole } from "../system/components";
 import { AppearanceChoices, appearanceSearchRows } from "./Appearance";
 import { LoginStartup } from "./LoginStartup";
 import { SettingsShare } from "./SettingsShare";
@@ -116,7 +116,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
             {model.pairing.value.error ? <Notice tone="bad">{t("pair.error")}</Notice> : null}
             {!model.pairing.value.hosts.length ? <p>{t("pair.noHosts")}</p> : model.pairing.value.hosts.map(host => {
               const link = model.pairing.value.links[host];
-              return <div key={host}><p><code>{host}</code></p>{link ? <><PairingQr value={link.url} label={t("pair.qr")} url={link.url} /><p>{t("pair.expires", { time: new Date(link.expires).toLocaleTimeString() })}</p><Button variant="ghost" onClick={() => void navigator.clipboard.writeText(link.url)}>{t("pair.copy")}</Button></> : null}<Button variant="ghost" onClick={() => void model.createPairing(host)}>{t(link ? "pair.reissue" : "pair.create")}</Button></div>;
+              return <div key={host}><p><code>{host}</code></p>{link ? <><PairingQr value={link.url} label={t("pair.qr")} url={link.url} /><p>{t("pair.expires", { time: new Date(link.expires).toLocaleTimeString() })}</p><CopyButton text={link.url} label={t("pair.copy")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} /></> : null}<Button variant="ghost" onClick={() => void model.createPairing(host)}>{t(link ? "pair.reissue" : "pair.create")}</Button></div>;
             })}
           </Section>
           <Section settingId={search("studio.remote", "studio.remote", ["studio.remoteGuide"]).settingId} title={t("studio.remote")} sub={t("studio.remoteGuide")}><FactList missing={missing} facts={[{ ...search("studio.fact.listen", "studio.listen"), value: model.data.listen.value, mono: true }]} /><p><code>shellboy-studio guide user</code></p><p><code>shellboy-studio --allow-host HOSTNAME</code></p><p>{t("studio.hostGuide")}</p></Section>

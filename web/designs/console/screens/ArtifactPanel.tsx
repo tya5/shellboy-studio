@@ -1,7 +1,7 @@
 import { artifactContent, Cancel, type ArtifactContentTarget, type ArtifactSelected, type ArtifactVersion } from "../../../data/src";
 import { parseTime, type AppModel } from "../../../ui-core/src";
 import { useEffect, useState } from "preact/hooks";
-import { Button, Disclosure, Icon, KeyValue, ListDivider, ListRow } from "../system/components";
+import { Button, CopyButton, Disclosure, Icon, KeyValue, ListDivider, ListRow } from "../system/components";
 import type { IconRole } from "../system/components/Icon";
 
 import { Markdown } from "../system/components/Message";
@@ -82,7 +82,7 @@ function Preview({ model, target, mime, title }: { model: AppModel; target: Arti
   return <div class="artifact-preview" aria-label={t("artifact.preview")}>
     {content === undefined ? <p role="status">{t("artifact.loading")}</p> : content === "unavailable" ? <p role="status">{t("artifact.noPreview")}</p>
       : content.kind === "image" ? <img src={content.value} alt={title} />
-      : mime === "text/markdown" ? <Markdown text={content.value} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />
+      : mime === "text/markdown" ? <Markdown text={content.value} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} copyFailedLabel={t("output.copyFailed")} />
       : <pre>{content.value}</pre>}
   </div>;
 }
@@ -95,7 +95,6 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
   const [selection, setSelection] = useState<number>();
   const [loaded, setLoaded] = useState<ArtifactSelected>();
   const [failure, setFailure] = useState<number>();
-  const [copyFailed, setCopyFailed] = useState(false);
   const [openFailed, setOpenFailed] = useState(false);
   const thread = row?.thread_id;
   const artifact = row?.artifact_id;
@@ -127,9 +126,7 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
     {selection !== undefined ? <Button variant="ghost" onClick={() => { setSelection(undefined); setLoaded(undefined); }}>{t("artifact.latest")}</Button> : null}
     {version ? <>
       <KeyValue rows={[{ key: `v${version.version} · URI`, value: <bdi class="mono artifact-uri">{version.uri}</bdi> }]} />
-      <Button variant="ghost" onClick={() => { setCopyFailed(false); if (!navigator.clipboard) setCopyFailed(true);
-        else void navigator.clipboard.writeText(version.uri).catch(() => setCopyFailed(true)); }}>{t("code.copy")}</Button>
-      {copyFailed ? <p role="status">{t("guide.copyFailed")}</p> : null}
+      <CopyButton text={version.uri} label={t("artifact.copyPath")} copiedLabel={t("code.copied")} failedLabel={t("guide.copyFailed")} />
       {action?.kind === "link" ? <a class="nav-link" href={action.href} target="_blank" rel="noopener noreferrer">{t("artifact.open")}</a> : null}
       {target && action?.kind === "preview" ? <Preview key={JSON.stringify([target, action.mime])} model={model} target={target} mime={action.mime} title={version.title} /> : null}
       {target && action?.kind === "open" ? <Button variant="ghost" onClick={() => {
