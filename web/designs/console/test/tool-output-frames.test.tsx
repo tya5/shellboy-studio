@@ -273,3 +273,42 @@ it('toggles completed inline shell output between formatted and raw text', async
   expect(log().querySelector('.output-add')?.textContent).toContain('+after');
   expect(log().textContent).not.toBe(raw);
 });
+
+it('does not reread saved shell facts for live-only frames in a long mounted conversation', async () => {
+  const publishes: (() => void)[] = [];
+  const { model, t, db } = await fixtureModel({
+    capabilities: ['history.window', 'live.text'],
+    schedule: publish => publishes.push(publish),
+    configure(db) {
+      db.history.lead = Array.from({ length: 1200 }, (_, i) => ({
+        node_id: `saved-${i}`, kind: 'user', items: [{ kind: 'text', item_identity: `message-${i}`, text: `Saved ${i}`, text_complete: true }],
+      }));
+      db.history.lead.push({ node_id: 'tool', kind: 'assistant_response', items: [{ kind: 'tool_call', item_identity: 'call', execution_ids: ['exec-1'] }], executions: [{ execution_id: 'exec-1', kind: 'shell', state: 'running' }] });
+      db.shells.lead = [{ execution_id: 'exec-1', state: 'running' }];
+    },
+  });
+  const host = document.createElement('div');
+  document.body.append(host);
+  try {
+    await act(async () => { render(<Conversation model={model} />, host); await settle(t, db); });
+    const reader = model.longReader.peek()!;
+    expect(reader.total).toBe(1201);
+    const reads = t.calls('shell.list').length;
+    expect(reads).toBeGreaterThan(0);
+    for (let offset = 0; offset < 20; offset++) {
+      await act(async () => {
+        t.push({ t: 'live', thread_id: 'lead', attempt_id: 'fixture-stream', gap: false, deltas: [{ offset, reasoning: false, text: 'x' }] });
+        publishes.splice(0).forEach(publish => publish());
+        await settle(t, db);
+      });
+    }
+    expect(model.handle.peek()!.handoff.peek()[0]?.text).toBe('x'.repeat(20));
+    expect(t.calls('shell.list')).toHaveLength(reads);
+    await act(async () => { t.push({ t: 'changed', thread_ids: ['lead'], list: false, config_changed: false }); await settle(t, db); });
+    expect(t.calls('shell.list').length).toBeGreaterThan(reads);
+  } finally {
+    render(null, host);
+    host.remove();
+    model.dispose();
+  }
+});
