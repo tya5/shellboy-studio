@@ -22,12 +22,9 @@
   .tbl.tbl-stack td[data-label=""]::before{display:none}
 }
 
-.tbl[data-compact="true"]{table-layout:fixed}
-.tbl[data-compact="true"] th.num:first-child{inline-size:5ch}
-.tbl[data-compact="true"] th.num:not(:first-child){inline-size:11ch}
+.tbl[data-compact="true"] th.num{inline-size:1%}
+.tbl[data-compact="true"] td.num .cell{white-space:nowrap;overflow-wrap:normal}
 .tbl[data-compact="true"] .cell>button{display:grid;inline-size:100%;min-inline-size:0;min-block-size:var(--size-touch)}
-.tbl[data-compact="true"] td.num{white-space:normal;overflow-wrap:anywhere}
 @container app (max-width:899px){
   .tbl[data-compact="true"] :is(th,td){padding-inline:var(--space-4)}
-  .tbl[data-compact="true"] th.num:not(:first-child){inline-size:8ch}
 }
