@@ -645,8 +645,9 @@ Show. Missing or failed reads remain unknown; nothing is inferred from them.
 One LaneReader belongs to the Branches model (`web/ui-core/src/branch-lanes.ts`).
 Rows report visibility through one IntersectionObserver; only visible rows ask
 for reads, at most 48 wait (the oldest waiting one is dropped first) and at most
-two run at once, with no retry until reset. Each read is one bounded
-`history.window`: a branch head is its split node plus one (`after: 1`), a root
+two run at once. A lazy refusal marks the row failed until reset; only a path
+disagreement requests a bounded family reread. A lazy read uses one bounded
+`history.window` plus a guarded tip read when needed: a branch head is its split node plus one (`after: 1`), a root
 head is position 0, a split or tip is one node, all `excerpt_chars` 160. Show
 reads at most 24 positions after the node before the run (`ordinal` +
 `expect_node_id`), at most 480 opened positions per view. Excerpts are kept by

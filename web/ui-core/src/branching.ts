@@ -7,7 +7,7 @@ import { CAPABILITY_TAGS, checkTag, TAGS_PER_CALL, type TagInvalid } from "./org
 const BRANCH_PAGE = 200;
 const BRANCH_PAGES = 4;
 const BRANCH_RESTARTS = 3;
-const expired = (e: OpError): e is Extract<OpError, { kind: "owner" }> & { code: "cursor_expired" } => e.kind === "owner" && e.code === "cursor_expired";
+const expired = (e: OpError) => e.kind === "owner" && e.code === "cursor_expired";
 
 export interface FamilyState {
   threadId: string | undefined;
@@ -204,7 +204,7 @@ export class Branches {
       if (size && tip && !s?.items.some(i => i.selection?.ordinal === size - 1 && i.node_id === tip)) {
         const out = await this.history({ thread_id: id, ordinal: size - 1, expect_node_id: tip, excerpt_chars: 0 }, cancel);
         if (cancel.cancelled) return false;
-        if (!out.ok) return expired(out.error) ? false : out.error;
+        if (!out.ok) return expired(out.error) ? "changed" as const : out.error;
         guard = out.value;
       } else if (!cut && (!size || !tip)) return false;
     }
@@ -216,7 +216,7 @@ export class Branches {
       this.observe(w);
       if ((rev ?? w.revision) !== w.revision || this.seen.get(id) !== w.revision ||
           (size !== undefined && size !== w.total) ||
-          (tip !== undefined && w.items.some(i => i.selection?.ordinal === w.total - 1 && i.node_id !== tip))) return false;
+          (tip !== undefined && w.items.some(i => i.selection?.ordinal === w.total - 1 && i.node_id !== tip))) return "changed" as const;
       rev = w.revision;
     }
     if (rev !== undefined) paths.set(id, rev);
@@ -224,10 +224,11 @@ export class Branches {
     return true;
   }
 
-  private async extend(s: HistoryWindowResult, family: BranchFamily, cancel: Cancel): Promise<void> {
+  private async extend(s: HistoryWindowResult, family: BranchFamily, cancel: Cancel, fail: () => void) {
     const result = await this.admit(family, s.thread_id, cancel, s);
-    if (result !== true && !cancel.cancelled && !this.running && this.state.peek().family === family &&
-        s.revision > (this.revisions.get(s.thread_id) ?? -1)) void this.read(this.state.peek().threadId!);
+    if (result === true || cancel.cancelled || this.running || this.state.peek().family !== family) return;
+    fail();
+    if (result === "changed") void this.read(this.state.peek().threadId!);
   }
 
   want(need: LaneNeed): void {
@@ -249,11 +250,12 @@ export class Branches {
       const args = need.kind === "node" ? { node_id: need.nodeId } : need.split !== undefined ? { node_id: need.split, after: 1 } : { ordinal: need.start };
       void this.history({ thread_id: need.threadId, ...args }, cancel).then(async out => {
         if (cancel.cancelled) return;
+        const fail = () => { this.failed.add(key); this.lanes.touch(); };
         if (out.ok && out.value.thread_id === need.threadId) {
           this.observe(out.value);
           if (this.running || this.state.peek().family !== family) this.lanes.cache(out.value.items);
-          else await this.extend(out.value, family, cancel);
-        } else { this.failed.add(key); this.lanes.touch(); }
+          else await this.extend(out.value, family, cancel, fail);
+        } else fail();
         if (!cancel.cancelled) { this.pending.delete(key); this.drain(); }
       });
     }
@@ -276,7 +278,7 @@ export class Branches {
       for (let o = from; o < from + count; o++) shown.add(o);
       this.observe(out.value);
       if (this.running) this.again = true;
-      else void this.extend(out.value, this.state.peek().family ?? family, cancel);
+      else void this.extend(out.value, this.state.peek().family ?? family, cancel, () => this.openFailed.value = new Set([key]));
     });
   }
 
@@ -289,7 +291,8 @@ export class Branches {
       const positions = [...ordinals].filter(o => pathNodes === undefined || o < pathNodes).sort((a, b) => a - b);
       if (positions.length || target?.threadId === threadId) {
         const result = await this.admit(family, threadId, cancel, undefined, paths);
-        if (result !== true) return result ? { error: result } : undefined;
+        if (typeof result === "object") return { error: result };
+        if (result !== true) return;
       }
       for (let i = 0; i < positions.length;) {
         const from = positions[i++]!;
@@ -311,8 +314,9 @@ export class Branches {
         if (selected.items[0]?.node_id !== target.nodeId) return;
         point = selected.revision;
       } else {
-        if (!expired(out.error)) return { error: out.error };
-        const { revision, total } = (out.error.details ?? {}) as Record<string, number>;
+        const e = out.error;
+        if (e.kind !== "owner" || !expired(e)) return { error: e };
+        const { revision, total } = (e.details ?? {}) as Record<string, number>;
         if (!Number.isSafeInteger(revision) || !Number.isSafeInteger(total) || revision! < 0 || total! < 0) return;
         selected = { thread_id: target.threadId, revision: revision!, total: total!, items: [] };
       }
@@ -655,7 +659,6 @@ export class ThreadActions {
     this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag), remove };
   }
 
-  /** ACK settles only the submitting session; owner hints refresh the displayed tags. */
   async applyTags(): Promise<void> {
     const draft = this.tagDraft.peek();
     const id = draft.target;

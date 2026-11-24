@@ -36,9 +36,18 @@ afterEach(() => {
 
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
 
-async function open(options: { capabilities?: string[]; lang?: "en" | "ja" } = {}) {
+async function open(options: { capabilities?: string[]; lang?: "en" | "ja"; refuseRetryTip?: boolean } = {}) {
   let family!: BranchesFixture;
-  const made = await fixtureModel({ route: "branches", capabilities: options.capabilities, configure(db) { family = branchesFamily(db); } });
+  const made = await fixtureModel({ route: "branches", capabilities: options.capabilities, configure(db) {
+    family = branchesFamily(db);
+    if (!options.refuseRetryTip) return;
+    const answer = db.answer.bind(db);
+    db.answer = call => {
+      const args = call.args as { thread_id?: string; expect_node_id?: string };
+      return call.command === "history.window" && args.thread_id === "retry" && args.expect_node_id
+        ? { ok: false, code: "invalid_input" } : answer(call);
+    };
+  } });
   models.push(made.model);
   const prefs = signal<Prefs>({ design: "console", theme: "console", lang: options.lang ?? "en", weights: { cached: 0.1, output: 5 } });
   if (options.lang) made.model.lang.value = options.lang;
@@ -46,6 +55,7 @@ async function open(options: { capabilities?: string[]; lang?: "en" | "ja" } = {
   host = document.createElement("div");
   document.body.append(host);
   await act(async () => { made.model.navigate({ view: "branches", threadId: "rel" }); await settle(made.t, made.db); });
+  const beforeMount = made.t.calls("thread.branches").length;
   act(() => render(<App context={context} />, host!));
   const el = host;
   const flush = async () => { await act(async () => { await settle(made.t, made.db); }); await act(async () => { await settle(made.t, made.db); }); };
@@ -55,7 +65,7 @@ async function open(options: { capabilities?: string[]; lang?: "en" | "ja" } = {
   const point = (fragment: string) => [...el.querySelectorAll<HTMLButtonElement>(".lanes-point")].find((b) => text(b).includes(fragment));
   const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b).includes(name));
   const refresh = async () => { await act(async () => { const reading = made.model.branches.read("rel"); await settle(made.t, made.db); await reading; }); await flush(); };
-  return { ...made, el, family, flush, rows, row, point, button, refresh };
+  return { ...made, el, family, flush, rows, row, point, button, refresh, beforeMount };
 }
 
 describe("Branches screen", () => {
@@ -79,6 +89,18 @@ describe("Branches screen", () => {
     expect(text(sides[1])).toContain("Merged behind --stream.");
     expect(sides.map((s) => s.querySelector("a.branch-open")!.getAttribute("href"))).toEqual(["#/conversation/rel", "#/conversation/stream"]);
     expect(el.querySelector(".loadrows")).toBeNull();
+  });
+
+  it("marks a visible row failed on a persistent tip refusal without rereading the family", async () => {
+    const { model, row, t, flush, beforeMount } = await open({ refuseRetryTip: true });
+    await flush();
+    const reads = t.calls("history.window").map(call => call.args as { thread_id?: string; expect_node_id?: string; node_id?: string });
+    expect(reads.filter(a => a.thread_id === "retry" && a.expect_node_id)).toHaveLength(1);
+    expect(reads.filter(a => a.thread_id === "retry" && a.node_id === "s10")).toHaveLength(1);
+    expect(t.calls("thread.branches")).toHaveLength(beforeMount);
+    expect(model.branches.failedFor({ kind: "head", threadId: "retry", start: 10, split: "s10" })).toBe(true);
+    expect(row("retry|start")).not.toBeNull();
+    expect(row("retry|start")!.querySelector(".lanes-pending")).toBeNull();
   });
 
   it("keeps the shared excerpt anchored and hides Show more at the four-page cap", async () => {
