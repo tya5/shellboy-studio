@@ -338,6 +338,7 @@ export class AppModel {
   private handlePaused = false;
   private readerThread: string | undefined;
   private readerTick = 0;
+  private shellScan?: { reader: ConversationWindow; rows: WindowAcceptedSnapshot['rows']; tick: number };
   private disposers: (() => void)[] = [];
   private shellRead: { running: boolean; again: boolean } = { running: false, again: false };
   /** Cancels reads for the open Thread (steps, bodies, marks) when another opens or the view is left. */
@@ -821,6 +822,7 @@ export class AppModel {
       cur.dispose(); // leaving the view, Thread, or owner lifetime cancels its reads
       this.longReader.value = undefined;
       this.readerThread = undefined;
+      this.shellScan = undefined;
     }
     if (!want || !h) return;
     if (!this.longReader.peek()) {
@@ -838,7 +840,7 @@ export class AppModel {
     if (tickChanged) this.readerTick = tick;
     const reader = this.longReader.peek()!;
     this.composeWindowDisplay(reader, h);
-    this.readerShells(reader);
+    this.readerShells(reader, tick);
     if (tickChanged && this.longReader.peek() === reader && this.handle.peek() === h) reader.changed();
   }
 
@@ -898,8 +900,12 @@ export class AppModel {
   }
 
   /** Shell facts for the steps in view, read while it shows some. */
-  private readerShells(w: ConversationWindow): void {
-    w.acceptedView.current;
+  private readerShells(w: ConversationWindow, tick: number): void {
+    const { rows } = w.acceptedView.current;
+    const previous = this.shellScan;
+    // Live-only publications reuse the saved rows; only owner hints or a new range need a scan.
+    if (previous?.reader === w && previous.rows === rows && previous.tick === tick) return;
+    this.shellScan = { reader: w, rows, tick };
     if (this.toolStepChoices.peek().size || this.openToolGroups.peek().size)
       this.retainToolState(materializeHistoryPresentation(w.rangeItems()).rows, new Set(w.heldSteps().flatMap((item) => (item.executions ?? []).map((step) => step.execution_id))));
     const r = w.renderRange();
