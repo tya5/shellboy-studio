@@ -1,11 +1,17 @@
 import thinking from '../../../../../app/public/characters/thinking-24.svg?raw';
 import { characterAssets } from '../../character-assets';
 
-// The tracked asset is the only source of the approved geometry and colors.
-const thinkingArtwork = thinking.slice(thinking.indexOf('<rect'), thinking.lastIndexOf('</svg>')).replace(/ id="[^"]*"/g, '');
+// Use sibling SVG roots so the dots can still hop independently without animating SVG children.
+const artwork = thinking.slice(thinking.indexOf('<rect'), thinking.lastIndexOf('</svg>')).replace(/ id="[^"]*"/g, '');
+const dotPattern = /<circle\b[^>]*\/>/g;
+const thinkingDots = artwork.match(dotPattern) ?? [];
+const thinkingFace = artwork.replace(dotPattern, '');
 
 export function ConversationCharacter({ name, running }: { name: string; running: boolean }) {
   return name === 'thinking'
-    ? <svg class="character-status" data-running={running ? '' : undefined} viewBox="0 0 390 390" aria-hidden="true" dangerouslySetInnerHTML={{ __html: thinkingArtwork }} />
+    ? <span class="character-status character-thinking" data-running={running ? '' : undefined} aria-hidden="true">
+        <svg viewBox="0 0 390 390" dangerouslySetInnerHTML={{ __html: thinkingFace }} />
+        {thinkingDots.map((dot, index) => <svg key={index} class="character-dot" viewBox="0 0 390 390" dangerouslySetInnerHTML={{ __html: dot }} />)}
+      </span>
     : <img class="character-status" src={characterAssets[name]} alt="" />;
 }

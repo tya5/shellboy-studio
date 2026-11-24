@@ -154,12 +154,13 @@ describe("components name roles, never values", () => {
     const animations = [...css.matchAll(/([^{}]+)\{([^{}]*\banimation\s*:\s*([^;}]+)[^{}]*)\}/g)]
       .filter((match) => match[3]!.trim() !== "none")
       .map((match) => match[1]!.trim());
-    expect(animations.sort()).toEqual([".character-status[data-running] circle", ".context-ring-activity", ".loadcount", ".loadrow", ".status-shape[data-running-arc] svg"]);
-    expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.context-ring-activity\{animation:none;stroke-dasharray:1 9\}/);
+    expect(animations.sort()).toEqual([".character-thinking[data-running]>svg.character-dot", ".loadcount", ".loadrow", ".status-shape[data-running-arc] svg", "svg.context-ring[data-context-state=summarizing]"]);
+    expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{svg\.context-ring\[data-context-state=summarizing\]\{[^}]*animation:context-ring-spin/);
+    expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.context-ring-activity\{stroke-dasharray:1 9\}/);
     expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\.status-shape\[data-running-arc\] svg\{animation:status-arc-spin/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadrow\{animation:none\}/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadcount\{animation:none\}/);
-    expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\s*\.character-status\[data-running\] circle\{[^}]*animation:character-hop/);
+    expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\s*\.character-thinking\[data-running\]>svg\.character-dot\{animation:character-hop/);
   });
   it("phone width is driven by the container, with a tab bar and 44px controls", () => {
     expect(css).toMatch(/container:app \/ inline-size/);

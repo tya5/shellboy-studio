@@ -19,6 +19,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Spacing comes from `space-4` to `space-24`. Touch targets on phone width are at least 44px.
 - Focus is a solid 2px `accent` ring with a 2px offset on every interactive element.
 - Motion: LoadingRows pulses, the running character dots hop, and the active summary arc and shared Thread/shell running arc spin. Reduced motion stops all of these; the summary ring uses stationary dots and the running mark keeps its gap.
+  Animate `transform` or `opacity` on a whole HTML element or SVG root, never on a shape inside an SVG.
 
 ## Layout
 
