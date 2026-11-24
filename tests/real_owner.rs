@@ -225,14 +225,14 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
     for args in cases {
         assert_eq!(args.order, ThreadListOrder::Updated);
         owner
-            .call(Command::ThreadList(args), None, None)
+            .call(shellboy::protocol::Command::ThreadList(args), None, None)
             .await
             .expect("the exact pinned Core accepts a constrained membership read");
     }
 
     owner
         .call(
-            Command::ThreadList(ThreadListArgs {
+            shellboy::protocol::Command::ThreadList(ThreadListArgs {
                 order: ThreadListOrder::Created,
                 archived: shellboy::protocol::ArchivedFilter::Include,
                 limit: 50,
@@ -246,7 +246,7 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
 
     let refused = owner
         .call(
-            Command::ThreadList(ThreadListArgs {
+            shellboy::protocol::Command::ThreadList(ThreadListArgs {
                 query: Some("never-match".into()),
                 order: ThreadListOrder::Created,
                 limit: 50,
@@ -264,7 +264,7 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
 
     let refused = owner
         .call(
-            Command::ThreadList(ThreadListArgs {
+            shellboy::protocol::Command::ThreadList(ThreadListArgs {
                 awaiting: Some("human".into()),
                 query: Some("never-match".into()),
                 limit: 50,
