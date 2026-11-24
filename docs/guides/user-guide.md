@@ -62,7 +62,7 @@ For model messages, **From Thread** is the recorded sender ID; **Current title**
 
 ### Delete selected Threads
 
-In the sidebar use **Select Threads**, select the rows, then use **Delete**, **Archive**, or **Unarchive** in the selection bar. Archive requires a second press to confirm; Unarchive applies immediately. **Include descendants** controls the archive scope. For Delete, review the exact names and IDs; active scheduled executions listed in the preview will be stopped. Live or stopping Runs block deletion. **Delete selected Threads** permanently deletes the selected set in a single all-or-none operation (up to 256 on the matching owner). Unselected descendants stay. If the selection or targets change, review and confirm the new preview. Use a Thread row's **Move** action to choose a parent, and **Edit tags** to add or remove tags for that Thread.
+In the sidebar use **Select Threads**, select the rows, then use **Delete**, **Archive**, or **Unarchive** in the selection bar. Archive requires a second press to confirm; Unarchive applies immediately. **Include descendants** controls the archive scope. For Delete, review the exact names and IDs; active scheduled executions listed in the preview will be stopped. Live or stopping Runs block deletion. **Delete selected Threads** permanently deletes the selected set in a single all-or-none operation (up to 256 on the matching owner). Unselected descendants stay. If the selection or targets change, review and confirm the new preview. Use a Thread row's **Set parent** action to choose a parent, and **Edit tags** to add or remove tags for that Thread.
 
 ## Inspect usage and cost
 
@@ -178,7 +178,7 @@ v0.4.2 向け（反映待ち）：**要返信** や **返信待ち** などの�
 
 #### スレッドの一括削除
 
-サイドバーで **スレッドを選択** を選び、対象にチェックを入れます。選択バーの **削除**、**アーカイブ**、**アーカイブ解除** を使います。アーカイブはもう一度押して確認し、アーカイブ解除はそのまま適用します。**子孫も含める** で子孫にも適用できます。削除では、プレビューで名前と ID、停止対象となるスケジュール実行を確認してください。実行中または停止処理中の Run があると削除できません。**選択したスレッドを削除** は、対応するオーナーでは最大 256 件を一度の操作で全件削除するか、何も削除しません。選択していない子孫は残ります。対象が変わった場合は新しいプレビューで確認し直してください。行メニューの **移動** で親を選び、**タグを編集** でそのスレッドのタグを追加・削除できます。
+サイドバーで **スレッドを選択** を選び、対象にチェックを入れます。選択バーの **削除**、**アーカイブ**、**アーカイブ解除** を使います。アーカイブはもう一度押して確認し、アーカイブ解除はそのまま適用します。**子孫も含める** で子孫にも適用できます。削除では、プレビューで名前と ID、停止対象となるスケジュール実行を確認してください。実行中または停止処理中の Run があると削除できません。**選択したスレッドを削除** は、対応するオーナーでは最大 256 件を一度の操作で全件削除するか、何も削除しません。選択していない子孫は残ります。対象が変わった場合は新しいプレビューで確認し直してください。行メニューの **親を設定** で親を選び、**タグを編集** でそのスレッドのタグを追加・削除できます。
 
 ### 使用量とコストを確認する
 
