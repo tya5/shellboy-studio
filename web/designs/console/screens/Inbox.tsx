@@ -36,7 +36,7 @@ export function Inbox({ model }: { model: AppModel }) {
           const title = `${row?.title ?? p.threadId}${count !== undefined ? ` (${count}${row?.awaiting_named_count_exact === false ? "+" : ""})` : ""}`;
           return <QuestionItem key={p.id} title={title} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />;
         })}
-        {model.pending.loading?.value && !items.length || model.pending.loadingMore?.value ? <p class="muted caption" role="status">{t("common.loading")}</p> : null}
+        {model.pending.loading?.value && !model.pending.loaded?.value || model.pending.loadingMore?.value ? <p class="muted caption" role="status">{t("common.loading")}</p> : null}
         {model.pending.stale?.value ? <p class="muted caption">{t("work.stale")}</p> : null}
         {model.pending.error?.value ? <p role="alert">{errorMessage(model.pending.error.value)}</p> : null}
         {model.pending.hasMore?.value ? <Button variant="ghost" disabled={model.pending.loading?.value} onClick={() => void model.pending.more?.()}>{t("inbox.more")}</Button> : null}

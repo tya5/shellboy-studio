@@ -25,7 +25,7 @@ export class PageRun<T, H = never> {
       else void this.read();
     };
     const watch = typeof hints === "string" ? this.data.watchHints(hints, notify) : hints(notify);
-    const session = { load, owner: this.data.owner.peek(), watch, pages: 1, rerun: false };
+    const session: { load: Load<T, H>; owner: ReturnType<ShellboyData["owner"]["peek"]>; watch: Handle; read?: Cancel; pages: number; rerun: boolean } = { load, owner: this.data.owner.peek(), watch, pages: 1, rerun: false };
     this.session = session;
     void this.read();
     return () => { if (this.session === session) this.close(); };
@@ -54,7 +54,7 @@ export class PageRun<T, H = never> {
     const cancel = new Cancel();
     session.read = cancel;
     const previous = this.stateSignal.peek();
-    this.stateSignal.value = { ...previous, loading: previous.items.length === 0 || appendCursor !== undefined,
+    this.stateSignal.value = { ...previous, loading: true,
       loadingMore: appendCursor !== undefined, error: undefined };
     const current = () => this.session === session && session.read === cancel && this.data.owner.peek() === session.owner;
     const items = appendCursor === undefined ? [] : [...previous.items];

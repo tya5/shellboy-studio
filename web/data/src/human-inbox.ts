@@ -23,6 +23,7 @@ export interface PendingAdapter {
   readonly error?: ReadonlySignal<OpError | undefined>;
   readonly loading?: ReadonlySignal<boolean>;
   readonly loadingMore?: ReadonlySignal<boolean>;
+  readonly loaded?: ReadonlySignal<boolean>;
   readonly stale?: ReadonlySignal<boolean>;
   readonly hasMore?: ReadonlySignal<boolean>;
   /** True only when the last read reached the end of Core's list within the retention bound. */
@@ -44,6 +45,7 @@ export class HumanInbox implements PendingAdapter {
   readonly hasMore: ReadonlySignal<boolean>;
   readonly loading: ReadonlySignal<boolean>;
   readonly loadingMore: ReadonlySignal<boolean>;
+  readonly loaded: ReadonlySignal<boolean>;
   readonly stale: ReadonlySignal<boolean>;
   readonly complete: ReadonlySignal<boolean>;
   readonly capped: ReadonlySignal<boolean>;
@@ -72,6 +74,7 @@ export class HumanInbox implements PendingAdapter {
     this.hasMore = computed(() => state.value.cursor !== undefined);
     this.loading = computed(() => state.value.loading);
     this.loadingMore = computed(() => state.value.loadingMore === true);
+    this.loaded = computed(() => state.value.loaded === true);
     this.stale = computed(() => { const s = state.value; return s.loading || s.error !== undefined || !s.loaded; });
     this.complete = computed(() => state.value.complete === true);
     this.capped = computed(() => state.value.capped === true);
