@@ -97,22 +97,24 @@ function toolGroupStatus(steps: readonly Step[], completeCoverage: boolean) {
 }
 
 export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion, openThreadSettings }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow[]; readonly renderRow: (row: import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow, { kind: "live" }>) => ComponentChildren }; openThreadSettings?: OpenThreadSettings }) {
-  const projection = displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection;
+  const projection = useMemo(() => displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection, [displayPlan?.entries, displayPlan?.sequence, displayPlan?.workGroups, suppliedProjection]);
   const planEntries = displayPlan?.entries ?? [];
-  const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
+  const planByKey = useMemo(() => new Map(planEntries.map(entry => [entry.item.key, entry])), [displayPlan?.entries]);
   // Coverage describes the whole assistant/work cut, not authority for each independently
   // typed human item. Require an exact entry for every projected item, then gate bodies per entry.
   const planCurrent = !!displayPlan;
-  const planItems = planEntries.map(({ item, presentationContainer }) => ({ ...item, presentationContainer }));
-  const membership=new Map(projection.items.map(item=>{ const body=planByKey.get(item.key)?.body; return [item.key, !planCurrent || body?.kind === "unavailable" ? "content-unavailable" : assistantTextMembership(item)] as const; }));
+  const planItems = useMemo(() => planEntries.map(({ item, presentationContainer }) => ({ ...item, presentationContainer })), [displayPlan?.entries]);
+  const ordinalByNode = useMemo(() => new Map(nodes?.flatMap(row => row.node_id && row.selection?.ordinal !== undefined ? [[row.node_id, row.selection.ordinal] as const] : [])), [nodes]);
+  const membership = useMemo(() => new Map(projection.items.map(item => { const body = planByKey.get(item.key)?.body; return [item.key, !planCurrent || body?.kind === "unavailable" ? "content-unavailable" : assistantTextMembership(item)] as const; })), [projection.items, planByKey, planCurrent]);
   const t = model.t.value;
-  const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);
-  const savedExecutionIds = new Set(savedSteps.map(step => step.executionId));
+  const shells = model.shells.value;
+  const savedSteps = useMemo(() => collectExecutionSteps(nodes ?? [], shells), [nodes, shells]);
+  const savedExecutionIds = useMemo(() => new Set(savedSteps.map(step => step.executionId)), [savedSteps]);
   const allSteps = [...savedSteps, ...model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []).filter(step => !savedExecutionIds.has(step.executionId))];
   const [openRecords, setOpenRecords] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [openMemberships, setOpenMemberships] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const membershipKey = (summary: { key?: string; memberKeys: readonly string[] }) => summary.key ?? JSON.stringify(summary.memberKeys);
-  const memberships = new Set((projection.workGroups ?? projection.toolSummaries).map(membershipKey));
+  const memberships = useMemo(() => new Set((projection.workGroups ?? projection.toolSummaries).map(membershipKey)), [projection]);
   useLayoutEffect(() => {
     const records = new Set(projection.items.filter(item => item.source.kind === "record").map(item => item.key));
     setOpenRecords(previous => {
@@ -129,7 +131,11 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
     const summary = (projection.workGroups ?? projection.toolSummaries).find(summary => summary.memberKeys.includes(item.key));
     return summary !== undefined && !opened(summary);
   };
-  const renderWorkGroup = (group: ConversationWorkGroup, children: ComponentChildren) => {
+  const groupOpen = useMemo(() => {
+    const byKey = new Map(projection.items.map(item => [item.key, item]));
+    return new Map(projection.workGroups?.map(group => [group.key, openMemberships.get(group.key) ?? group.memberKeys.some(key => byKey.get(key)?.classification?.openPolicy !== "closed")]));
+  }, [projection, openMemberships]);
+  const renderWorkGroup = (group: ConversationWorkGroup, children: ComponentChildren, window?: import("./ConversationItems").WindowedWorkGroup) => {
     const steps = allSteps.filter(step => group.executionIds.includes(step.executionId));
     const active = steps.some(step => step.status === "running");
     const failures = steps.filter(step => step.status === "failed").length;
@@ -143,16 +149,18 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
       const title=category==="Tools"?t(n === 1 ? "tools.countOne" : "tools.count", { n }):t(`work.category.${category}`,{n});
       return [title+(category==="Tools"&&failures?` (${t("work.failedCount",{n:failures})})`:"")];
     }), ...(active?[t("status.running")]:[])].join(" · ");
-    const actualMemberCount = projection.items.filter(item => group.memberKeys.includes(item.key)).length;
+    const actualMemberCount = group.memberKeys.length;
+    const first = planByKey.get(group.firstMemberKey)?.item;
+    const headingAnchor = window?.headingVisible && !groupOpen.get(group.key) ? first : undefined;
     const label = categoryLabel || (actualMemberCount ? String(actualMemberCount) : t("work.textUnavailable"));
-    return <Disclosure class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
+    return <Disclosure class="step step-group" open={groupOpen.get(group.key) ?? opened(group)} data-windowed-work={window ? "" : undefined} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpenMemberships(previous => {
         const next = new Map([...previous].filter(([key]) => memberships.has(key)));
         next.set(membershipKey(group), open);
         return next;
       });
-    }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}${stateLabel ? ` · ${stateLabel}` : ""}`}><Icon role="work.group" /><span class="tool-group-label">{label}</span>{status ? <StatusMark shell status={status} label={activityStatusLabel(t, status)} /> : stateLabel ? <span class="muted caption">{stateLabel}</span> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
+    }}><summary ref={window?.headingRef} hidden={window !== undefined && !window.headingVisible} data-viewport-key={window?.headingRef ? `heading:${group.key}` : undefined} data-windowed-heading={window ? "" : undefined} data-item-key={headingAnchor?.key} data-node={headingAnchor?.source.nodeId} data-work-heading="" aria-label={`${t("work.group")}: ${label}${stateLabel ? ` · ${stateLabel}` : ""}`}><Icon role="work.group" /><span class="tool-group-label">{label}</span>{status ? <StatusMark shell status={status} label={activityStatusLabel(t, status)} /> : stateLabel ? <span class="muted caption">{stateLabel}</span> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   const workRow = (item: ConversationItem) => {
     const bundle=capturedWorkElementDisplay(item, planByKey.get(item.key)?.work);
@@ -162,7 +170,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
     return <WorkElementRow display={display} anchorKey={item.key} detailPolicy={bundle.detailPolicy}/>;
   };
   if (!planCurrent) return <section role="status" data-display-plan-unavailable="">{t("work.textUnavailable")}</section>;
-  return <ConversationItems {...projection} items={planItems} sequence={displayPlan!.sequence} workGroups={displayPlan!.workGroups} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={renderWorkGroup} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
+  return <ConversationItems {...projection} ordinalByNode={ordinalByNode} groupOpen={groupOpen} items={planItems} sequence={displayPlan!.sequence} workGroups={displayPlan!.workGroups} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={renderWorkGroup} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
@@ -261,7 +269,7 @@ function outputLimitNoticeFacts(live: AttemptOutputLimit | null | undefined, sav
 }
 
 function OwnSendContent({model,snapshot,plan,trailing,openThreadSettings}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren;openThreadSettings?:OpenThreadSettings}) {
-  const projection=projectionFromDisplayPlan(plan);
+  const projection = useMemo(() => projectionFromDisplayPlan(plan), [plan.entries, plan.sequence, plan.workGroups]);
   const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow,{kind:"live"}>)=> { if ("kind" in message) { const fact = outputLimitNoticeFacts(message.outputLimit); return fact ? <OutputLimitNotice model={model} fact={fact} openThreadSettings={openThreadSettings} /> : null; } return <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="ghost" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>; };
   return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}

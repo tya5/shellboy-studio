@@ -60,9 +60,15 @@ export function conversationCohortKey(version: DisplayCohortVersion): string {
   return [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
 }
 
-export function createConversationDisplayPlan(input: AcceptedPublicationInput): ConversationDisplayPlan {
+export function createConversationDisplayPlan(input: AcceptedPublicationInput, retained?: ConversationDisplayPlan): ConversationDisplayPlan {
   if (!Number.isSafeInteger(input.generation)) throw new Error('display plan requires accepted generation');
   const generation = input.generation, revision = input.revision;
+  const version = input.userDecision.cohortVersion;
+  const cohortKey = conversationCohortKey(version);
+  // The window supplies this only for the same immutable saved and Work inputs.
+  // Entry cuts describe the retained proof, not the generation of a new live tail.
+  if (retained && retained.capability === input.capability && retained.revision === revision && retained.scope === input.scope)
+    return Object.freeze({ ...retained, acceptedGeneration: generation, coverage: input.coverage, cohortKey, cohortVersion: version, localRegion: input.userDecision.localRegion });
   const cut: DisplayCut = Object.freeze({ generation, revision, capability: input.capability, scope: input.scope });
   const work = new Map<string, CapturedWorkElement>();
   const workContexts = new Map<string, CapturedWorkElement["metadata"]>();
@@ -76,8 +82,6 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     workContexts.set(key, metadata);
     work.set(item.key, Object.freeze({ ...capture, metadata }));
   }
-  const version = input.userDecision.cohortVersion;
-  const cohortKey = conversationCohortKey(version);
   const canonicalItems = new Map(input.canonicalProjection.items.map(item => [item.key, item]));
   const lifetimes = new Map<DisplayLifetime["kind"], DisplayLifetime>();
   const unavailableBodies = new Map<string, DisplayBodySource>();
@@ -124,14 +128,14 @@ export interface ComposedConversationDisplay {
   readonly plan: ConversationDisplayPlan;
 }
 
-export function composeConversationDisplayPlan(input: ConversationDisplayComposition): ComposedConversationDisplay {
+export function composeConversationDisplayPlan(input: ConversationDisplayComposition, retained?: ConversationDisplayPlan): ComposedConversationDisplay {
   const projection=input.projection;
   const cohortVersion: DisplayCohortVersion = Object.freeze({
     accepted: Object.freeze(input.userDecision.cohortVersion.accepted.map(row => Object.freeze({ ...row }))),
     ...(input.userDecision.cohortVersion.pending ? { pending: Object.freeze({ ...input.userDecision.cohortVersion.pending }) } : {}),
   });
   const captured = Object.freeze({...input,projection,userDecision:Object.freeze({cohortVersion,localRegion:input.userDecision.localRegion})});
-  return Object.freeze({ projection, plan: createConversationDisplayPlan(captured) });
+  return Object.freeze({ projection, plan: createConversationDisplayPlan(captured, retained) });
 }
 
 /** Read-only renderer input reconstructed solely from the accepted immutable plan. */

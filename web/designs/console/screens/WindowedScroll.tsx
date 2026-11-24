@@ -1,9 +1,10 @@
 // One contiguous loaded history run. Unknown edges have indicators, never estimated space.
 import type { ComponentChildren, VNode } from "preact";
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { materializeHistoryPresentation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
 import { Button, EmptyState, LoadingRows, Notice } from "../system/components";
 
+import { conversationViewport, type MountedViewport } from "./conversationViewport";
 import { measureAcceptedRows } from "./acceptedRowMeasure";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import { CurrentScrollSync, type ScrollViewPort } from "./scrollTransaction";
@@ -32,8 +33,8 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   }, [win, !!renderAcceptedView]);
   const accepted = renderAcceptedView ? win.acceptedView.peek() : undefined;
   const el = useRef<HTMLDivElement>(null);
-  const visible = win.renderRange();
-  const range = visible && heldRange(visible, win.total, (index) => win.itemAt(index) !== undefined);
+  const visible = renderAcceptedView ? undefined : win.renderRange();
+  const range = accepted?.range ?? (visible && heldRange(visible, win.total, (index) => win.itemAt(index) !== undefined));
   const intent = useRef(new ScrollIntent());
   const writer = useRef(new CurrentScrollSync());
   useLayoutEffect(() => () => { writer.current.dispose(); headingAnchor.current.clear(); }, []);
@@ -41,17 +42,62 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const touchY = useRef<number | undefined>(undefined);
   const readingAnchor = useRef(new ReadingAnchor());
 
+  const active = useRef<MountedViewport>();
+  const lastTop = useRef(0);
+  const fallbackProbe = useRef<HTMLDivElement>(null);
+  const [viewportState, setViewport] = useState({top: 0, height: 0, following: true, fallback: 0});
+  const refreshViewport = (box: HTMLElement, start: number) => {
+    const top = Math.max(0, box.scrollTop - start), height = box.clientHeight;
+    lastTop.current = top;
+    const following = intent.current.following && win.following.peek();
+    const fallback = fallbackProbe.current?.getBoundingClientRect().height ?? 0;
+    const current = active.current;
+    const range = current?.geometry.range(top, height, following);
+    setViewport(previous => previous.height === height && previous.following === following && previous.fallback === fallback
+      && (previous.top === top || !range || (range[0] === current?.first && range[1] === current?.end)) ? previous : {top, height, following, fallback});
+  };
+  const mounted = useRef(new Map<Element, string>());
+  const byKey = useRef(new Map<string, HTMLElement>());
+  const dirty = useRef(new Set<HTMLElement>());
+  const resize = useRef<ResizeObserver>();
+  const mount = useCallback((key: string, element: HTMLElement | null) => {
+    const old = byKey.current.get(key);
+    if (old) { resize.current?.unobserve(old); mounted.current.delete(old); dirty.current.delete(old); byKey.current.delete(key); }
+    if (element) {
+      mounted.current.set(element, key); byKey.current.set(key, element); dirty.current.add(element);
+      resize.current?.observe(element);
+    }
+  }, []);
+  const commit = useCallback((viewport: MountedViewport | undefined) => { active.current = viewport; }, []);
+  const viewport = useMemo(() => ({ ...viewportState, get top() { return lastTop.current; }, mount, commit }), [viewportState]);
+  const tellWindow = (box: HTMLElement, start: number, following: boolean) => {
+    const top = box.scrollTop - start;
+    const current = active.current;
+    const index = current?.geometry.locate(top);
+    const ordinal = index === undefined ? undefined : current?.ordinals[index];
+    win.view(top, box.clientHeight, following, ordinal === undefined || !current ? undefined : { ordinal, totalHeight: current.geometry.offset(current.geometry.keys.length), range: accepted?.range });
+    if (renderAcceptedView) refreshViewport(box, start);
+  };
+  const readingIndex = useMemo(() => ({
+    nodes: new Set(accepted?.rows.flatMap(row => row.node_id ? [row.node_id] : [])),
+    assistantAttempts: new Map(accepted?.rows.flatMap(row => row.kind === "assistant_response" && row.node_id && row.provenance?.attempt_id ? [[row.node_id, row.provenance.attempt_id] as const] : [])),
+    entries: new Map(accepted?.displayPlan?.entries.map(entry => [entry.item.key, entry])),
+    groups: new Map(accepted?.displayPlan?.workGroups.map(group => [group.key, { first: group.firstMemberKey, members: new Set(group.memberKeys) }])),
+  }), [accepted?.rows, accepted?.displayPlan?.entries]);
   const readingContext = (snapshot: WindowAcceptedSnapshot, isCurrent: () => boolean): ReadingContext => ({
     revision: snapshot.revision, epoch: snapshot.epoch, capability: win.acceptedView.currentCapability,
-    nodes: snapshot.rows.flatMap(row => row.node_id ? [row.node_id] : []),
-    assistantAttempts: new Map(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.node_id && row.provenance?.attempt_id
-      ? [[row.node_id, row.provenance.attempt_id] as const] : [])),
+    nodes: readingIndex.nodes,
+    assistantAttempts: readingIndex.assistantAttempts,
+    groupMember: (group, item, node, firstOnly) => {
+      const scope = readingIndex.groups.get(group);
+      return readingIndex.entries.get(item)?.item.source.nodeId === node && !!scope && (firstOnly ? scope.first === item : scope.members.has(item));
+    },
     previewText: (key, attempt) => {
       const tail = snapshot.displayPlan?.localRegion.tailRows.find(row => row.kind === "live" && row.item.key === key);
       return tail?.kind === "live" && tail.item.source.kind === "text" && tail.item.source.attemptId === attempt ? tail.item.source.text : undefined;
     },
     savedText: (key, node) => {
-      const entry = snapshot.displayPlan?.entries.find(entry => entry.item.key === key);
+      const entry = readingIndex.entries.get(key);
       if (entry?.item.source.nodeId !== node || entry.item.source.kind !== "text" || entry.body.kind !== "typed-canonical") return;
       // Do not transfer on stale plan text if a full-body result has overridden it.
       const canonical = entry.body.text;
@@ -75,11 +121,23 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
         measure: (ref) => {
           if (renderAcceptedView && ref !== accepted) return;
           start = rowOrigin(box);
-          const changes: [number, number][] = [];
-          for (const child of box.querySelectorAll<HTMLElement>("[data-o]"))
-            changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
-          const measured = renderAcceptedView ? measureAcceptedRows(box, accepted!.rows) : changes;
-          if (measured.length) win.measure(measured);
+          const current = active.current;
+          if (current) {
+            for (const node of dirty.current) {
+              const key = mounted.current.get(node);
+              if (key !== undefined) current.geometry.measure(key, node.getBoundingClientRect().height);
+            }
+            dirty.current.clear();
+            const { geometry, first, end, before, after } = current;
+            if (before) before.style.height = `${geometry.offset(first)}px`;
+            if (after) after.style.height = `${geometry.offset(geometry.keys.length) - geometry.offset(end)}px`;
+          } else {
+            const changes: [number, number][] = [];
+            if (!renderAcceptedView) for (const child of box.querySelectorAll<HTMLElement>("[data-o]"))
+              changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
+            const measured = renderAcceptedView ? measureAcceptedRows(box, accepted!.rows) : changes;
+            if (measured.length) win.measure(measured);
+          }
         },
         plan: (_ref, request) => {
           const context = accepted ? readingContext(accepted, () => port.acceptedView.isCurrent(_ref) && win.acceptedView.isCurrent(accepted)) : undefined;
@@ -97,7 +155,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
               else if (origin.current !== undefined && start !== origin.current)
                 intent.current.program(box, box.scrollTop + start - origin.current);
               origin.current = start;
-              win.view(box.scrollTop - start, box.clientHeight, intent.current.following);
+              tellWindow(box, start, intent.current.following);
             },
             capture: () => readingAnchor.current.capture(box, context),
           };
@@ -106,7 +164,6 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   };
 
   // One frame belongs to this mounted scroll root; RO delivery only invalidates it.
-  const resize = useRef<ResizeObserver | undefined>(undefined);
   const observed = useRef(new Set<Element>());
   const frame = useRef<number | undefined>(undefined);
   const latest = useRef({ sync, port });
@@ -117,9 +174,10 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   };
   useLayoutEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
-    let mounted = true;
-    const observer = new ResizeObserver(() => {
-      if (!mounted) return;
+    let observing = true;
+    const observer = new ResizeObserver(entries => {
+      if (!observing) return;
+      for (const entry of entries) if (mounted.current.has(entry.target)) dirty.current.add(entry.target as HTMLElement);
       if (frame.current !== undefined) return;
       const owner = latest.current.port;
       const ref = owner.acceptedView.peek();
@@ -129,8 +187,9 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       });
     });
     resize.current = observer;
+    for (const node of mounted.current.keys()) observer.observe(node);
     return () => {
-      mounted = false;
+      observing = false;
       cancelFrame();
       observer.disconnect();
       observed.current.clear();
@@ -144,6 +203,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     const box = el.current;
     const observer = resize.current;
     if (!box || !observer) return;
+    if (active.current) { if (!observed.current.has(box)) { observer.observe(box); observed.current.add(box); } return; }
     const next = new Set<Element>([box, ...box.querySelectorAll("[data-o], .vspace, .live-tail, .conversation-items > *")]);
     for (const node of observed.current) if (!next.has(node)) observer.unobserve(node);
     for (const node of next) if (!observed.current.has(node)) observer.observe(node);
@@ -203,7 +263,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       onScroll={(e) => {
         if (win.status.peek() === "loading") return;
         const b = e.currentTarget;
-        win.view(b.scrollTop - rowOrigin(b), b.clientHeight, intent.current.scroll(b));
+        tellWindow(b, rowOrigin(b), intent.current.scroll(b));
         const context = accepted ? readingContext(accepted, () => win.acceptedView.isCurrent(accepted)) : undefined;
         readingAnchor.current.capture(b, context);
       }}
@@ -216,7 +276,8 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       ) : null}
       {win.total > 0 ? <div class="muted caption">{t("convo.total", { n: win.total })}</div> : null}
       {range && range.first > 0 ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
-      <div class="vspace">{renderAcceptedView ? renderAcceptedView(accepted!) : parts}</div>
+      <div class="vspace">{renderAcceptedView ? <conversationViewport.Provider value={viewport}>{renderAcceptedView(accepted!)}</conversationViewport.Provider> : parts}</div>
+      {renderAcceptedView ? <div ref={fallbackProbe} class="conversation-height-token" aria-hidden="true" /> : null}
       {range && range.last + 1 < win.total ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
       {statusLine}
       {win.total === 0 && status === "loading" ? <LoadingRows label={t("convo.loading")} rows={5} /> : null}

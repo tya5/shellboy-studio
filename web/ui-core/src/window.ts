@@ -1,5 +1,5 @@
 import type { HistoryWindowInput } from '../../data/src/history-input';
-import { captureConversationInput, conversationIdentityEqual, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
+import { captureConversationInput, conversationIdentityEqual, savedAttemptIds, captureCurrentWork, type ConversationIdentity, type ConversationSemanticInput } from "./conversation-input";
 import type { ThreadHandle } from "../../data/src/store";
 import { projectHistoryWindowItems } from './conversation-items';
 import type { HistoryBody } from "../../data/src/protocol";
@@ -267,7 +267,7 @@ export class ConversationWindow {
   }
 
   /** Tell what shows. Cancels reads that left the margin now; requests what entered it after a pause. */
-  view(scrollTop: number, clientHeight: number, atBottom: boolean): void {
+  view(scrollTop: number, clientHeight: number, atBottom: boolean, viewport?: { ordinal: number; totalHeight: number; range?: WindowAcceptedSnapshot["range"] }): void {
     if (this.disposed) return;
     if (this.jumping) {
       if (atBottom) return; // keep the old reading position until the target window arrives
@@ -281,8 +281,8 @@ export class ConversationWindow {
     this.viewTop = scrollTop;
     this.viewHeight = clientHeight;
     if (this.total === 0) return;
-    this.lastAnchor = this.anchor(scrollTop);
-    const now = this.renderRange();
+    this.lastAnchor = viewport && this.isLoaded(viewport.ordinal) ? { ordinal: viewport.ordinal, nodeId: this.itemAt(viewport.ordinal)?.node_id, offset: 0 } : this.anchor(scrollTop);
+    const now = viewport?.range ?? this.renderRange();
     if (!now) return;
     // Pixels cannot navigate across an unloaded gap. Run switches are explicit and bump version.
     // The scroller's end is the path's end: trailing nodes that draw nothing have no height to reach.
@@ -296,7 +296,7 @@ export class ConversationWindow {
     for (let b = Math.floor(r.first / WINDOW_NODES); b <= Math.floor(r.last / WINDOW_NODES); b++) wanted.add(b);
     // Adjacent windows are prefetched before the reader reaches an unloaded edge.
     const nearStart = r.first > 0 && scrollTop <= clientHeight;
-    const nearEnd = r.last + 1 < this.total && scrollTop + 2 * clientHeight >= this.totalHeight();
+    const nearEnd = r.last + 1 < this.total && scrollTop + 2 * clientHeight >= (viewport?.totalHeight ?? this.totalHeight());
     if (nearStart && !follow) wanted.add(Math.floor((r.first - 1) / WINDOW_NODES));
     else if (nearEnd) wanted.add(Math.floor((r.last + 1) / WINDOW_NODES));
     const sameWanted = wanted.size === this.wanted.size && [...wanted].every((b) => this.wanted.has(b));
@@ -422,22 +422,27 @@ export class ConversationWindow {
   }
 
   /** A semantic source change uses the same constructor as an arriving history cut. */
-  refreshConversationInput(ref: WindowAcceptedSnapshot): boolean {
+  refreshConversationInput(ref: WindowAcceptedSnapshot, identify?: () => ConversationIdentity): boolean {
     const capability=this.acceptedView.currentCapability;
     if(this.disposed||!this.acceptedView.isCurrent(ref))return false;
-    const input=this.captureConversationInput(ref);
     const prior=this.acceptedInput;
+    if (prior?.ref === ref && identify && conversationIdentityEqual(prior.identity, identify())) return true;
+    const input=this.captureConversationInput(ref);
     if(prior?.ref===ref&&conversationIdentityEqual(prior.identity,input.identity))return true;
     const generation=this.nextAcceptedGeneration();
-    const staged=this.prepareCaptured({...ref,generation},capability,input,'bump');
+    const old = prior?.ref === ref ? prior.identity : undefined;
+    const retained = old && old.rows === input.identity.rows && old.revision === input.identity.revision
+      && old.scope === input.identity.scope && old.current === input.identity.current && old.work.source === input.identity.work.source
+      ? ref.displayPlan : undefined;
+    const staged=this.prepareCaptured({...ref,generation},capability,input,'bump',false,retained);
     if(!staged||!this.acceptedView.isCurrent(ref)||capability!==this.acceptedView.currentCapability)return false;
     return staged ? this.commitAccepted(staged) : false;
   }
 
-  private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, input: ConversationSemanticInput, reason: PublicationReason, replacement = false): PreparedConversationPublication | undefined {
+  private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, input: ConversationSemanticInput, reason: PublicationReason, replacement = false, retained?: ConversationDisplayPlan): PreparedConversationPublication | undefined {
     const displayPlan = composeConversationDisplayPlan({ generation: snapshot.generation, revision: snapshot.revision,
       capability, rows: snapshot.rows, canonicalProjection: input.canonicalProjection, projection: input.projection,
-      userDecision: input.decision, scope: input.scope, coverage: input.coverage }).plan;
+      userDecision: input.decision, scope: input.scope, coverage: input.coverage }, retained).plan;
     const binding = this.currentThread;
     if (!binding) return undefined;
     const lease = {
@@ -460,7 +465,7 @@ export class ConversationWindow {
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
-        const savedAttempts = new Set<string>(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
+        const savedAttempts = savedAttemptIds(snapshot.rows);
         if (replacement) binding.handle.commitHandoffReplacement();
         afterCommit();
         this.conversationCommit?.(snapshot);

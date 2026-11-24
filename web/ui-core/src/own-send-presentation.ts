@@ -13,11 +13,17 @@ export interface OwnSendLocalRegion {
   readonly tailRows: readonly PositionedOwnSendRow[];
 }
 
-export function ownSendPresentation(scope: string, cohort: readonly PendingOwnMessage[], rows: readonly HistoryItem[], live: readonly OwnSendTailRow[], projection?: SavedItemProjection): OwnSendLocalRegion {
+interface PlacementIndex {
+  readonly saved: ReadonlySet<string | undefined>;
+  readonly positions: ReadonlyMap<string | undefined, number>;
+  readonly last: number;
+  readonly afterByPosition: readonly number[];
+}
+const byProjection = new WeakMap<SavedItemProjection, WeakMap<readonly HistoryItem[], PlacementIndex>>();
+function placementIndex(rows: readonly HistoryItem[], projection?: SavedItemProjection): PlacementIndex {
+  const cached = projection && byProjection.get(projection)?.get(rows);
+  if (cached) return cached;
   const saved = new Set(rows.flatMap(row => row.kind === "user" ? [row.provenance?.client_operation_id] : []));
-  const retire = cohort.filter(row => row.plainMessageSend === true && saved.has(row.operationId));
-  const retiring = new Set(retire.map(row => row.operationId));
-  const localRows = cohort.filter(row => !retiring.has(row.operationId));
   // Only saved path membership qualifies an input boundary; ordinals are not path positions.
   const positions = new Map(rows.map((row, i) => [row.node_id, i]));
   const items = new Map(projection?.items.map(item => [item.key, item]));
@@ -33,11 +39,28 @@ export function ownSendPresentation(scope: string, cohort: readonly PendingOwnMe
     });
     return nodes.length ? Math.max(...nodes) : undefined;
   });
+  const afterByPosition = new Array<number>(rows.length).fill(-1);
+  emitted.forEach((position, index) => { if (position !== undefined) afterByPosition[position] = index; });
+  for (let i = 1; i < afterByPosition.length; i++) afterByPosition[i] = Math.max(afterByPosition[i - 1]!, afterByPosition[i]!);
+  const result = { saved, positions, last, afterByPosition };
+  if (projection) {
+    let byRows = byProjection.get(projection);
+    if (!byRows) { byRows = new WeakMap(); byProjection.set(projection, byRows); }
+    byRows.set(rows, result);
+  }
+  return result;
+}
+
+export function ownSendPresentation(scope: string, cohort: readonly PendingOwnMessage[], rows: readonly HistoryItem[], live: readonly OwnSendTailRow[], projection?: SavedItemProjection): OwnSendLocalRegion {
+  const { saved, positions, last, afterByPosition } = placementIndex(rows, projection);
+  const retire = cohort.filter(row => row.plainMessageSend === true && saved.has(row.operationId));
+  const retiring = new Set(retire.map(row => row.operationId));
+  const localRows = cohort.filter(row => !retiring.has(row.operationId));
   const placed = live.flatMap(row => {
     if (row.kind !== "live") return [];
     const boundary = row.inputThroughNodeId;
     const position = boundary === null ? -1 : boundary === undefined ? undefined : positions.get(boundary);
-    const afterSequenceIndex = position === undefined ? last : emitted.reduce<number>((anchor, node, i) => node !== undefined && node <= position ? i : anchor, -1);
+    const afterSequenceIndex = position === undefined ? last : afterByPosition[position] ?? -1;
     const afterOwn = position !== undefined || boundary == null ? -1 : localRows.findIndex(own => own.messageId === boundary);
     return [{ row: { ...row, afterSequenceIndex }, afterOwn }];
   });

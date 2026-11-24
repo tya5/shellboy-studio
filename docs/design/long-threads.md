@@ -29,8 +29,12 @@ Thread's Conversation is open, and disposes it on leaving or switching Thread.
 Open reads the last 100 nodes, filling aligned 100-slot buckets. Retain at most
 16 buckets (1,600 nodes), evicting the edge opposite the active direction. Draw
 one contiguous loaded run only; disconnected retained islands cannot add scroll
-height. Unknown row heights contribute zero. Actual measurements and projected
-hidden rows are stored only while the corresponding bucket is retained. The
+height. Mount the viewport plus fixed overscan. Only loaded, unmeasured rows
+have provisional height, derived from the mean of rows measured in this view;
+use the `--size-touch` fallback token only before any measurements. Replace a
+provisional height by its keyed measurement as soon as the row mounts, keeping
+the exact reading anchor in place. Unloaded history contributes zero height.
+Store measurements only for the retained run. The
 full total is never a storage capacity or a pixel offset.
 
 Near a detached loaded edge, request the adjacent bucket after 80 ms without

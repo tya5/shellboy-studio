@@ -2,7 +2,7 @@ import { readThreadSettings } from "./resources";
 import { readCompactionEvent, type CompactionEvent } from "./analytics";
 import { seedUnreadMarkers, isUnread, markUnread, type UnreadRecord } from "./sidebar-unread";
 import { AttachmentSection } from "./attachment-section";
-import { captureConversationInput, createConversationIdentity, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
+import { captureConversationInput, createConversationIdentity, captureCurrentWork, EMPTY_WORK_SOURCE, type ConversationSemanticInput } from "./conversation-input";
 import {localSendAdmission} from "./local-send-admission";
 import { ownSendPresentation } from "./own-send-presentation";
 import { SenderTitles } from "./sender-titles";
@@ -113,6 +113,16 @@ export interface AppModelOptions {
   offsetMinutes?: () => number;
   /** Writes the route to wherever the location lives (the fragment in a browser). */
   onNavigate?: (hash: string) => void;
+}
+
+const assistantsByRows = new WeakMap<readonly import("../../data/src").HistoryItem[], import("../../data/src").HistoryItem | undefined>();
+function latestAssistant(rows: readonly import("../../data/src").HistoryItem[]) {
+  if (!assistantsByRows.has(rows)) {
+    let candidate: import("../../data/src").HistoryItem | undefined;
+    for (let i = rows.length - 1; i >= 0 && !candidate; i--) if (rows[i]?.kind === "assistant_response") candidate = rows[i];
+    assistantsByRows.set(rows, candidate);
+  }
+  return assistantsByRows.get(rows);
 }
 
 export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<string, V> {
@@ -852,26 +862,33 @@ export class AppModel {
     if (tickChanged && this.longReader.peek() === reader && this.handle.peek() === h) reader.changed();
   }
 
-  private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) {
+  private windowConversationSource(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) {
     const scope = this.ownMutationScope();
     const capability = reader.acceptedView.currentCapability;
     const lifetime = handle.liveEpoch();
     const workValue = handle.work.value.value;
-    const capturedWork = captureCurrentWork(handle.threadId, workValue);
     const current = () => this.handle.peek() === handle
       && handle.liveEpoch() === lifetime && reader.acceptedView.currentCapability === capability;
     const records = replacement ?? handle.handoff.value;
-    const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId, records, work: capturedWork, current });
     const accepted = this.acceptedOwnMessages.value;
     const pending = this.pendingOwnMessage.value;
     const sendCurrent = this.ownSendCurrent;
     const eligible = !!sendCurrent?.();
+    const identity = createConversationIdentity({ scope, rows: snapshot.rows, revision: snapshot.revision, records,
+      work: { source: workValue ?? EMPTY_WORK_SOURCE, facts: [] }, current: current() },
+      { accepted, pending, sendCurrent, eligible });
+    return { scope, workValue, current, records, accepted, pending, eligible, identity };
+  }
+
+  private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) {
+    const { scope, workValue, current, records, accepted, pending, eligible, identity } = this.windowConversationSource(reader, handle, snapshot, replacement);
+    const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId, records,
+      work: captureCurrentWork(handle.threadId, workValue), current });
     const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
     const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId ? pending : undefined;
     const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
     const decision = ownSendPresentation(scope, current() ? localRows : [], snapshot.rows, input.liveTail ?? [], input.projection);
-    return { ...input, identity: createConversationIdentity(input.identity, { accepted: accepted as object, pending: pending as object | undefined,
-      sendCurrent, eligible }),
+    return { ...input, identity: { ...identity, work: input.identity.work },
       decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: decision },
       isCurrent: () => current() && (replacement !== undefined || handle.handoff.peek() === input.identity.records)
         && (handle.work.peek().value === input.identity.work.source || handle.work.peek().value === undefined && input.identity.work.facts.length === 0) };
@@ -880,10 +897,10 @@ export class AppModel {
   private composeWindowDisplay(reader: ConversationWindow, handle: ThreadHandle): void {
     const snapshot = reader.acceptedView.peek();
     if (!reader.acceptedView.isCurrent(snapshot)) return;
-    reader.refreshConversationInput(snapshot);
+    reader.refreshConversationInput(snapshot, () => this.windowConversationSource(reader, handle, snapshot).identity);
     const currentSnapshot = reader.acceptedView.peek();
     const tailComplete = currentSnapshot.total === 0 || currentSnapshot.range?.last === currentSnapshot.total - 1;
-    const candidate = tailComplete ? [...currentSnapshot.rows].reverse().find((node) => node.kind === "assistant_response") : undefined;
+    const candidate = tailComplete ? latestAssistant(currentSnapshot.rows) : undefined;
     if (candidate?.node_id !== undefined && (candidate.items === null || candidate.items?.some((item) => item.kind === "text" && item.text_complete === false))) {
       const kind = candidate.items === null ? "deferred" as const : "typed" as const;
       if (candidate.items === null) return;

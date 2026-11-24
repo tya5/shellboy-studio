@@ -84,7 +84,8 @@ export interface ReadingContext {
   readonly revision: string | number | undefined;
   readonly epoch: number;
   readonly capability: object;
-  readonly nodes: readonly string[];
+  readonly nodes: readonly string[] | ReadonlySet<string>;
+  readonly groupMember?: (group: string, item: string, node: string, firstOnly: boolean) => boolean;
   readonly assistantAttempts?: ReadonlyMap<string, string>;
   readonly previewText?: (key: string, attempt: string) => string | undefined;
   readonly savedText?: (key: string, node: string) => string | undefined;
@@ -94,10 +95,16 @@ export interface ReadingContext {
 export const localRowSelector = '[data-anchor-local], [data-live-overlay], .live-tail';
 
 /** Resolve visible geometry from canonical identity, never retain item DOM nodes. */
-function canonicalElement(item: HTMLElement): HTMLElement | undefined {
+function canonicalElement(item: HTMLElement, context: ReadingContext): HTMLElement | undefined {
   if (item.closest(`${localRowSelector}, [hidden]`)) return;
   const group = item.closest<HTMLElement>('[data-work-group]');
   if (!group) return item;
+  if (group.hasAttribute('data-windowed-work')) {
+    if (group.tagName !== 'DETAILS' || !item.dataset.itemKey || !item.dataset.node || !group.dataset.workGroup) return;
+    const firstOnly = !group.hasAttribute('open');
+    if (!context.groupMember?.(group.dataset.workGroup, item.dataset.itemKey, item.dataset.node, firstOnly)) return;
+    return firstOnly === item.hasAttribute('data-windowed-heading') ? item : undefined;
+  }
   let members: unknown;
   try { members = JSON.parse(group.dataset.headingMemberKeys ?? 'null'); } catch { return; }
   if (!Array.isArray(members) || members.some(key => typeof key !== 'string') || new Set(members).size !== members.length || !members.includes(item.dataset.itemKey)) return;
@@ -109,7 +116,7 @@ function canonicalElement(item: HTMLElement): HTMLElement | undefined {
 
 function readingItems(box: HTMLElement, context: ReadingContext): HTMLElement[] | undefined {
   const items = [...box.querySelectorAll<HTMLElement>('.conversation-items [data-item-key]')];
-  const nodes = new Set(context.nodes), keys = new Set<string>();
+  const nodes = "has" in context.nodes ? context.nodes : new Set(context.nodes), keys = new Set<string>();
   for (const item of items) {
     if (item.closest(localRowSelector)) continue;
     const { itemKey, node } = item.dataset;
@@ -157,7 +164,7 @@ export class ReadingAnchor {
       for (const item of items) {
         const key = item.dataset.itemKey!;
         const attempt = item.dataset.handoffAttempt;
-        const element = attempt && !item.closest('[hidden]') ? item : canonicalElement(item);
+        const element = attempt && !item.closest('[hidden]') ? item : canonicalElement(item, context);
         if (!element) continue;
         const rect = element.getBoundingClientRect();
         if (rect.height <= 0 || rect.bottom <= top) continue;
@@ -196,7 +203,7 @@ export class ReadingAnchor {
       if (canonical.kind === 'saved') {
         // Requalify the exact key and node in the current rendered cut, regardless of revision.
         const match = savedItems.find(item => item.dataset.itemKey === canonical.key && item.dataset.node === canonical.node);
-        if (match) element = canonicalElement(match);
+        if (match) element = canonicalElement(match, context);
         if (canonical.paragraph) {
           if (!match || element !== match) return;
           const { text, offset } = canonical.paragraph;
@@ -218,7 +225,7 @@ export class ReadingAnchor {
           const node = provenNodes[0]![0];
           // Text confirms continuity only after exact owner provenance proves succession.
           const matches = savedItems.filter(item => item.dataset.node === node && context.savedText?.(item.dataset.itemKey!, node) !== undefined);
-          if (matches.length === 1 && context.savedText?.(matches[0]!.dataset.itemKey!, node)?.startsWith(canonical.text)) element = canonicalElement(matches[0]!);
+          if (matches.length === 1 && context.savedText?.(matches[0]!.dataset.itemKey!, node)?.startsWith(canonical.text)) element = canonicalElement(matches[0]!, context);
         }
       }
       if (!element) return;

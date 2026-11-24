@@ -1,3 +1,4 @@
+import type { HistoryItem } from "../../data/src/protocol";
 import { ownSendPresentation, type OwnSendTailRow } from "./own-send-presentation";
 import type { HandoffRecord } from '../../data/src/handoff';
 import type { WorkItem } from '../../data/src/protocol';
@@ -14,7 +15,7 @@ export interface CanonicalHistoryInput {
 function canonicalHistoryInput(snapshot:WindowAcceptedSnapshot,scope:string):CanonicalHistoryInput{
  const held=snapshot.canonicalInput;
  const sameRows=held&&held.revision===snapshot.revision&&held.rows.length===snapshot.rows.length
-   &&held.rows.every((row,index)=>row===snapshot.rows[index]);
+   &&(held.rows === snapshot.rows || held.rows.every((row,index)=>row===snapshot.rows[index]));
  if(held&&sameRows&&held.scope===scope)return held;
  return Object.freeze({rows:snapshot.rows,revision:snapshot.revision,scope,
   projection:projectHistoryWindowItems({revision:snapshot.revision??0,nodes:snapshot.rows,keyScope:Object.freeze([scope])}).projection});
@@ -34,9 +35,16 @@ export const EMPTY_WORK_DESCRIPTOR: WorkCaptureDescriptor = Object.freeze({ sour
 export function captureWork(source: object, facts: readonly NormalizedSavedItem[]): WorkCaptureDescriptor {
   return Object.freeze({ source, facts: Object.freeze([...facts]) });
 }
+const workBySource = new WeakMap<object, { scope: string; descriptor: WorkCaptureDescriptor }>();
 export function captureCurrentWork(scope: string, value: { readonly items: readonly WorkItem[] } | undefined): WorkCaptureDescriptor {
-  return value ? captureWork(value, normalizeLiveWorkFacts({ scope, items: value.items })) : EMPTY_WORK_DESCRIPTOR;
+  if (!value) return EMPTY_WORK_DESCRIPTOR;
+  const previous = workBySource.get(value);
+  if (previous?.scope === scope) return previous.descriptor;
+  const descriptor = captureWork(value, normalizeLiveWorkFacts({ scope, items: value.items }));
+  workBySource.set(value, { scope, descriptor });
+  return descriptor;
 }
+
 export interface OwnSendIdentity {
   readonly accepted: object; readonly pending: object | undefined;
   readonly sendCurrent: (() => boolean) | undefined; readonly eligible: boolean;
@@ -66,6 +74,38 @@ export interface ConversationSemanticInput {
   readonly coverage: ConversationDisplayPlan['coverage'];
 }
 
+const attemptsByRows = new WeakMap<readonly HistoryItem[], ReadonlySet<string>>();
+export function savedAttemptIds(rows: readonly HistoryItem[]): ReadonlySet<string> {
+  let held = attemptsByRows.get(rows);
+  if (!held) {
+    held = new Set(rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
+    attemptsByRows.set(rows, held);
+  }
+  return held;
+}
+
+const projectionsWithWork = new WeakMap<SavedItemProjection, WeakMap<object, SavedItemProjection>>();
+function projectWithWork(canonical: SavedItemProjection, input: WorkCaptureDescriptor, work: readonly NormalizedSavedItem[]): SavedItemProjection {
+  let bySource = projectionsWithWork.get(canonical);
+  if (!bySource) { bySource = new WeakMap(); projectionsWithWork.set(canonical, bySource); }
+  let held = bySource.get(input.source);
+  if (!held) {
+    held = projectSavedItems([...canonical.items.map(item => item.source), ...work]);
+    bySource.set(input.source, held);
+  }
+  return held;
+}
+
+const projectedHandoffs = new WeakMap<HandoffRecord, { scope: string; rows: readonly OwnSendTailRow[] }>();
+function projectHandoff(scope: string, record: HandoffRecord): readonly OwnSendTailRow[] {
+  const cached = projectedHandoffs.get(record);
+  if (cached?.scope === scope) return cached.rows;
+  const live = scopeIssuedWorkFacts(projectOwnedHandoffFacts(scope, [record]), [scope])!;
+  const rows = projectSavedItems(live).items.map(item => ({ kind: "live" as const, inputThroughNodeId: record.inputThroughNodeId, item, ...(record.outputLimit ? { outputLimit: record.outputLimit } : {}) }));
+  projectedHandoffs.set(record, { scope, rows });
+  return rows;
+}
+
 /** One current semantic recipe for both candidate publication and fixture admission. */
 export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input: {
   readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[];
@@ -75,13 +115,9 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const current = input.current();
   const tailComplete = snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1;
   const work = current && tailComplete ? scopeIssuedWorkFacts(input.work.facts, [input.scope]) : undefined;
-  const acceptedAttempts = new Set<string | undefined>(snapshot.rows.flatMap(row => row.kind === "assistant_response" ? [row.provenance?.attempt_id] : []));
-  const liveTail: OwnSendTailRow[] = work ? input.records.flatMap(record => {
-    if (acceptedAttempts.has(record.attemptId)) return [];
-    const live = scopeIssuedWorkFacts(projectOwnedHandoffFacts(input.scope, [record]), [input.scope])!;
-    return projectSavedItems(live).items.map(item => ({ kind: "live" as const, inputThroughNodeId: record.inputThroughNodeId, item, ...(record.outputLimit ? { outputLimit: record.outputLimit } : {}) }));
-  }) : [];
-  const projected = work?.length ? projectSavedItems([...canonicalProjection.items.map(item => item.source), ...work]) : canonicalProjection;
+  const acceptedAttempts = savedAttemptIds(snapshot.rows);
+  const liveTail = work ? input.records.flatMap(record => acceptedAttempts.has(record.attemptId) ? [] : projectHandoff(input.scope, record)) : [];
+  const projected = work?.length ? projectWithWork(canonicalProjection, input.work, work) : canonicalProjection;
   return { liveTail, isCurrent: input.current,
     identity: createConversationIdentity({ rows: snapshot.rows, revision: snapshot.revision, records: input.records,
       work: input.work, scope: input.scope, current }),

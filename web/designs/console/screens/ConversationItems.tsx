@@ -1,4 +1,7 @@
-import { Fragment, type ComponentChildren } from 'preact';
+import { useContext, useLayoutEffect, useMemo, useRef } from "preact/hooks";
+import { conversationViewport } from "./conversationViewport";
+import { ViewportGeometry } from "./viewportGeometry";
+import { Fragment, type ComponentChildren, type RefCallback } from 'preact';
 import { canonicalSavedItemKey } from "../../../ui-core/src/conversation-items";
 import type { PendingOwnMessage } from '../../../ui-core/src/model';
 import type { PositionedOwnSendRow } from '../../../ui-core/src/own-send-presentation';
@@ -18,6 +21,10 @@ export interface ConversationToolSummary {
   memberKeys: readonly string[];
   executionIds: readonly string[];
 }
+export interface WindowedWorkGroup {
+  readonly headingVisible: boolean;
+  readonly headingRef?: RefCallback<HTMLElement>;
+}
 export interface ConversationWorkGroup {
   readonly categoryCounts?: Readonly<Record<"Tools" | "Reasoning" | "Notifications" | "Problems", number>>;
   key: string;
@@ -32,9 +39,11 @@ export interface ConversationWorkGroup {
 }
 
 interface Props {
+  ordinalByNode?: ReadonlyMap<string, number>;
   sequence?: readonly ({ kind: "conversation"; itemKey: string } | { kind: "work"; groupKey: string })[];
   workGroups?: readonly ConversationWorkGroup[];
-  renderWorkGroup?: (group: ConversationWorkGroup, children: ComponentChildren) => ComponentChildren;
+  renderWorkGroup?: (group: ConversationWorkGroup, children: ComponentChildren, window?: WindowedWorkGroup) => ComponentChildren;
+  groupOpen?: ReadonlyMap<string, boolean>;
   items: readonly ConversationItem[];
   toolSummaries?: readonly ConversationToolSummary[];
   partitionUnknownKeys?: readonly string[];
@@ -48,13 +57,14 @@ interface Props {
 }
 
 /** Projection owns classification and membership; presentation only follows its sequence. */
-export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing, isItemAbsent, isItemHidden, sequence, workGroups, renderWorkGroup,localRegion }: Props) {
+export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing, isItemAbsent, isItemHidden, sequence, workGroups, renderWorkGroup,localRegion, ordinalByNode, groupOpen }: Props) {
   const normalizedSequence = sequence ?? (localRegion ? items.map(item => ({ kind: "conversation" as const, itemKey: item.key })) : undefined);
   const normalizedGroups = workGroups ?? [];
   const normalizedRenderWorkGroup = renderWorkGroup ?? ((_group: ConversationWorkGroup, children: ComponentChildren) => children);
-  if (normalizedSequence) {
+  const viewport = useContext(conversationViewport);
+  const indexed = useMemo(() => {
+    if (!normalizedSequence) return undefined;
     const byKey = new Map(items.map(item => [item.key, item]));
-    const groups = new Map(normalizedGroups.map(group => [group.key, group]));
     const containerAt = (position: number): string | undefined => {
       const entry = normalizedSequence[position];
       if (!entry || entry.kind !== "conversation") return undefined;
@@ -80,8 +90,69 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     }
     const spans = new Map<number, { end: number; container: string }>();
     for (const [container, span] of candidates) if (!invalidContainers.has(container)) spans.set(span.start, { end: span.end, container });
-    const row = (key: string, children: ComponentChildren, item?: ConversationItem, work = false, hosted = false) =>
-      <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item?.key} data-key={item?.key} data-node={item?.source.nodeId} data-work-item-key={work ? item?.key : undefined}
+    const units: { key: string; start: number; end: number; container?: string }[] = [];
+    for (let index = 0; index < normalizedSequence.length; index++) {
+      const entry = normalizedSequence[index]!;
+      const span = spans.get(index);
+      units.push({ key: span ? `answer:${span.container}` : entry.kind === "work" ? `work:${entry.groupKey}` : `item:${entry.itemKey}`,
+        start: index, end: span?.end ?? index, container: span?.container ?? (entry.kind === "conversation" && !invalidContainers.has(containerAt(index) ?? "") ? containerAt(index) : undefined) });
+      if (span) index = span.end;
+    }
+    return { byKey, units };
+  }, [normalizedSequence, items]);
+  const grouped = useMemo(() => new Map(normalizedGroups.map(group => [group.key, group])), [workGroups]);
+  type Slot = { key: string; position: number; item?: ConversationItem; group?: ConversationWorkGroup; container?: string; heading?: boolean; last?: boolean };
+  const slots = useMemo(() => {
+    if (!indexed || !normalizedSequence) return [];
+    const result: Slot[] = [];
+    for (const unit of indexed.units) for (let position = unit.start; position <= unit.end; position++) {
+      const entry = normalizedSequence[position]!;
+      const container = unit.key.startsWith("answer:") ? unit.container : undefined;
+      if (entry.kind === "conversation") {
+        const item = indexed.byKey.get(entry.itemKey);
+        result.push({ key: `item:${entry.itemKey}`, position, item, container, last: true });
+        continue;
+      }
+      const group = grouped.get(entry.groupKey);
+      if (!group) continue;
+      const open = groupOpen?.get(group.key) ?? false;
+      const first = indexed.byKey.get(group.firstMemberKey);
+      result.push({ key: `heading:${group.key}`, position, group, container, item: first, heading: true, last: !open });
+      if (open) group.memberKeys.forEach((key, index) => result.push({ key: `item:${key}`, item: indexed.byKey.get(key), position, group, container, last: index === group.memberKeys.length - 1 }));
+    }
+    return result;
+  }, [indexed, normalizedSequence, grouped, groupOpen]);
+  const prior = useRef<ViewportGeometry>();
+  const committedGeometry = useRef<ViewportGeometry>();
+  const geometry = useMemo(() => {
+    if (!viewport || !indexed || Math.max(items.length, ordinalByNode?.size ?? 0) <= 8) return undefined;
+    const next = new ViewportGeometry(slots.map(slot => slot.key), viewport.fallback, prior.current);
+    prior.current = next;
+    return next;
+  }, [slots, viewport?.fallback]);
+  const ordinals = useMemo(() => slots.map(slot => ordinalByNode?.get(slot.item?.source.nodeId ?? "")), [slots, ordinalByNode]);
+  const mount = viewport?.mount;
+  const mountedRefs = useMemo(() => new Map(slots.map(slot => [slot.key, (node: HTMLElement | null) => mount?.(slot.key, node)])), [slots, mount]);
+  const before = useRef<HTMLDivElement>(null), after = useRef<HTMLDivElement>(null);
+  let top = viewport?.top ?? 0;
+  const old = committedGeometry.current;
+  if (geometry && old && old !== geometry && !viewport?.following) {
+    const from = old.locate(top), key = old.keys[from];
+    const to = key === undefined ? undefined : geometry.indexOf(key);
+    if (to !== undefined) top += geometry.offset(to) - old.offset(from);
+  }
+  const [first, end] = geometry && viewport ? geometry.range(top, viewport.height, viewport.following) : [0, indexed?.units.length ?? 0];
+  useLayoutEffect(() => {
+    committedGeometry.current = geometry;
+    if (!geometry || !viewport) return;
+    viewport.commit({ geometry, first, end, ordinals, before: before.current, after: after.current });
+    return () => viewport.commit(undefined);
+  });
+  if (normalizedSequence) {
+    const { byKey, units } = indexed!;
+    const groups = grouped;
+    const row = (key: string, children: ComponentChildren, item?: ConversationItem, work = false, hosted = false, measure?: RefCallback<HTMLElement>) =>
+      <div ref={measure} data-viewport-key={measure ? `item:${key}` : undefined} class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item?.key} data-key={item?.key} data-node={item?.source.nodeId} data-work-item-key={work ? item?.key : undefined}
         data-anchor-local={!item?.source.nodeId ? "" : undefined}
         data-handoff-attempt={item?.source.kind === "text" && "domain" in item.source && item.source.domain === "live" && item.source.namespace === "handoff" ? item.source.attemptId : undefined}
         data-own-presentation={item ? undefined : ""} data-own-placement={item ? undefined : "suffix"}>{children}</div>;
@@ -116,24 +187,60 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       }
       return [...output, ...renderLocalAt(position)];
     };
-    const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren }[] = [];
-    for (let index = 0; index < normalizedSequence.length; index++) {
-      const entry = normalizedSequence[index]!;
-      const span = spans.get(index);
-      if (span) {
+    const renderUnit = (unit: typeof units[number]): ComponentChildren => {
+      if (unit.key.startsWith("answer:")) {
         const children: ComponentChildren[] = [];
-        for (let position = index; position <= span.end; position++) children.push(...renderPosition(position, span.container));
-        rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${span.container}`} data-answer-container={span.container}>{children}</div> });
-        index = span.end;
-        continue;
+        for (let position = unit.start; position <= unit.end; position++) children.push(...renderPosition(position, unit.container));
+        return <div class="conversation-row answer-container" key={unit.key} data-answer-container={unit.container}>{children}</div>;
       }
-      const unsafe = entry.kind === "conversation" && !!containerAt(index) && invalidContainers.has(containerAt(index)!);
-      const nodes = renderPosition(index, unsafe ? undefined : containerAt(index));
-      if (nodes.length) rendered.push({ entry, view: nodes });
+      return renderPosition(unit.start, unit.container);
+    };
+    if (!geometry || !viewport) {
+      const views = [...renderLocalAt(-1), ...units.map(renderUnit), trailing];
+      return <div class="conversation-items">{views.flatMap(view => Array.isArray(view) ? view : [view])}</div>;
     }
-    const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
-    const rowViews = directChildren([...renderLocalAt(-1), ...rendered.map(row => row.view), trailing]);
-    return <div class="conversation-items">{rowViews}</div>;
+    const visible: ComponentChildren[] = [];
+    const measure = (key: string) => mountedRefs.get(key);
+    const renderSlice = (from: number, to: number): ComponentChildren[] => {
+      const slice: ComponentChildren[] = [];
+      for (let i = from; i < to;) {
+        const slot = slots[i++]!;
+        if (slot.group) {
+          const group = slot.group;
+          const children: ComponentChildren[] = [];
+          const groupRow = (member: Slot) => {
+            if (!member.heading && member.item) children.push(row(member.item.key, renderItem(member.item), member.item, true, false, measure(member.key)));
+          };
+          groupRow(slot);
+          let last = slot.last;
+          while (i < to && slots[i]?.group === group) { const member = slots[i++]!; groupRow(member); last = member.last; }
+          slice.push(<div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, children, { headingVisible: !!slot.heading, headingRef: slot.heading ? measure(slot.key) : undefined })}</div>);
+          if (last) slice.push(...renderLocalAt(slot.position));
+          continue;
+        }
+        const item = slot.item;
+        if (item && !isItemAbsent?.(item)) slice.push(<Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{row(item.key, renderItem(item), item, false, !!slot.container, measure(slot.key))}</Fragment>);
+        slice.push(...renderLocalAt(slot.position));
+      }
+      return slice;
+    };
+    for (let index = first; index < end;) {
+      const container = slots[index]?.container;
+      let next = index + 1;
+      while (next < end && (container ? slots[next]?.container === container : !slots[next]?.container)) next++;
+      const slice = renderSlice(index, next);
+      if (container) visible.push(<div class="conversation-row answer-container" key={`answer:${container}`} data-answer-container={container}>{slice}</div>);
+      else visible.push(...slice);
+      index = next;
+    }
+    return <div class="conversation-items">
+      <div ref={before} aria-hidden="true" />
+      {first === 0 ? renderLocalAt(-1) : null}
+      {visible}
+      <div ref={after} aria-hidden="true" />
+      {end === slots.length ? trailing : null}
+    </div>;
+
   }
   const rows: ComponentChildren[] = [];
   for (const item of items) {
