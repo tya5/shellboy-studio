@@ -280,7 +280,7 @@ async fn run(args: Args) -> Result<(), String> {
     };
     let auth = if args.no_auth {
         eprintln!(
-            "shellboy-studio: WARNING: authentication disabled (--no-auth). Any tailnet peer or local process that can reach this bridge can read conversations and send messages, start or stop runs, or delete threads without signing in. Use only local or explicitly trusted private access; NEVER expose it to the public internet (for example via Tailscale Funnel). A VPN is not user authentication. Proxy/VPN exposure is NOT detected or guaranteed."
+            "shellboy-studio: WARNING: authentication disabled (--no-auth). Anyone who can reach this bridge, including other devices on your VPN and local processes, can read conversations and send messages, start or stop runs, or delete threads without signing in. Use only local or explicitly trusted private access; NEVER expose it to the public internet (for example via Tailscale Funnel). A VPN is not user authentication. Proxy/VPN exposure is NOT detected or guaranteed."
         );
         Auth::disabled()
     } else {
