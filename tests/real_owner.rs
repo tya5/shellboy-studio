@@ -2085,7 +2085,7 @@ async fn intervention_provider(
                             .to_owned(),
                     )
                 } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-                    let args = json!({"command":if cfg!(windows){"[Console]::In.ReadLine() | ForEach-Object { Write-Output ('READ:' + $_) }; Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
+                    let args = json!({"command":if cfg!(windows){"[Console]::Out.Write('READ:' + [Console]::In.ReadToEnd()); Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
                     let call = json!({"type":"function_call","id":"intervention-shell","call_id":"intervention-shell","name":"shell","arguments":args.to_string()});
                     let reply = json!({"id":"intervention-tool","status":"completed","output":[call],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
                     ("application/json".to_owned(), reply.to_string())
@@ -2162,7 +2162,12 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
         .await;
     assert_eq!(wrote["status"], "complete", "{wrote}");
     assert!(wrote["bytes_written"].as_u64().unwrap() > 0, "{wrote}");
-    let output = tokio::time::timeout(Duration::from_secs(10), async {
+    let eof = client
+        .ok("shell.eof", json!({"execution_id":execution}), None)
+        .await;
+    assert_eq!(eof["accepted"], true, "{eof}");
+    let mut last_output = Value::Null;
+    let output = match tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let read = client
                 .ok(
@@ -2171,7 +2176,8 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
                     None,
                 )
                 .await;
-            if read["text"]
+            last_output = read["text"].clone();
+            if last_output
                 .as_str()
                 .is_some_and(|text| text.contains("READ:studio-input"))
             {
@@ -2181,7 +2187,22 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
         }
     })
     .await
-    .expect("shell output must confirm the input reached the child process");
+    {
+        Ok(output) => output,
+        Err(error) => {
+            let listed = client
+                .ok("shell.list", json!({"thread_id":thread,"limit":20}), None)
+                .await;
+            let shell_state = listed["items"]
+                .as_array()
+                .and_then(|items| items.iter().find(|item| item["execution_id"] == execution))
+                .cloned()
+                .unwrap_or(Value::Null);
+            panic!(
+                "shell output must confirm the input reached the child process: {error}; captured output={last_output}; shell state={shell_state}"
+            );
+        }
+    };
     assert!(
         output["text"]
             .as_str()
@@ -2189,10 +2210,6 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
             .contains("READ:studio-input"),
         "{output}"
     );
-    let eof = client
-        .ok("shell.eof", json!({"execution_id":execution}), None)
-        .await;
-    assert_eq!(eof["accepted"], true, "{eof}");
     let closed = client
         .wait_shell_fact(owner.as_ref(), &thread, &execution, |item| {
             item["stdin_open"] == false
