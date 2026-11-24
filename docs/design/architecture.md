@@ -179,6 +179,11 @@ Bridge → browser:
 | `resync` | — | re-read everything shown |
 | `owner` | `connected` / `unreachable` / `restarted` | owner reachability |
 
+Bridge decode failures use fixed messages without quoting the input or decoder text.
+A frame error includes only the decoder's numeric line and column when available.
+A call decoded from a JSON value identifies the `command`/`args` section, not an
+input-derived field path. The bridge does not redact or rewrite owner responses.
+
 Hints and live text are not queued per message (live text is one bounded copy shared by tabs, at most 16 attempts of 64 KiB, with a sent position per watched Thread per tab; a tab that falls behind the bound is told with `gap`). A list tab holds at most `hub::MAX_PENDING_THREADS` (256) changed IDs plus flags, then one `resync`; watched-only tabs hold only IDs they watch, up to `hub::MAX_WATCH` (64). A slow tab gets one larger `changed` frame, never a growing backlog. This mirrors the owner's own coalescing and needs no extra buffer.
 
 **Mutations and lost replies.** The frontend generates `operation_id` (UUID v4)

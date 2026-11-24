@@ -341,6 +341,40 @@ async fn proxies_calls_enforces_the_allowlist_and_marks_web_sends() {
 }
 
 #[tokio::test]
+async fn rejected_requests_do_not_echo_input_in_decode_errors() {
+    let (owner, _tx) = mock(list_handler);
+    let (addr, state, cancel) = start(owner.clone(), false).await;
+    let cookie = login(addr, &state).await;
+    let mut ws = connect(addr, Some(&cookie), Some(&format!("http://{addr}")))
+        .await
+        .unwrap();
+    next_t(&mut ws, "hello").await;
+
+    let secret = "synthetic-bridge-secret";
+    put(&mut ws, json!({"t":secret,"command":"config.set"})).await;
+    let frame_error = next_t(&mut ws, "error").await;
+    assert_eq!(frame_error["error"]["code"], "invalid_frame");
+    assert!(!frame_error.to_string().contains(secret));
+
+    for command in ["config.set", "credentials.set", "connection.test"] {
+        put(
+            &mut ws,
+            json!({"t":"call","id":1,"command":command,"args":secret}),
+        )
+        .await;
+        let reply = next_t(&mut ws, "result").await;
+        assert_eq!(
+            reply["error"],
+            json!({
+                "code":"invalid_call", "message":"cannot decode call (command or args)"
+            })
+        );
+    }
+    assert!(owner.other_calls.lock().unwrap().is_empty());
+    cancel.cancel();
+}
+
+#[tokio::test]
 async fn per_session_bound_replies_busy_and_cancel_frees_a_call() {
     use shellboy_studio::ws_limits::{SESSION_IN_FLIGHT, SESSION_QUEUE};
     let (owner, _tx) = mock(list_handler);
