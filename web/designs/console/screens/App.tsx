@@ -1,4 +1,4 @@
-import type { ListFilter } from "../../../data/src";
+import { normalizeFilter, type ListFilter } from "../../../data/src/store";
 import { sidebarGroups } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
@@ -164,11 +164,10 @@ export function App({ context }: { context: DesignContext }) {
   const canTag = model.data.capabilities.value.includes(CAPABILITY_TAGS);
   const canCwd = model.data.capabilities.value.includes(CAPABILITY_CWDS);
   const changeFilters = (change: ListFilter) => {
-    const other = change.query !== undefined || change.cwd !== undefined || change.tags !== undefined;
-    if (change.awaiting) setQuery("");
-    setFilters(value => ({ ...value, ...change,
-      ...(change.awaiting ? { query: undefined, cwd: undefined, tags: undefined } : other ? { awaiting: undefined } : {}),
-    }));
+    const current = { ...filters, query: query.trim() || undefined };
+    const next = normalizeFilter(current, { ...current, ...change });
+    setFilters(next);
+    setQuery(next.query ?? "");
   };
   const activeFilters = [
     ...(filters.awaiting ? [{ key: "awaiting", label: t("sidebar.needsYou"), remove: () => changeFilters({ awaiting: undefined }) }] : []),
@@ -241,7 +240,12 @@ export function App({ context }: { context: DesignContext }) {
           </div>
           <div class="side-search">
             <div class="side-controls">
-              <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => { setQuery(e.currentTarget.value); if (e.currentTarget.value) setFilters(value => ({ ...value, awaiting: undefined })); }} />
+              <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => {
+                const value = e.currentTarget.value;
+                const current = { ...filters, query: query.trim() || undefined };
+                setFilters(normalizeFilter(current, { ...current, query: value.trim() || undefined }));
+                setQuery(value);
+              }} />
               {route.view !== "monitor" ? <FilterMenu key={formatRoute(route)} label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} data={model.data} canTag={canTag} canCwd={canCwd} /> : null}
               <Button icon label={t("threads.new")} title={t("threads.new")} onClick={() => { setDrawer(false); void model.createThread(); }}><Icon role="thread.create" size="small" /></Button>
             </div>
@@ -259,7 +263,7 @@ export function App({ context }: { context: DesignContext }) {
             const next = event.relatedTarget;
             if (!(next instanceof Node) || !sidebarListRef.current?.contains(next)) lastSidebarFocus.current = undefined;
           }}>
-            {model.data.pinnedError.value ? <Notice tone="bad">{t("common.readError", { message: model.data.pinnedError.value.message })}</Notice> : null}
+            {!appliedFilter?.awaiting && model.data.pinnedError.value ? <div class="side-search"><Notice tone="bad">{t("common.readError", { message: model.data.pinnedError.value.message })}</Notice></div> : null}
             <div class="tree">
               {groups.map(group => {
                 const label = t(group.key === "pins" ? "sidebar.pinned" : "sidebar.all");

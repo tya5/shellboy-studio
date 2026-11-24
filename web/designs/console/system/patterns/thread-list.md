@@ -1,11 +1,12 @@
 # Sidebar Thread list
 
-Read the sidebar list and its next page with `order: created`; keep the owner's
-creation order within sibling sets, including Pinned. Ancestry determines
+The pinned set is read completely; Studio orders its rows by `created_at`.
+Filtered All results stay in Core's updated order. Ancestry determines
 placement, not client arrival time. Status changes only the mark and child
-summary, never row order. Show Pinned first when the owner's pinned set is not
-empty. That set is its own read, `thread.list` with the `pin` tag (and the
-current filter), walked in pages of 50 up to 1000 rows into the same row cache
+summary, never row order. Needs-you excludes query, tags and directory filters;
+while it is active, hide Pinned rather than filtering it client-side. Show Pinned
+first when the owner's pinned set is not empty. That set is its own read, `thread.list` with the `pin` tag (and the
+applicable filters), walked in pages of 50 up to 1000 rows into the same row cache
 as the list, so a pin older than the loaded pages still shows. Tags on loaded
 rows do not decide membership. Each pin is a top-level row with all its listed
 descendants, even under another pinned root. All is always present and shows

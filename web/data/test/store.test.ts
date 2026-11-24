@@ -662,6 +662,10 @@ describe("pinned set", () => {
     await settle(t, db);
     expect(data.pinnedThreadIds.value).toEqual(["p"]);
     expect(data.pinnedError.value?.message).toBe("refused constrained list");
+    data.setListFilter({ awaiting: "human" });
+    await settle(t, db);
+    expect(data.pinnedError.value).toBeUndefined();
+    expect(data.pinnedThreadIds.value).toEqual(["p"]);
     data.stop();
   });
 });
