@@ -15,6 +15,6 @@
 
 Use a 15 px box. Static ring shapes use a 1.5 px non-scaling stroke. The running arc uses 2.4 in its 24-unit viewBox so the gap survives and the stroke resolves to 1.5 px in the 15 px box. The intentionally compact ChildrenChip keeps its existing sizing and row controls. Running shells share the same arc; shell completed and failed remain distinct; the conversation footer uses the same textless idle mark.
 
-The running arc transform targets an inline-grid HTML wrapper rather than the SVG root (Studio #144; compositor-friendly transform pattern from the web.dev Animations guide). The wrapper is sized to the existing icon token so placement and row geometry do not change; `will-change` is present only while running and only under no-preference motion.
+The running arc transform targets the existing same-size `.mark` HTML span rather than the SVG root (Studio #144; compositor-friendly transform pattern from the web.dev Animations guide). It adds no wrapper or layout box; `will-change` is present only while running and only under no-preference motion.
 
 Styles: style.css in this directory

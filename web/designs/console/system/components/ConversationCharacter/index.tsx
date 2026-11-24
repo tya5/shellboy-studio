@@ -11,7 +11,7 @@ export function ConversationCharacter({ name, running }: { name: string; running
   return name === 'thinking'
     ? <span class="character-status character-thinking" data-running={running ? '' : undefined} aria-hidden="true">
         <svg viewBox="0 0 390 390" dangerouslySetInnerHTML={{ __html: thinkingFace }} />
-        {thinkingDots.map((dot, index) => <span key={index} class="character-dot-motion" data-running={running ? "" : undefined}><svg class="character-dot" viewBox="0 0 390 390" dangerouslySetInnerHTML={{ __html: dot }} /></span>)}
+        {thinkingDots.map((dot, index) => <span key={index} class="character-dot-motion"><svg class="character-dot" viewBox="0 0 390 390" dangerouslySetInnerHTML={{ __html: dot }} /></span>)}
       </span>
     : <img class="character-status" src={characterAssets[name]} alt="" />;
 }

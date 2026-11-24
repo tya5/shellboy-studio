@@ -4,9 +4,9 @@
 .character-dot-motion{display:grid;place-items:center}
 .character-dot-motion>svg{width:100%;height:100%}
 @media (prefers-reduced-motion:no-preference){
-  .character-thinking[data-running]>.character-dot-motion[data-running]{will-change:transform;animation:character-hop 1.2s ease-in-out infinite}
-  .character-thinking[data-running]>.character-dot-motion:nth-of-type(3){animation-delay:.15s}
-  .character-thinking[data-running]>.character-dot-motion:nth-of-type(4){animation-delay:.30s}
+  .character-thinking[data-running]>.character-dot-motion{will-change:transform;animation:character-hop 1.2s ease-in-out infinite}
+  .character-thinking[data-running]>.character-dot-motion:nth-child(3){animation-delay:.15s}
+  .character-thinking[data-running]>.character-dot-motion:nth-child(4){animation-delay:.30s}
 }
 @keyframes character-hop{
   0%,50%,100%{transform:translateY(0)}
