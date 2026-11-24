@@ -111,7 +111,8 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
   const shells = model.shells.value;
   const savedSteps = useMemo(() => collectExecutionSteps(nodes ?? [], shells), [nodes, shells]);
   const savedExecutionIds = useMemo(() => new Set(savedSteps.map(step => step.executionId)), [savedSteps]);
-  const allSteps = [...savedSteps, ...model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []).filter(step => !savedExecutionIds.has(step.executionId))];
+  const liveSteps = useMemo(() => model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []).filter(step => !savedExecutionIds.has(step.executionId)), [model.conversation.value, savedExecutionIds]);
+  const allSteps = useMemo(() => [...savedSteps, ...liveSteps], [savedSteps, liveSteps]);
   const [openRecords, setOpenRecords] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [openMemberships, setOpenMemberships] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const membershipKey = (summary: { key?: string; memberKeys: readonly string[] }) => summary.key ?? JSON.stringify(summary.memberKeys);
@@ -138,10 +139,13 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
       itemsByGroup.set(key, members);
       for (const item of members) groupForItem.set(item.key, group);
     }
-    const stepsByExecution = new Map(allSteps.map(step => [step.executionId, step]));
-    const stepsByGroup = new Map(groups.map(group => [membershipKey(group), group.executionIds.map(id => stepsByExecution.get(id)).filter((step): step is Step => step !== undefined)]));
     const defaults = new Map(groups.map(group => [membershipKey(group), (itemsByGroup.get(membershipKey(group)) ?? []).some(item => item.classification?.openPolicy !== "closed")]));
-    return { groupForItem, itemsByGroup, stepsByGroup, defaults };
+    return { groupForItem, itemsByGroup, defaults };
+  }, [projection]);
+  const stepsByGroup = useMemo(() => {
+    const groups = projection.workGroups ?? projection.toolSummaries;
+    const stepsByExecution = new Map(allSteps.map(step => [step.executionId, step]));
+    return new Map(groups.map(group => [membershipKey(group), group.executionIds.map(id => stepsByExecution.get(id)).filter((step): step is Step => step !== undefined)]));
   }, [projection, allSteps]);
   const opened = (summary: { memberKeys: readonly string[] }) => openMemberships.get(membershipKey(summary)) ?? groupProjection.defaults.get(membershipKey(summary)) ?? false;
   const hidden = (item: ConversationItem) => {
@@ -154,7 +158,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
   }, [projection, openMemberships]);
   const renderWorkGroup = (group: ConversationWorkGroup, children: ComponentChildren, window?: import("./ConversationItems").WindowedWorkGroup) => {
     const groupKey = membershipKey(group);
-    const steps = groupProjection.stepsByGroup.get(groupKey) ?? [];
+    const steps = stepsByGroup.get(groupKey) ?? [];
     const active = steps.some(step => step.status === "running");
     const failures = steps.filter(step => step.status === "failed").length;
     const unknown = group.unknownToolCount > 0 || steps.length !== group.executionIds.length;
@@ -190,7 +194,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
   if (!planCurrent) return <section role="status" data-display-plan-unavailable="">{t("work.textUnavailable")}</section>;
   return <ConversationItems {...projection} ordinalByNode={ordinalByNode} groupOpen={groupOpen} items={planItems} sequence={displayPlan!.sequence} workGroups={displayPlan!.workGroups} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={renderWorkGroup} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const groupKey = membershipKey(summary);
-    const steps = groupProjection.stepsByGroup.get(groupKey) ?? [];
+    const steps = stepsByGroup.get(groupKey) ?? [];
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
     const members = groupProjection.itemsByGroup.get(groupKey) ?? [];
@@ -220,7 +224,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
             {record ? <LiveRecordChrome model={model} record={record} /> : null}
           </Message></div>;
         }
-        if (!node) return <Markdown text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} live={item.source.kind === "text" && item.source.textComplete === false} />;
+        if (!node) return <Markdown text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} live={!item.source.nodeId && item.source.kind === "text" && item.source.textComplete === false} />;
         const nodeAuthoritative = allProseNode(node);
         const firstProseItem = node.items?.find(item => item.kind === "text")?.item_identity;
         const body = nodeAuthoritative ? model.bodyState(node.node_id!) : undefined;

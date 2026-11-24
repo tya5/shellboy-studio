@@ -81,7 +81,7 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 | Compaction events | 50 rows for one Thread | New Thread or period |
 | Awaiting you questions | 128 (`HUMAN_RETAINED`), 16 per press of Show more; past it, the screen says so | Owner change; a hint re-reads the loaded pages |
 | Resource reads | One value each | Replaced on Refresh |
-| Markdown | No cache: a `useMemo` per mounted message, so bounded by the window | Unmount |
+| Markdown | Saved content uses the normal renderer; explicitly live text retains stable blocks and reparses only its uncertain tail | Unmount |
 | Apps | 64 tabs and listeners; 20 errors per tab | On close; listeners with the bridge |
 | Ticks | `now` each second, read by running steps; lists use `coarseNow`, every 30 s, so a tick doesn't re-render a list | — |
 
@@ -181,8 +181,7 @@ the client rule of `events-and-external-protocol` 2.5 (Shellboy):
   tick (`DataOptions.schedule`; the app passes `requestAnimationFrame`, tests a manual queue), so a
   burst of frames is one render. The Conversation does not read the preview: `LiveMessage` does, so
   text re-renders only that message (a smoke test counts Conversation renders).
-- The preview shows the message as Markdown while it is written, like a saved one. Cost of that for
-  a very long reply was not measured.
+- The preview shows Markdown while it is written. Only the live handoff or overlay row uses incremental stable-block rendering; saved messages render whole. Uncertain paragraph/list/reference boundaries remain in the tail.
 
 ## Decisions
 

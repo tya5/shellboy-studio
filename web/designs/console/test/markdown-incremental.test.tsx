@@ -8,18 +8,19 @@ import { createRenderer } from "../system/components/Message/markdown";
 const props = { copyLabel: "Copy", copiedLabel: "Copied" };
 const normalize = (node: Node): unknown => node.nodeType === Node.TEXT_NODE ? node.textContent : node instanceof Element ? [node.tagName, [...node.attributes].map(a => [a.name, a.value]).sort((left, right) => (left[0] ?? "").localeCompare(right[0] ?? "")), [...node.childNodes].map(normalize)] : null;
 
-it("mounts Markdown with a counting renderer and reparses only a live tail", async () => {
+it("mounts Markdown and parses each stable live block once", async () => {
   const host = document.createElement("div");
-  let parsed = 0;
+  const parsed: string[] = [];
   const base = createRenderer("Copy");
-  const renderer = (_copy: string) => (text: string) => { parsed++; return base(text); };
+  const renderer = (_copy: string) => (text: string) => { parsed.push(text); return base(text); };
   try {
-    await act(async () => render(<Markdown {...props} text="First paragraph\n\nSecond" live renderer={renderer} />, host));
-    expect(parsed).toBe(1);
-    await act(async () => render(<Markdown {...props} text="First paragraph\n\nSecond grows" live renderer={renderer} />, host));
-    expect(parsed).toBe(2);
-    await act(async () => render(<Markdown {...props} text="First paragraph\n\nSecond grows\n\nThird" live renderer={renderer} />, host));
-    expect(parsed).toBe(3);
+    await act(async () => render(<Markdown {...props} text={"First paragraph\n\nSecond"} live renderer={renderer} />, host));
+    expect(parsed).toEqual(["First paragraph", "Second"]);
+    await act(async () => render(<Markdown {...props} text={"First paragraph\n\nSecond grows"} live renderer={renderer} />, host));
+    expect(parsed).toEqual(["First paragraph", "Second", "Second grows"]);
+    await act(async () => render(<Markdown {...props} text={"First paragraph\n\nSecond grows\n\nThird"} live renderer={renderer} />, host));
+    expect(parsed).toEqual(["First paragraph", "Second", "Second grows", "Second grows", "Third"]);
+    expect(parsed.filter(text => text === "First paragraph")).toHaveLength(1);
   } finally { render(null, host); }
 });
 
