@@ -26,8 +26,8 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_eighteen_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 18);
+fn exact_protocol_twenty_two_has_directional_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 22);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
@@ -52,14 +52,31 @@ fn exact_protocol_eighteen_has_directional_reply_counts() {
 fn human_overflow_is_a_lower_bound_and_default_exact_is_preserved() {
     let mut value = json!({"thread_id":"t","title":"synthetic","cwd":"/","state":"idle","activity":"idle",
         "latest_run_stop_reason":null,"updated_at":"2026-01-01T00:00:00Z","excerpt":"",
-        "awaiting_named_count":16});
+        "awaiting_named_count":16,"awaiting_replies":16,"awaiting_thread_count":3,"excerpt_complete":true});
     let exact: ThreadSummary = serde_json::from_value(value.clone()).unwrap();
     assert!(exact.awaiting_named_count_exact);
+    assert!(exact.awaiting_replies_exact);
+    assert!(exact.awaiting_thread_count_exact);
+    assert!(exact.excerpt_complete);
+    value["awaiting_replies_exact"] = json!(false);
+    value["awaiting_thread_count_exact"] = json!(false);
+    value["excerpt_complete"] = json!(false);
+    let lower: ThreadSummary = serde_json::from_value(value.clone()).unwrap();
+    assert!(!lower.awaiting_replies_exact);
+    assert!(!lower.awaiting_thread_count_exact);
+    assert!(!lower.excerpt_complete);
     value["awaiting_named_count"] = json!(17);
     value["awaiting_named_count_exact"] = json!(false);
     let lower: ThreadSummary = serde_json::from_value(value).unwrap();
     assert!(!lower.awaiting_named_count_exact);
     assert_eq!(lower.awaiting_named_count, 17);
+    let history: shellboy::protocol::HistorySnippet = serde_json::from_value(json!({
+        "node_id":"n", "kind":"assistant_response", "excerpt":"excerpt", "provenance":{"kind":"assistant_response","created_at":"2026-01-01T00:00:00Z","source_revision":1},
+        "context":{"state":"completed"}, "selection":{"thread_id":"t","ordinal":0,"current_cwd":"/"},
+        "execution_count":4,"execution_count_exact":false,"executions_truncated":true
+    })).unwrap();
+    assert_eq!(history.execution_count, 4);
+    assert_eq!(history.execution_count_exact, Some(false));
 }
 
 #[test]

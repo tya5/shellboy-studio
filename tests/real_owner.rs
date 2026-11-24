@@ -168,6 +168,20 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
     let data = root.join("data");
     let _serve = start_owner(&bin, &root, &data);
     let owner = IpcOwner::new(data);
+    let created = owner
+        .call(
+            shellboy::protocol::Command::ThreadCreate(
+                serde_json::from_value(json!({"cwd": root.to_string_lossy()})).unwrap(),
+            ),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let created_id = serde_json::to_value(created).unwrap()["result"]["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
     let cases = [
         // The pinned band applies the selected query and adds its pin tag.
@@ -258,11 +272,49 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
     ];
     for args in cases {
         assert_eq!(args.order, ThreadListOrder::Updated);
-        owner
+        let response = owner
             .call(shellboy::protocol::Command::ThreadList(args), None, None)
             .await
             .expect("the exact pinned Core accepts a constrained membership read");
+        let value = serde_json::to_value(response).unwrap();
+        if let Some(row) = value["result"]["items"]
+            .as_array()
+            .and_then(|rows| rows.first())
+        {
+            assert_ne!(row["awaiting_replies_exact"], false, "{row}");
+            assert_ne!(row["awaiting_thread_count_exact"], false, "{row}");
+            assert_ne!(
+                row["excerpt_complete"], false,
+                "fresh empty Thread has a complete excerpt scan: {row}"
+            );
+        }
     }
+
+    let exactness = owner
+        .call(
+            shellboy::protocol::Command::ThreadList(ThreadListArgs {
+                archived: shellboy::protocol::ArchivedFilter::Include,
+                limit: 50,
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let exactness = serde_json::to_value(exactness).unwrap();
+    let row = exactness["result"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["thread_id"] == created_id)
+        .expect("created thread summary");
+    assert_ne!(row["awaiting_replies_exact"], false, "{row}");
+    assert_ne!(row["awaiting_thread_count_exact"], false, "{row}");
+    assert_ne!(
+        row["excerpt_complete"], false,
+        "fresh empty Thread excerpt is complete: {row}"
+    );
 
     owner
         .call(
@@ -1152,6 +1204,14 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
         )
         .await;
     assert!(window.is_object(), "{window}");
+    if let Some(snippet) = window["items"].as_array().and_then(|items| items.first()) {
+        assert!(snippet["execution_count"].is_u64(), "{snippet}");
+        assert!(
+            snippet["execution_count_exact"].is_boolean()
+                || snippet.get("execution_count_exact").is_none(),
+            "{snippet}"
+        );
+    }
 
     let read = c.ok("config.get", json!({}), None).await;
     assert!(

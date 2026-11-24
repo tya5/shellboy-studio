@@ -216,6 +216,12 @@ export interface ThreadSummary {
   awaiting_named_count_exact?: boolean;
   awaiting_named_oldest_at?: string | null;
   awaiting_thread_count?: number;
+  /** False means the total count was truncated to a lower bound. */
+  awaiting_replies_exact?: boolean;
+  /** False means the Thread-directed count was truncated to a lower bound. */
+  awaiting_thread_count_exact?: boolean;
+  /** False means the excerpt scan stopped before older selected history. */
+  excerpt_complete?: boolean;
   [extra: string]: unknown;
 }
 
@@ -386,6 +392,8 @@ export interface HistoryItem {
   kind?: string;
   excerpt?: string;
   execution_count?: number;
+  /** Absent on legacy owners; false means execution_count is a lower bound. */
+  execution_count_exact?: boolean;
   executions?: HistoryExecution[];
   provenance?: { client_operation_id?: string; attempt_id?: AttemptId; notification?: NotificationDescriptor; message?: MessageProvenance; created_at?: string; output_limit?: SavedOutputLimit; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
   /** Position on the Thread's selected path; `ordinal` ascends. */
