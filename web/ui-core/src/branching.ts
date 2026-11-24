@@ -1,6 +1,7 @@
 // Branch family reads and mutations are explicit and never optimistic.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, type ArchiveResult, type Operations, type OpError, type Outcome } from "../../data/src";
+import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type Outcome, type ThreadSummary } from "../../data/src";
+import { LaneReader } from "./branch-lanes";
 import { branchLayout, readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
 import { CAPABILITY_TAGS, checkTag, TAGS_PER_CALL, type TagInvalid } from "./org";
 
@@ -182,6 +183,7 @@ export class Branches {
       const previewCancel = this.previewCancel;
       this.previewCancel = new Cancel();
       const finishExcerpts = this.excerptBatch.detach();
+      this.lanes.reset(true);
       batch(() => {
         // Install invalid projection before callbacks, notify only after old cancellation.
         this.state.value = { threadId: this.state.peek().threadId, loading: false, family: undefined, error: undefined };
@@ -269,7 +271,12 @@ export class Branches {
   private again = false;
   private cancel = new Cancel();
 
-  constructor(private readonly ops: Operations, private readonly owner: () => string | undefined = () => "synthetic-owner", private readonly view?: () => string | undefined) {}
+  /** Bounded excerpt reads behind the lane rows; kept by node ID across family re-reads. */
+  readonly lanes: LaneReader;
+
+  constructor(private readonly ops: Operations, private readonly owner: () => string | undefined = () => "synthetic-owner", private readonly view?: () => string | undefined, historyWindow: () => boolean = () => true) {
+    this.lanes = new LaneReader(ops, historyWindow);
+  }
   private currentView(): string | undefined { return this.view ? this.view() : this.state.peek().threadId; }
 
   async excerpts(item: import("./branches").BranchItem, cancel: Cancel): Promise<{ split?: string; request?: string; answer?: string }> {
@@ -302,6 +309,7 @@ export class Branches {
     const marker = this.previewCancel = new Cancel();
     const familyCancel = this.cancel;
     this.excerptBatch.reset();
+    this.lanes.reset(false);
     familyCancel.cancel();
     previous.cancel();
     if (marker !== this.previewCancel || generation !== this.familyGeneration) return;
@@ -346,6 +354,7 @@ export class Branches {
           if (!this.again) this.state.value = { ...this.state.peek(), loading: false };
           continue;
         }
+        if (out.ok) this.lanes.familyChanged(out.family);
         // A failed re-read keeps the last family, marked with the error.
         this.state.value = out.ok ? { threadId: id, loading: this.again, family: out.family, error: undefined } : { ...this.state.peek(), loading: this.again, error: out.error };
       } while (this.again);
@@ -371,6 +380,16 @@ export class Branches {
     batch(() => {
       this.rewind.value = { kind: "idle" };
       this.fork.value = { kind: "idle" };
+    });
+  }
+
+  /** A message on the graph was chosen (or the choice cleared). A preview of another point must not be confirmable. */
+  choose(next: BranchTarget | undefined): void {
+    const cur = this.target.peek();
+    if (next ? sameTarget(cur, next) : cur === undefined) return;
+    batch(() => {
+      this.target.value = next ? { ...next } : undefined;
+      this.clearActions();
     });
   }
 

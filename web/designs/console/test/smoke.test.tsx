@@ -1037,82 +1037,49 @@ describe("Analytics", () => {
 });
 
 describe("Branches", () => {
-  const open = async () => {
-    const made = await fixtureModel({ route: "branches" });
+  const visibleOnly = (seen: (el: Element) => boolean) => vi.stubGlobal("IntersectionObserver", class {
+    constructor(private readonly callback: IntersectionObserverCallback) {}
+    observe(target: Element) { this.callback([{ isIntersecting: seen(target), target } as unknown as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+    unobserve() {}
+    disconnect() {}
+  });
+  const open = async (capabilities?: string[]) => {
+    const made = await fixtureModel({ route: "branches", capabilities });
     const el = draw(made.model);
     await act(async () => {
       await settle(made.t, made.db);
     });
     return { ...made, el };
   };
-  it("loads split, first-request, and latest-answer excerpts for visible branch rows only", async () => {
-    let read = 0;
-    const observers: Array<{ callback: IntersectionObserverCallback; target?: Element }> = [];
-    vi.stubGlobal("IntersectionObserver", class {
-      constructor(callback: IntersectionObserverCallback) { observers.push({ callback }); }
-      observe(target: Element) { observers.at(-1)!.target = target; }
-      disconnect() {}
-      unobserve() {}
-    });
-    const made = await fixtureModel({ route: "branches", configure(db) {
-      db.history["fork-a"] = [
-        { node_id: "split-node", kind: "assistant_response", excerpt: "Split answer", selection: { ordinal: 100 } },
-        { node_id: "request-node", kind: "user", excerpt: "First request after split", selection: { ordinal: 101 } },
-        { node_id: "latest-node", kind: "assistant_response", excerpt: "Latest model answer\nsecond line\nthird line", selection: { ordinal: 102 } },
-      ];
-      const answer = db.answer.bind(db);
-      db.answer = call => {
-        if (call.command !== "history.window") return answer(call);
-        read++;
-        const args = call.args as { thread_id: string; node_id?: string };
-        return { ok: true, result: { thread_id: args.thread_id, revision: 1, total: 103, items: args.node_id
-          ? [{ node_id: "n100", kind: "assistant_response", excerpt: "Split answer", selection: { ordinal: 100 } }, { node_id: "n101", kind: "user", excerpt: "First request after split", selection: { ordinal: 101 } }]
-          : [{ node_id: "n102", kind: "assistant_response", excerpt: "Latest model answer\nsecond line\nthird line", selection: { ordinal: 102 } }] } };
-      };
-    } });
-    const el = draw(made.model);
+  it("reads excerpts only for rows on screen, with bounded single-node windows", async () => {
+    visibleOnly((el) => (el as HTMLElement).dataset.key?.startsWith("fork-a|") ?? false);
+    const made = await open();
     await act(async () => { await settle(made.t, made.db); });
-    const row = [...el.querySelectorAll<HTMLElement>(".blist .brow")].find(item => item.querySelector("a")?.textContent === "last asked")!;
-    await act(async () => { await flushPromises(); });
-    expect(row.querySelector(".loadrows span.loadrow")).toBeTruthy();
-    expect(row.querySelector(".loadrows")?.getAttribute("aria-hidden")).toBe("true");
-    await act(async () => {
-      // Happy DOM does not perform layout; explicitly witness the mounted visible row.
-      const observer = observers.find(candidate => candidate.target === row.querySelector(".brow-text"))!;
-      observer.callback([{ isIntersecting: true, target: row } as unknown as IntersectionObserverEntry], {} as IntersectionObserver);
-    });
-    expect(row.querySelector('.loadrows[role="status"]')).not.toBeNull();
-    expect(row.querySelectorAll(".loadrows span.loadrow")).toHaveLength(1);
-    await act(async () => { await settle(made.t, made.db); });
-    expect(read).toBe(2);
-    expect(made.t.calls("history.window")).toHaveLength(2);
-    expect(new Set(made.t.calls("history.window").map(call => (call.args as { thread_id: string }).thread_id))).toEqual(new Set(["fork-a"]));
-    expect(row.textContent).toContain("Split answer");
-    expect(row.textContent).toContain("First request after split");
-    expect(row.textContent).toContain("Latest model answer");
-    expect(row.textContent).not.toContain("third line");
-    expect(row.querySelector(".loadrows")).toBeNull();
-    made.model.dispose();
+    // Lane rows read 160-character excerpts; the comparison's own reads (256) are separate and bounded by it.
+    const reads = made.t.calls("history.window").map((call) => call.args as Record<string, unknown>).filter((a) => a.excerpt_chars === 160);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(new Set(reads.map((a) => a.thread_id))).toEqual(new Set(["fork-a"]));
+    for (const a of reads) expect(Number(a.before) + Number(a.after) + 1).toBeLessThanOrEqual(2);
   });
   it("does not issue history-window reads or invent excerpts without the capability", async () => {
-    const made = await fixtureModel({ route: "branches", capabilities: [] });
-    const el = draw(made.model);
-    await act(async () => { await settle(made.t, made.db); });
-    expect(made.t.calls("history.window")).toHaveLength(0);
-    expect(el.querySelectorAll(".branch-excerpts")).toHaveLength(0);
+    visibleOnly(() => true);
+    const { el, t } = await open([]);
+    expect(t.calls("history.window")).toHaveLength(0);
+    expect(el.querySelector(".lanes-pending")).toBeNull();
+    expect(text(el.querySelector('[data-key="lead|split|n100"]')!)).toContain("Request step 21");
   });
-  it("draws lanes, points and tips from the read, with real counts and a list for phones", async () => {
+  it("draws one lane per Thread with real counts, splits where the read reports them, and a detached lane apart", async () => {
     const { el } = await open();
-    expect(el.querySelectorAll(".bgraph-svg .bg-tip").length).toBe(4);
-    expect(el.querySelectorAll(".bgraph-svg .bg-point").length).toBe(2);
-    expect(el.querySelector(".branch-graph-edge[aria-current=true]")).toBeTruthy();
-    expect(text(el.querySelector(".bgraph-svg")!)).toContain("101 nodes");
-    expect(text(el)).toContain("no shared prefix");
+    const keys = [...el.querySelectorAll<HTMLElement>(".branch-lanes > li")].map((li) => li.dataset.key);
+    expect(keys).toEqual(["lead|start", "lead|run|1", "lead|split|n100", "lead|run|101", "lead|split|n150", "lead|run|151", "lead|tip", "fork-a|start", "fork-a|run|102", "fork-a|tip", "rewound|start", "rewound|run|152", "rewound|tip", "plain-child|start", "plain-child|run|1", "plain-child|tip"]);
+    expect(text(el.querySelector('[data-key="lead|run|1"]')!)).toContain("99 more messages (#2–#100)");
+    expect(text(el.querySelector('[data-key="lead|split|n100"]')!)).toContain("splits off here");
+    expect(el.querySelectorAll(".branch-line")).toHaveLength(4);
+    expect(text(el)).toContain("Started apart from Improve history search");
+    expect(el.querySelector('[data-key="plain-child|start"] .lanes-above')).toBeNull();
+    expect(el.querySelector('[data-key="fork-a|start"] .lanes-above')).not.toBeNull();
     expect(text(el)).not.toContain("thread.branches");
-    expect(text(el)).not.toContain("Not shown");
     expect(text(el)).not.toContain("Source:");
-    expect(el.querySelectorAll(".blist .brow").length).toBe(4);
-    expect(el.querySelector(".bgraph-svg .bg-tip")!.getAttribute("href")).toBe("#/conversation/lead");
   });
   it("does not show developer-only missing data notes", async () => {
     const { el } = await open();
@@ -1124,36 +1091,36 @@ describe("Branches", () => {
     await act(async () => {
       model.applyRoute({ view: "branches", threadId: "lead", nodeId: "n100" });
     });
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".branches-side button")].find((b) => text(b) === name);
-    expect(button("Rewind")).toBeUndefined();
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".lanes-actions button")].find((b) => text(b).startsWith(name));
+    expect(el.querySelector(".branch-lanes > li[data-selected]")?.getAttribute("data-key")).toBe("lead|split|n100");
+    expect(button("Rewind Improve history search to here")).toBeDefined();
     await act(async () => {
-      button("Preview rewind")!.click();
+      button("Rewind Improve history search to here")!.click();
       await settle(t, db);
     });
-    const panel = text(el.querySelector(".branches-side")!);
-    expect(panel).toContain("125 nodes, 25 turns");
+    const panel = text(el.querySelector(".lanes-actions")!);
+    expect(panel).toContain("125 messages (25 turns) leave Improve history search");
     expect(panel).toContain("cargo test");
     expect(panel).toContain("shell effects aren't undone");
-    expect(panel).toContain("stays as a new child Thread");
-    expect(panel).toContain("Nothing has changed");
+    expect(panel).toContain("A new branch keeps them");
     expect(t.calls("thread.rewind")).toHaveLength(1);
     await act(async () => {
-      button("Rewind")!.click();
+      button("Rewind Improve history search")!.click();
       await settle(t, db);
     });
     expect(t.calls("thread.rewind")).toHaveLength(2);
-    expect(el.querySelector(".branches-side a.nav-link")!.getAttribute("href")).toBe("#/conversation/kept");
+    expect(el.querySelector(".lanes-actions a.nav-link")!.getAttribute("href")).toBe("#/conversation/kept");
   });
-  it("Fork from here reports the new Thread with a link", async () => {
+  it("New branch from here reports the new Thread with a link", async () => {
     const { el, model, t, db } = await open();
     await act(async () => {
       model.applyRoute({ view: "branches", threadId: "lead", nodeId: "n100" });
     });
     await act(async () => {
-      [...el.querySelectorAll<HTMLButtonElement>(".branches-side button")].find((b) => text(b) === "Fork from here")!.click();
+      [...el.querySelectorAll<HTMLButtonElement>(".lanes-actions button")].find((b) => text(b) === "New branch from here")!.click();
       await settle(t, db);
     });
-    expect(text(el.querySelector(".branches-side")!)).toContain("Forked as Forked");
+    expect(text(el.querySelector(".lanes-actions")!)).toContain("Made the new branch Forked.");
   });
   it("a conversation row carries a mark only where the read reports a point", async () => {
     const { model } = await fixtureModel({ route: "conversation", threadId: "lead", configure: db => {
@@ -1168,7 +1135,7 @@ describe("Branches", () => {
   it("speaks Japanese", async () => {
     const { el, model } = await open();
     act(() => { model.lang.value = "ja"; });
-    expect(text(el)).toContain("分岐点と先端");
+    expect(text(el)).toContain("どこで分かれた？");
   });
 });
 
@@ -1925,20 +1892,17 @@ describe("approved Studio brand", () => {
 });
 
 describe("limited Branches comparison UI", () => {
-  it("keeps compare selection out of archive selection and shows honest limits in the existing screen", async () => {
+  it("keeps the compare choice separate from actions and compares only pairs with a confirmed split", async () => {
     const { model, t, db } = await fixtureModel();
     try {
       model.navigate({ view: "branches", threadId: "lead" }); await settle(t, db);
-      const el = draw(model); await act(flushPromises);
-      expect(text(el)).toContain("Compare two branches");
-      expect(text(el)).toContain("may not be where they split");
-      expect(text(el)).toContain("Origin");
-      const comparison = [...el.querySelectorAll("label")].find(x => x.textContent?.includes("Compare (up to two)"));
-      expect(comparison).toBeDefined();
-      const input = comparison!.querySelector("input")!;
-      act(() => input.click());
-      expect(model.branchCompare.state.value.selected).toHaveLength(1);
-      expect(model.branches.selection.value.size).toBe(0);
+      const el = draw(model); await act(async () => { await settle(t, db); });
+      expect(text(el)).toContain("How do they differ?");
+      expect(model.branchCompare.state.value.selected).toEqual(["lead", "fork-a"]);
+      const card = (name: string) => [...el.querySelectorAll(".branch-line")].find((c) => text(c.querySelector(".lanes-name")!).includes(name))!;
+      act(() => card("Plain child").querySelector<HTMLInputElement>("input")!.click());
+      expect(model.branchCompare.state.value.selected).toEqual(["fork-a", "plain-child"]);
+      expect(text(el)).toContain("These two can't be compared here.");
       expect(t.calls("thread.archive")).toHaveLength(0);
       expect(t.calls("thread.fork")).toHaveLength(0);
       expect(t.calls("thread.rewind")).toHaveLength(0);

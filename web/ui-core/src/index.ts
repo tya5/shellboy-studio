@@ -34,3 +34,4 @@ export * from "./output-renderers";
 export * from "./guide-registration";
 
 export * from "./branch-compare";
+export * from "./branch-lanes";

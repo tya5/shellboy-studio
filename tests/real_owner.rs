@@ -813,6 +813,86 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     assert!(child["divergence"]["ordinal"].is_u64());
     assert!(child["size"]["nodes_after_divergence"].is_u64());
 
+    // Branches lane reads (#138): each JSON shape Studio sends decodes to exactly this typed Core command,
+    // and the real owner answers it. Head of a branch (split node and the one after), head of a root
+    // (position 0), one node (a split or tip), and "Show more" guarded by the node before the run.
+    let window = |wire: Value, typed: shellboy::protocol::HistoryWindowArgs| {
+        let decoded: shellboy::protocol::HistoryWindowArgs =
+            serde_json::from_value(wire.clone()).expect("Studio's lane read decodes");
+        assert_eq!(decoded, typed, "{wire}");
+        assert_eq!(
+            shellboy_studio::allowlist::access(&shellboy::protocol::Command::HistoryWindow(
+                decoded
+            )),
+            shellboy_studio::allowlist::Access::Read
+        );
+        wire
+    };
+    let head = window(
+        json!({"thread_id":fork,"node_id":point,"before":0,"after":1,"excerpt_chars":160}),
+        shellboy::protocol::HistoryWindowArgs {
+            thread_id: fork.clone(),
+            items: false,
+            ordinal: None,
+            node_id: Some(point.clone()),
+            expect_node_id: None,
+            before: 0,
+            after: 1,
+            excerpt_chars: 160,
+        },
+    );
+    let head = c.ok("history.window", head, None).await;
+    assert_eq!(head["thread_id"], fork.as_str(), "{head}");
+    assert_eq!(head["items"][0]["node_id"], point.as_str(), "{head}");
+    let origin = window(
+        json!({"thread_id":thread,"ordinal":0,"before":0,"after":0,"excerpt_chars":160}),
+        shellboy::protocol::HistoryWindowArgs {
+            thread_id: thread.clone(),
+            items: false,
+            ordinal: Some(0),
+            node_id: None,
+            expect_node_id: None,
+            before: 0,
+            after: 0,
+            excerpt_chars: 160,
+        },
+    );
+    let origin = c.ok("history.window", origin, None).await;
+    assert_eq!(origin["items"].as_array().unwrap().len(), 1, "{origin}");
+    assert_eq!(origin["items"][0]["selection"]["ordinal"], 0, "{origin}");
+    let first = origin["items"][0]["node_id"].as_str().unwrap().to_owned();
+    let node = window(
+        json!({"thread_id":thread,"node_id":point,"before":0,"after":0,"excerpt_chars":160}),
+        shellboy::protocol::HistoryWindowArgs {
+            thread_id: thread.clone(),
+            items: false,
+            ordinal: None,
+            node_id: Some(point.clone()),
+            expect_node_id: None,
+            before: 0,
+            after: 0,
+            excerpt_chars: 160,
+        },
+    );
+    let node = c.ok("history.window", node, None).await;
+    assert_eq!(node["items"][0]["node_id"], point.as_str(), "{node}");
+    let more = window(
+        json!({"thread_id":thread,"ordinal":0,"expect_node_id":first,"before":0,"after":2,"excerpt_chars":160}),
+        shellboy::protocol::HistoryWindowArgs {
+            thread_id: thread.clone(),
+            items: false,
+            ordinal: Some(0),
+            node_id: None,
+            expect_node_id: Some(first.clone()),
+            before: 0,
+            after: 2,
+            excerpt_chars: 160,
+        },
+    );
+    let more = c.ok("history.window", more, None).await;
+    assert_eq!(more["items"][0]["node_id"], first.as_str(), "{more}");
+    assert_eq!(more["items"].as_array().unwrap().len(), 3, "{more}");
+
     // Rewind: the removed part stays as a child, which is the undo path.
     let done = c
         .ok(

@@ -1,0 +1,250 @@
+// @vitest-environment happy-dom
+// Branches (#138), mounted through the real App on the synthetic three-line family: no flicker across re-reads
+// (same row elements, focus, selection, open actions and scroll; no loading row), appended messages and lanes
+// that leave earlier rows in place, and the New branch and Rewind flows with the exact owner calls.
+import "@preact/signals";
+import { signal } from "@preact/signals-core";
+import { render } from "preact";
+import { act } from "preact/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { settle } from "../../../data/test/harness";
+import { fixtureModel } from "../../../ui-core/test/fixture";
+import type { AppModel, DesignContext, Prefs } from "../../../ui-core/src";
+import { DESIGNS } from "../../registry";
+import { App } from "../screens/App";
+import { branchesFamily, type BranchesFixture } from "./fixtures/branches-family";
+
+let host: HTMLElement | undefined;
+let models: AppModel[] = [];
+beforeEach(() => {
+  // Happy DOM does no layout: every observed row reports itself on screen, as a tall viewport would.
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(private readonly callback: IntersectionObserverCallback) {}
+    observe(target: Element) { this.callback([{ isIntersecting: true, target } as unknown as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+    unobserve() {}
+    disconnect() {}
+  });
+});
+afterEach(() => {
+  if (host) render(null, host);
+  host?.remove();
+  host = undefined;
+  for (const m of models) m.dispose();
+  models = [];
+  vi.unstubAllGlobals();
+});
+
+const text = (el: Element | null | undefined) => el?.textContent ?? "";
+
+async function open(options: { capabilities?: string[]; lang?: "en" | "ja" } = {}) {
+  let family!: BranchesFixture;
+  const made = await fixtureModel({ route: "branches", capabilities: options.capabilities, configure(db) { family = branchesFamily(db); } });
+  models.push(made.model);
+  const prefs = signal<Prefs>({ design: "console", theme: "console", lang: options.lang ?? "en", weights: { cached: 0.1, output: 5 } });
+  if (options.lang) made.model.lang.value = options.lang;
+  const context: DesignContext = { model: made.model, designs: DESIGNS, prefs, setPrefs(change) { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true };
+  host = document.createElement("div");
+  document.body.append(host);
+  await act(async () => { made.model.navigate({ view: "branches", threadId: "rel" }); await settle(made.t, made.db); });
+  act(() => render(<App context={context} />, host!));
+  const el = host;
+  const flush = async () => { await act(async () => { await settle(made.t, made.db); }); await act(async () => { await settle(made.t, made.db); }); };
+  await flush();
+  const rows = () => [...el.querySelectorAll<HTMLLIElement>(".branch-lanes > li")];
+  const row = (key: string) => el.querySelector<HTMLLIElement>(`.branch-lanes > li[data-key="${CSS.escape(key)}"]`);
+  const point = (fragment: string) => [...el.querySelectorAll<HTMLButtonElement>(".lanes-point")].find((b) => text(b).includes(fragment));
+  const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b).includes(name));
+  const refresh = async () => { await act(async () => { const reading = made.model.branches.read("rel"); await settle(made.t, made.db); await reading; }); await flush(); };
+  return { ...made, el, family, flush, rows, row, point, button, refresh };
+}
+
+describe("Branches screen", () => {
+  it("shows the header sentence, the line cards with Compare, the lanes and the comparison", async () => {
+    const { el, rows } = await open();
+    expect(text(el.querySelector(".page-header"))).toContain("Release notes split into 3 lines of work.");
+    const cards = [...el.querySelectorAll(".branch-line")];
+    expect(cards.map((c) => text(c.querySelector(".lanes-name")))).toEqual(["Release notes", "Streaming output", "Streaming + retry"]);
+    expect(text(cards[1])).toContain("Split from Release notes after #6");
+    expect(cards.map((c) => c.querySelector<HTMLInputElement>("input[type=checkbox]")!.checked)).toEqual([true, true, false]);
+    expect(rows().map((r) => r.dataset.key)).toEqual(["rel|start", "rel|run|1", "rel|split|r6", "rel|run|6", "rel|tip", "stream|start", "stream|run|7", "stream|split|s10", "stream|run|10", "stream|tip", "retry|start", "retry|tip"]);
+    expect(text(rows()[1])).toContain("4 more messages (#2–#5)");
+    expect(text(rows()[2])).toContain("Streaming output");
+    expect(text(rows()[2])).toContain("splits off here");
+    expect(text(rows()[4])).toContain("This Thread");
+    expect(text(rows()[4])).toContain("Notes are done and linted.");
+    expect(text(el.querySelector(".branch-shared"))).toContain("Both share #1–#6, up to “Compare provider behavior before writing”.");
+    const sides = [...el.querySelectorAll(".branch-side")];
+    expect(sides).toHaveLength(2);
+    expect(text(sides[1])).toContain("#12");
+    expect(text(sides[1])).toContain("Merged behind --stream.");
+    expect(sides.map((s) => s.querySelector("a.branch-open")!.getAttribute("href"))).toEqual(["#/conversation/rel", "#/conversation/stream"]);
+    expect(el.querySelector(".loadrows")).toBeNull();
+  });
+
+  it("a refresh with the same data keeps every row element, focus, the selection, its open actions and the scroll position, with no loading row", async () => {
+    const { el, rows, point, refresh, t } = await open();
+    await act(async () => { point("Compare provider behavior")!.click(); });
+    const field = el.querySelector<HTMLInputElement>(".lanes-actions input")!;
+    act(() => { field.focus(); field.value = "Make it a changelog"; field.dispatchEvent(new Event("input", { bubbles: true })); });
+    const scroller = el.querySelector<HTMLElement>(".branches-main")!;
+    scroller.scrollTop = 120;
+    const before = rows();
+    const points = [...el.querySelectorAll(".lanes-point")];
+    const reads = t.calls("history.window").length;
+    let loadingSeen = false;
+    const watch = new MutationObserver(() => { if (el.querySelector(".loadrows, .lanes-pending, [aria-busy=true]")) loadingSeen = true; });
+    watch.observe(el, { subtree: true, childList: true, attributes: true });
+    await refresh();
+    await refresh();
+    watch.disconnect();
+    expect(t.calls("thread.branches").length).toBeGreaterThanOrEqual(3);
+    expect(rows()).toHaveLength(before.length);
+    rows().forEach((r, i) => expect(r).toBe(before[i]));
+    [...el.querySelectorAll(".lanes-point")].forEach((p, i) => expect(p).toBe(points[i]));
+    expect(document.activeElement).toBe(field);
+    expect(field.value).toBe("Make it a changelog");
+    expect(el.querySelector(".lanes-actions input")).toBe(field);
+    expect(el.querySelector<HTMLElement>(".branch-lanes > li[data-selected]")?.dataset.key).toBe("rel|split|r6");
+    expect(scroller.scrollTop).toBe(120);
+    expect(loadingSeen).toBe(false);
+    // Text is kept by node ID: a refresh reads no excerpt again.
+    expect(t.calls("history.window").length).toBe(reads);
+  });
+
+  it("a new message appends: earlier rows stay mounted, only the lane's last stretch and tip change", async () => {
+    const { family, rows, row, refresh } = await open();
+    const before = new Map(rows().map((r) => [r.dataset.key!, r]));
+    const tip = row("stream|tip")!;
+    family.append("stream", { node_id: "s13", kind: "user", excerpt: "Ship the flag as default." });
+    await refresh();
+    for (const r of rows()) if (before.has(r.dataset.key!)) expect(r).toBe(before.get(r.dataset.key!));
+    expect(row("stream|tip")).toBe(tip);
+    expect(text(tip)).toContain("Ship the flag as default.");
+    expect(text(tip)).toContain("#13 on Streaming output");
+    expect(text(row("stream|run|10"))).toContain("2 more messages (#11–#12)");
+    expect(rows().map((r) => r.dataset.key)).toEqual([...before.keys()]);
+  });
+
+  it("Show opens a run with one guarded read; loading shows only on that run", async () => {
+    const { el, row, point, flush, t } = await open();
+    const run = row("rel|run|6")!;
+    const reads = t.calls("history.window").length;
+    await act(async () => { run.querySelector<HTMLButtonElement>("button.lanes-run")!.click(); });
+    expect(run.querySelector("button.lanes-run")!.getAttribute("aria-busy")).toBe("true");
+    expect(el.querySelectorAll("[aria-busy=true]")).toHaveLength(1);
+    await flush();
+    const opened = t.calls("history.window").slice(reads);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]!.args).toEqual({ thread_id: "rel", ordinal: 5, expect_node_id: "r6", before: 0, after: 7, excerpt_chars: 160 });
+    expect(point("Kept it. 12 fixes drafted under Fixed.")).toBeDefined();
+    expect(row("rel|run|6")).toBeNull();
+    expect(row("rel|n|r8")).not.toBeNull();
+  });
+
+  it("New branch from here sends thread.fork for the selected row's lane and node, then the request; the new lane is appended", async () => {
+    const { el, rows, point, button, flush, t } = await open();
+    const before = rows();
+    await act(async () => { point("Retries drop the chunks")!.click(); });
+    expect(text(el.querySelector(".lanes-actions"))).toContain("A new branch keeps #1–#10");
+    const field = el.querySelector<HTMLInputElement>(".lanes-actions input")!;
+    act(() => { field.value = "Try a ring buffer"; field.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { button("New branch from here")!.click(); });
+    await flush();
+    const fork = t.calls("thread.fork");
+    expect(fork).toHaveLength(1);
+    expect(fork[0]!.args).toEqual({ thread_id: "stream", node_id: "s10" });
+    expect(fork[0]!.operation_id).toBeTruthy();
+    const send = t.calls("message.send");
+    expect(send).toHaveLength(1);
+    expect(send[0]!.args).toEqual({ thread_id: "fork-1", text: "Try a ring buffer" });
+    expect(text(el.querySelector(".lanes-actions"))).toContain("Made the new branch New branch 1.");
+    expect(el.querySelector<HTMLAnchorElement>(".lanes-actions a.nav-link")!.getAttribute("href")).toBe("#/conversation/fork-1");
+    expect(t.calls("thread.rewind")).toHaveLength(0);
+    // The family re-read adds the new lane; every earlier row element stays.
+    const after = rows();
+    expect(after.length).toBeGreaterThan(before.length);
+    for (const r of before) expect(after).toContain(r);
+    expect(el.querySelectorAll(".branch-line")).toHaveLength(4);
+  });
+
+  it("Rewind to here marks the rows that would leave and shows the dry-run facts; only the second press rewinds", async () => {
+    const { el, row, point, button, flush, t } = await open();
+    await act(async () => { point("Compare provider behavior")!.click(); });
+    expect(t.calls("thread.rewind")).toHaveLength(0);
+    await act(async () => { button("Rewind Release notes to here")!.click(); });
+    await flush();
+    const preview = t.calls("thread.rewind");
+    expect(preview).toHaveLength(1);
+    expect(preview[0]!.args).toEqual({ thread_id: "rel", node_id: "r6", dry_run: true });
+    expect(preview[0]!.operation_id).toBeUndefined();
+    const panel = text(el.querySelector(".lanes-actions"));
+    expect(panel).toContain("Rewind Release notes to #6?");
+    expect(panel).toContain("8 messages (4 turns) leave Release notes");
+    expect(panel).toContain("./scripts/lint-notes");
+    expect(panel).toContain("Files and shell effects aren't undone");
+    expect([...el.querySelectorAll<HTMLElement>(".branch-lanes > li[data-leaving]")].map((r) => r.dataset.key)).toEqual(["rel|run|6", "rel|tip"]);
+    expect(text(row("rel|run|6"))).toContain("Leaves Release notes if you rewind to #6");
+    expect(row("stream|start")!.dataset.leaving).toBeUndefined();
+    await act(async () => { button("Rewind Release notes")!.click(); });
+    await flush();
+    const real = t.calls("thread.rewind");
+    expect(real).toHaveLength(2);
+    expect(real[1]!.args).toEqual({ thread_id: "rel", node_id: "r6" });
+    expect(real[1]!.operation_id).toBeTruthy();
+    expect(text(el.querySelector(".lanes-actions"))).toContain("Rewound Release notes. 8 messages left it and stay in a new branch.");
+    expect(el.querySelector<HTMLAnchorElement>(".lanes-actions a.nav-link")!.getAttribute("href")).toBe("#/conversation/rel-rewound");
+    expect(el.querySelector(".branch-lanes > li[data-leaving]")).toBeNull();
+  });
+
+  it("Cancel withdraws the preview and choosing another message withdraws it too", async () => {
+    const { el, point, button, flush, model } = await open();
+    await act(async () => { point("Compare provider behavior")!.click(); });
+    await act(async () => { button("Rewind Release notes to here")!.click(); });
+    await flush();
+    await act(async () => { button("Cancel")!.click(); });
+    expect(el.querySelector(".branch-lanes > li[data-leaving]")).toBeNull();
+    await act(async () => { button("Rewind Release notes to here")!.click(); });
+    await flush();
+    await act(async () => { point("Retries drop the chunks")!.click(); });
+    expect(model.branches.rewind.value.kind).toBe("idle");
+    expect(el.querySelector(".branch-lanes > li[data-leaving]")).toBeNull();
+    expect(el.querySelector<HTMLElement>(".branch-lanes > li[data-selected]")?.dataset.key).toBe("stream|split|s10");
+  });
+
+  it("without history.window it reads no excerpts and shows the owner's own requests", async () => {
+    const { el, row, t } = await open({ capabilities: [] });
+    expect(t.calls("history.window")).toHaveLength(0);
+    expect(text(row("rel|split|r6"))).toContain("Request Compare provider behavior before writing.");
+    expect(text(row("rel|tip"))).toContain("Last request Lint the notes and fix the headings.");
+    expect(el.querySelector("button.lanes-run")).toBeNull();
+    expect(el.querySelector(".lanes-pending")).toBeNull();
+  });
+
+  it("a message chosen from a Conversation link opens its actions above the graph", async () => {
+    const { el, model, flush } = await open();
+    await act(async () => { model.applyRoute({ view: "branches", threadId: "rel", nodeId: "r3" }); });
+    await flush();
+    const pinned = el.querySelector(".branch-pinned");
+    expect(text(pinned)).toContain("#3 on Release notes");
+    expect(text(pinned)).toContain("Group them by area.");
+    expect(text(pinned)).toContain("New branch from here");
+  });
+
+  it("the phone Compare bar opens the comparison view and Back returns to the lanes", async () => {
+    const { el, button } = await open();
+    const bar = el.querySelector(".branches-bar")!;
+    expect(text(bar)).toContain("Release notes and Streaming output");
+    await act(async () => { bar.querySelector<HTMLButtonElement>("button")!.click(); });
+    expect(el.querySelector(".branches")!.getAttribute("data-phone-view")).toBe("compare");
+    await act(async () => { el.querySelector<HTMLButtonElement>(".branches-back button")!.click(); });
+    expect(el.querySelector(".branches")!.getAttribute("data-phone-view")).toBe("family");
+    expect(button("Compare")).toBeDefined();
+  });
+
+  it("speaks Japanese", async () => {
+    const { el } = await open({ lang: "ja" });
+    expect(text(el)).toContain("どこで分かれた？");
+    expect(text(el)).toContain("どう違う？");
+    expect(text(el.querySelector(".page-header"))).toContain("Release notes は 3 本の流れに分かれています。");
+  });
+});

@@ -430,7 +430,7 @@ export class AppModel {
       offsetMinutes: options.offsetMinutes ?? (() => -new Date(this.nowMs()).getTimezoneOffset()),
     });
     this.t = computed(() => translator(this.lang.value));
-    this.branches = new Branches(this.ops, () => { const owner = this.data.owner.peek(); return owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined; }, () => this.selectedId.peek());
+    this.branches = new Branches(this.ops, () => { const owner = this.data.owner.peek(); return owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined; }, () => this.selectedId.peek(), () => this.data.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW));
     this.threadActions = new ThreadActions(this.ops);
     this.disposers.push(effect(() => {
       const owner = this.data.owner.value;
@@ -442,9 +442,9 @@ export class AppModel {
       const route = this.route.value;
       const connected = owner.state === "connected";
       const id = connected ? owner.info.instance_id : undefined;
-      this.branchCompare.context(JSON.stringify([id, route.view, route.threadId, route.nodeId]), connected && this.data.connection.value === "open" && !!id && route.view === "branches" && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW));
+      // Choosing a message (route nodeId) keeps the comparison; another Thread or owner starts over.
+      this.branchCompare.context(JSON.stringify([id, route.view, route.threadId]), connected && this.data.connection.value === "open" && !!id && route.view === "branches" && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW));
     }));
-    this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
     this.senderTitles = new SenderTitles(this.ops);
     this.config = new ConfigEditor(this.ops);
     this.ops.onConfigWrite = fields => this.config.trackConfigWrite(fields);
@@ -668,11 +668,18 @@ export class AppModel {
         lastList = list;
       }),
     );
+    // The route's node is applied when the route changes or the family first arrives, never on a re-read:
+    // a message chosen on the graph stays chosen across event refreshes.
+    let routedNode: string | undefined;
     this.disposers.push(
       effect(() => {
         const route = this.route.value;
-        this.branches.state.value;
-        if (route.view === "branches") this.branches.select(this.selectedId.value, route.nodeId);
+        const hasFamily = !!this.branches.state.value.family;
+        if (route.view !== "branches") { routedNode = undefined; return; }
+        const key = JSON.stringify([this.selectedId.value, route.nodeId, hasFamily]);
+        if (key === routedNode) return;
+        routedNode = key;
+        this.branches.select(this.selectedId.value, route.nodeId);
       }),
     );
     // Marks need one family read per Thread opened, again when the list shows its children changed.

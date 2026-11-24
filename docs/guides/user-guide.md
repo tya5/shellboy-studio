@@ -64,6 +64,17 @@ For model messages, **From Thread** is the recorded sender ID; **Current title**
 
 In the sidebar use **Select Threads**, select the rows, then use **Delete**, **Archive**, or **Unarchive** in the selection bar. Archive requires a second press to confirm; Unarchive applies immediately. **Include descendants** controls the archive scope. For Delete, review the exact names and IDs; active scheduled executions listed in the preview will be stopped. Live or stopping Runs block deletion. **Delete selected Threads** permanently deletes the selected set in a single all-or-none operation (up to 256 on the matching owner). Unselected descendants stay. If the selection or targets change, review and confirm the new preview. Use a Thread row's **Set parent** action to choose a parent, and **Edit tags** to add or remove tags for that Thread.
 
+### Follow a Thread's branches
+
+Open **Branches** with a Thread selected. The first line says how many lines of work the Thread has split into; each card below names one line, says where it split off, and has a **Compare** check.
+
+- **Where did it split?** Each line of work is a coloured lane, oldest at the top, and its name is always written next to its colour. A diamond marks where another line splits off. Long stretches show as "N more messages"; press **Show** to open them.
+- Click or tap a message to open its actions under it. **New branch from here** makes a new branch that keeps the conversation up to that message, and sends the request you write there, if any; the original line does not change. **Rewind … to here…** first marks the messages that would leave that line and lists what would happen, including shell commands and file changes that are not undone. Nothing changes until you press **Rewind …** again. The removed part stays as a new branch you can open.
+- **How do they differ?** Check **Compare** on two lines. Studio states once what they share, then shows only what each line did after the split, with **Open in Conversation** for each. It compares a line with the line it split from, or two lines that split at the same message.
+- On a phone, the lanes fill the screen with large rows, and **Compare** in the bottom bar opens the comparison; **Branches** goes back to where you were.
+
+The screen updates in place as Threads change: rows, your selected message and the scroll position stay.
+
 ## Inspect usage and cost
 
 Open the global **Analytics** screen and choose a **Period**. Under **By Thread**, compare **Excl. cached** (conversation other plus all summaries), **Total**, **Cached input** (conversation only), or **Summary tokens**. The bars and shares follow the selected metric. An incomplete scan does not show rankings. Open a Thread row for its exact breakdown and model usage in the same period; **Back to ranking** returns to that row. **Detailed usage table** keeps the recorded counters, cache rates and weighted values available. Summary usage is separate and is not attributed to models. **Show more usage rows** reveals more rows already read. Incomplete totals can be lower bounds; a missing value is not zero. **Cache rate** is the cached share of conversation input where the counters support a comparison. **Effective tokens** uses editable cached-input and output weights stored in this browser. Neither that value nor **Summary cost** is a currency amount or a provider bill.
@@ -179,6 +190,17 @@ v0.4.2 向け（反映待ち）：**要返信** や **返信待ち** などの�
 #### スレッドの一括削除
 
 サイドバーで **スレッドを選択** を選び、対象にチェックを入れます。選択バーの **削除**、**アーカイブ**、**アーカイブ解除** を使います。アーカイブはもう一度押して確認し、アーカイブ解除はそのまま適用します。**子孫も含める** で子孫にも適用できます。削除では、プレビューで名前と ID、停止対象となるスケジュール実行を確認してください。実行中または停止処理中の Run があると削除できません。**選択したスレッドを削除** は、対応するオーナーでは最大 256 件を一度の操作で全件削除するか、何も削除しません。選択していない子孫は残ります。対象が変わった場合は新しいプレビューで確認し直してください。行メニューの **親を設定** で親を選び、**タグを編集** でそのスレッドのタグを追加・削除できます。
+
+#### スレッドの分岐を見る
+
+スレッドを選んだ状態で **分岐** を開きます。最初の一文でそのスレッドがいくつの流れに分かれたかを示し、その下のカードで各流れの名前、どこで分かれたか、**比較** のチェックを表示します。
+
+- **どこで分かれた？** では流れごとに色の付いた縦のレーンを表示します。上が古く、色の横には必ず流れの名前があります。ひし形は別の流れが分かれた位置です。長い区間は「ほか N 件」と表示され、**表示** で開けます。
+- メッセージをクリックまたはタップすると、その下に操作が開きます。**ここから新しい枝** はそのメッセージまでの会話を引き継ぐ新しい枝を作り、依頼を書いた場合はそこへ送ります。元の流れは変わりません。**… をここまで巻き戻す…** は、まずその流れから外れるメッセージに印を付け、元に戻らないシェルコマンドやファイルの変更を含めて何が起きるかを表示します。もう一度 **… を巻き戻す** を押すまで何も変わりません。外れた部分は新しい枝として残り、開けば取り戻せます。
+- **どう違う？** では 2 本の流れで **比較** を選びます。共有している部分を一度だけ示し、分岐後にそれぞれが何をしたかだけを表示します。各流れに **会話で開く** があります。比較できるのは分岐元との組み合わせか、同じメッセージで分かれた 2 本です。
+- スマートフォンではレーンが画面幅いっぱいに大きな行で表示され、下部のバーの **比較** で比較画面を開きます。**分岐** で元の位置に戻ります。
+
+スレッドが変わっても画面はその場で更新され、行、選んだメッセージ、スクロール位置はそのまま残ります。
 
 ### 使用量とコストを確認する
 

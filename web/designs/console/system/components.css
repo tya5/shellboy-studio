@@ -40,6 +40,7 @@
 @import "./components/BranchGraph/style.css";
 @import "./components/BranchList/style.css";
 @import "./components/BranchMark/style.css";
+@import "./components/BranchLanes/style.css";
 @import "./shared/message.css";
 @import "./components/ThreadGroup/style.css";
 @import "./shared/selection.css";
