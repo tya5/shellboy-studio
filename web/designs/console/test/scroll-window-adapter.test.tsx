@@ -60,3 +60,20 @@ it('renders one accepted-view slot without legacy node wrappers or a duplicate l
   expect(host.querySelectorAll('.live-tail')).toHaveLength(1);
   expect(host.querySelector('[data-duplicate-live]')).toBeNull();
 });
+
+it.each([390, 1280])('exposes Load earlier only at an unloaded history boundary at %ipx and reuses requestOlder', async width => {
+  r=await realWindow(3);await r.settle();const w=r.w;
+  vi.spyOn(w,'renderRange').mockReturnValue({first:3,last:4});
+  vi.spyOn(w,'isLoaded').mockReturnValue(false);
+  vi.spyOn(w,'itemAt').mockReturnValue(undefined);
+  const older=vi.spyOn(w,'requestOlder');
+  host=document.createElement('div');host.style.width=`${width}px`;document.body.append(host);
+  await act(async()=>{ render(<WindowedScroll model={model()} win={w} renderRow={row=><div>{row.id}</div>} live={null}/>,host!); w.version.value++; });
+  const button=host.querySelector<HTMLButtonElement>('.history-older button');
+  expect(button).toBeTruthy();
+  await act(async()=>button!.click());
+  expect(older).toHaveBeenCalledOnce();
+  vi.mocked(w.isLoaded).mockReturnValue(true);
+  await act(async()=>{ render(<WindowedScroll model={model()} win={w} renderRow={row=><div>{row.id}</div>} live={null}/>,host!); w.version.value++; });
+  expect(!!host.querySelector('.history-older button')).toBe(false);
+});

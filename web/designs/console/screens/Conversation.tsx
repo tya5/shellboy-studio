@@ -364,7 +364,14 @@ export function ConversationStatus({ model }: { model: AppModel }) {
 
 export const Output = memo(function Output({ model, id, command, complete, boxed }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean }) {
   const [raw, setRaw] = useState(false);
-  const [wrap, setWrap] = useState(true);
+  const [wrap, setWrap] = useState(() => typeof matchMedia === "function" ? matchMedia("(max-width: 899px)").matches : true);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const query = matchMedia("(max-width: 899px)");
+    const update = () => setWrap(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
   const t = model.t.value;
   const output = useMemo(() => computed(() => model.outputs.value.get(id)), [model, id]);
   const out = output.value;

@@ -81,13 +81,14 @@ it('S bounded staging rejects excessive input, superseded handles and getter ree
  const current=view.current;const reentrant={get revision(){view.revoke();return 'revoked'},data:[]};
  const staged=view.stage(reentrant);expect(view.commit(staged)).toBe(false);expect(view.current).toBe(current);
 });
-it('#13 real FakeTransport held shell.read keeps successful empty Output cache/DOM then accepts changed text',async()=>{
+it.each([390, 1280])('#13 real FakeTransport Output wraps by default only at phone width %ipx and Copy stays raw',async(width)=>{
  const {fixtureModel,settle}=await import('../../../ui-core/test/fixture');const {flush}=await import('../../../data/test/harness');
  const {Output}=await import('../screens/Conversation');
  const r=await fixtureModel({configure(db){db.outputs['transport-empty']='';db.shells.lead=[{execution_id:'transport-empty',state:'running',command_excerpt:'synthetic'}];}});
  let stop:undefined|(()=>void);
  try{
   stop=r.model.watchOutput('transport-empty');await settle(r.t,r.db);
+  vi.stubGlobal('matchMedia', (query:string) => ({ matches: width <= 899, addEventListener: vi.fn(), removeEventListener: vi.fn(), media: query }));
   const draw=()=>render(<Output model={r.model} id="transport-empty" command="synthetic" complete={false}/>,host);
   draw();const first=r.model.outputs.value.get('transport-empty');const original=host.querySelector('.log');
   expect(original?.textContent).toBe('No output.');
@@ -100,12 +101,13 @@ it('#13 real FakeTransport held shell.read keeps successful empty Output cache/D
   expect(r.model.outputs.value.get('transport-empty')?.text).toBe('SYNTHETIC_CHANGED_OUTPUT');
   await act(async()=>{await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));});
   expect(host.textContent).toContain('SYNTHETIC_CHANGED_OUTPUT');
-  const wrap = host.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')!;
+  const initiallyWrapped = width <= 899;
+  const wrap = host.querySelector<HTMLButtonElement>(`button[aria-pressed="${initiallyWrapped}"]`)!;
   expect(wrap.textContent).toContain('Wrap lines');
-  expect(host.querySelector('.output-actions')?.className).toContain('output-wrapped');
+  expect(host.querySelector('.output-actions')?.className.includes('output-wrapped')).toBe(initiallyWrapped);
   await act(async () => { wrap.click(); });
-  expect(host.querySelector<HTMLButtonElement>('button[aria-pressed="false"]')).toBeTruthy();
-  expect(host.querySelector('.output-actions')?.className).not.toContain('output-wrapped');
+  expect(host.querySelector<HTMLButtonElement>(`button[aria-pressed="${!initiallyWrapped}"]`)).toBeTruthy();
+  expect(host.querySelector('.output-actions')?.className.includes('output-wrapped')).toBe(!initiallyWrapped);
   const copied = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copied } });
   host.querySelector<HTMLButtonElement>('button')!.click();
   expect(copied).toHaveBeenCalledWith('SYNTHETIC_CHANGED_OUTPUT');

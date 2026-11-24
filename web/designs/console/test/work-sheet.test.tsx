@@ -84,3 +84,15 @@ it("allows Escape to cancel alertdialog while blocking outside dismissal", async
   expect(document.activeElement).toBe(opener);
   render(null, host); host.remove(); opener.remove();
 });
+
+it.each([390, 1280])("keeps title and Close outside the single scrolling body at %ipx", async width => {
+  const host = document.createElement("div"); host.style.width = `${width}px`; document.body.append(host);
+  await act(async () => render(<WorkSheet open title="Long selection" closeLabel="Close" onClose={() => {}} getReturnFocusTarget={() => null}><ul>{Array.from({length: 30}, (_, i) => <li key={i}>Preview row {i}</li>)}</ul></WorkSheet>, host));
+  const dialog = host.querySelector("dialog")!;
+  expect(dialog.querySelector(".work-sheet-head h2")?.textContent).toBe("Long selection");
+  expect(dialog.querySelector(".work-sheet-head button")?.textContent).toBe("Close");
+  expect(dialog.querySelectorAll(".work-sheet-body")).toHaveLength(1);
+  expect(layoutCss).toMatch(/\.work-sheet-body\{[^}]*overflow:auto/);
+  expect(layoutCss).not.toMatch(/\.work-sheet-body \[data-phone-panel\]\{[^}]*overflow:auto/);
+  render(null, host); host.remove();
+});

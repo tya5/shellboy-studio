@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import "@preact/signals";
+// @ts-expect-error Node reads verify the production container-query contract.
+import { readFileSync } from "node:fs";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it, vi } from "vitest";
@@ -44,4 +46,17 @@ it("reveals on selection and expansion, not on a count update or collapse", asyn
     expect(onSelect).toHaveBeenCalledWith("reply");
     expect(host.querySelector('[role="tablist"] [role="tab"]')).toBeTruthy();
   } finally { render(null, host); spy.mockRestore(); }
+});
+
+it.each([390, 1280])("mounts the section picker and preserves tab semantics at %ipx", async width => {
+  const host = document.createElement("div");
+  host.style.width = `${width}px`;
+  await act(async () => render(<PanelTabs label="Right panel section" items={items} selected="work" onSelect={() => {}} />, host));
+  expect(host.querySelector(".form-field-label")?.textContent).toBe("Right panel section");
+  expect(host.querySelector("select")?.value).toBe("work");
+  expect(host.querySelector('[role="tablist"] [role="tab"][aria-selected="true"]')?.id).toBe("panel-tab-work");
+  const css = readFileSync("designs/console/system/components/PanelTabs/style.css", "utf8");
+  expect(css).toContain("@container app (max-width:899px)");
+  expect(css).toContain(".panel-tabs-control > .panel-tabs:not(.panel-tabs-rail) { display:none; }");
+  render(null, host);
 });
