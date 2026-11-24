@@ -52,13 +52,13 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
 
 let cleanup: (() => void) | undefined;
 afterEach(() => { cleanup?.(); cleanup = undefined; });
-async function toolFixture(state?: string, abbreviated = false, phone = false) {
+async function toolFixture(state?: string, abbreviated = false, phone = false, command = 'echo first\necho second') {
   const r = await fixtureModel({ configure(db) {
     db.shells.lead = state ? [{ execution_id: 'exec-1', state, started_at: '2026-01-01T00:00:00Z', ...(state === 'exited' ? { ended_at: '2026-01-01T00:00:02Z', exit_code: 7 } : {}) }] : [];
     db.outputs['exec-1'] = 'Retained fixture log';
     const answer = db.answer.bind(db);
     db.answer = call => call.command === 'shell.get' ? { ok: true, result: { execution_id: 'exec-1', command: 'echo first\necho second' } } : answer(call);
-    db.history.lead = [{ node_id: 'tool', kind: 'assistant_response', items: [{ kind: 'tool_call', item_identity: 'call', execution_ids: ['exec-1'] }], executions: [{ execution_id: 'exec-1', kind: 'shell', cwd: '/fixture', command_excerpt: abbreviated ? 'echo first' : 'echo first\necho second', command_truncated: abbreviated, ...(state ? { state } : {}) }] }];
+    db.history.lead = [{ node_id: 'tool', kind: 'assistant_response', items: [{ kind: 'tool_call', item_identity: 'call', execution_ids: ['exec-1'] }], executions: [{ execution_id: 'exec-1', kind: 'shell', cwd: '/fixture', command_excerpt: abbreviated ? 'echo first' : command, command_truncated: abbreviated, ...(state ? { state } : {}) }] }];
   } });
   const host = document.createElement('div'); document.body.append(host);
   cleanup = () => { render(null, host); host.remove(); r.model.dispose(); r.data.stop(); };
@@ -148,6 +148,11 @@ it('tags Core stderr ranges across pages and keeps Raw as one exact text node', 
   expect(r.t.calls('shell.read').map(call => call.args)).toEqual([
     { execution_id: 'exec-1', segments: true }, { execution_id: 'exec-1', segments: true, cursor: 'next' },
   ]);
+  expect(row.querySelector('.output-heading')?.textContent).toBe('Output · 3 lines · stderr: 1');
+  const panel = r.host.querySelector('[data-panel-detail]')!;
+  expect(panel.querySelector('.output-log pre')?.textContent).toBe(first + tail);
+  expect(panel.querySelector('[data-stream]')).toBeNull();
+  expect([...panel.querySelectorAll('.output-actions button')].map(button => button.textContent)).toEqual(['Copy', 'Wrap lines']);
   const marked = row.querySelectorAll('[data-stream="stderr"]');
   expect(marked).toHaveLength(1);
   expect(marked[0]?.textContent).toBe('stderrpre\u{1f4a5}suffix\n');
@@ -157,6 +162,36 @@ it('tags Core stderr ranges across pages and keeps Raw as one exact text node', 
   expect(raw.childNodes).toHaveLength(1);
   expect(raw.firstChild?.nodeType).toBe(Node.TEXT_NODE);
   expect(raw.textContent).toBe(first + tail);
+});
+
+it('preserves the formatted JSON tree when stderr only supplied whitespace', async () => {
+  const r = await toolFixture('exited', false, false, 'shellboy thread get');
+  const text = '{"outer":{"answer":42}}\n ';
+  const answer = r.db.answer.bind(r.db);
+  r.db.answer = call => call.command === 'shell.read' ? { ok: true, result: {
+    execution_id: 'exec-1', text, segments: [{ stream: 'stderr', start_byte: text.length - 1, end_byte: text.length }],
+  } } : answer(call);
+  const row = await r.expand();
+  expect(row.querySelector('.output-key')?.textContent).toContain('"outer":');
+  expect(row.querySelector('.output-value')?.textContent).toContain('"answer": 42');
+  expect(row.querySelector('[data-stream]')).toBeNull();
+  expect(row.querySelector('.output-heading')?.textContent).toBe('Output · 2 lines · stderr: 1');
+  await act(async () => row.querySelector<HTMLButtonElement>('button[aria-label="Formatted"]')!.click());
+  expect(row.querySelector('.output-log pre')?.textContent).toBe(text);
+});
+
+it('counts stderr source lines beyond the mounted Output window', async () => {
+  const r = await toolFixture('exited');
+  const prefix = 'out\n'.repeat(200);
+  const text = prefix + 'one\ntwo\n';
+  const answer = r.db.answer.bind(r.db);
+  r.db.answer = call => call.command === 'shell.read' ? { ok: true, result: {
+    execution_id: 'exec-1', text, segments: [{ stream: 'stderr', start_byte: prefix.length, end_byte: text.length }],
+  } } : answer(call);
+  const row = await r.expand();
+  expect(row.querySelector('.output-heading')?.textContent).toBe('Output · 202 lines · stderr: 2');
+  expect(row.querySelector('[data-stream]')).toBeNull();
+  expect(row.querySelectorAll('.output-window > span').length).toBeLessThan(200);
 });
 
 it('does not guess stderr when the owner omits segments', async () => {

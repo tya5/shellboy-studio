@@ -45,15 +45,20 @@ export function renderOutput(input: OutputInput): RenderedOutput | undefined {
   return undefined;
 }
 
-/** Preserve source lines when a formatter would move bytes across line boundaries. */
-export function stderrOutputLines(text: string, stderr: readonly StderrRange[], formatted?: RenderedOutput): OutputLine[] {
-  let position = 0, range = 0;
-  return text.split("\n").map((source, i) => {
+/** Diff preserves source line positions. JSON rebuilds a tree without source spans. */
+export function projectStderrLines(text: string, stderr: readonly StderrRange[], formatted?: RenderedOutput) {
+  let position = 0, range = 0, stderrCount = 0;
+  const lines: OutputLine[] = [];
+  for (const [i, source] of text.split("\n").entries()) {
     const start = position;
     const end = Math.min(text.length, start + source.length + 1);
     position = end;
     while (range < stderr.length && stderr[range]!.end <= start) range++;
-    const line: OutputLine = (formatted?.kind === "diff" ? formatted.lines[i] : undefined) ?? { kind: "plain", text: source };
-    return start < end && range < stderr.length && stderr[range]!.start < end ? { ...line, stderr: true } : line;
-  });
+    const marked = start < end && range < stderr.length && stderr[range]!.start < end;
+    if (marked) stderrCount++;
+    if (formatted?.kind === "json") continue;
+    const line = formatted?.lines[i] ?? { kind: "plain" as const, text: source };
+    lines.push(marked ? { ...line, stderr: true } : line);
+  }
+  return { lines: formatted?.kind === "json" ? formatted.lines : lines, stderrCount };
 }

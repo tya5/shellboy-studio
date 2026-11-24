@@ -701,14 +701,17 @@ async fn schedule_and_service_activity_against_the_pinned_owner() {
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
-    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("origin", format!("http://{addr}").parse().unwrap());
-    request
-        .headers_mut()
-        .insert("cookie", cookie.parse().unwrap());
-    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let request = || {
+        let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+        request
+            .headers_mut()
+            .insert("origin", format!("http://{addr}").parse().unwrap());
+        request
+            .headers_mut()
+            .insert("cookie", cookie.parse().unwrap());
+        request
+    };
+    let (ws, _) = tokio_tungstenite::connect_async(request()).await.unwrap();
     let mut c = Client { ws, next: 0 };
     next_t(&mut c.ws, "hello").await;
     let thread = c
@@ -796,10 +799,25 @@ async fn schedule_and_service_activity_against_the_pinned_owner() {
         )
         .await;
     let output_tid = &output_thread["thread_id"];
+    let (ws, _) = tokio_tungstenite::connect_async(request()).await.unwrap();
+    let mut observer = Client { ws, next: 0 };
+    next_t(&mut observer.ws, "hello").await;
+    observer
+        .ws
+        .send(Message::Text(
+            json!({"t":"watch","thread_ids":[output_tid],"list":false})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    observer
+        .ok("thread.get", json!({"thread_id":output_tid}), None)
+        .await;
     let command = if cfg!(windows) {
-        "[Console]::Out.WriteLine('fixture-out'); [Console]::Error.WriteLine('fixture-err')"
+        "[Console]::Out.Write('OOOO'); [Console]::Error.Write('EEEE')"
     } else {
-        "printf 'fixture-out\\n'; printf 'fixture-err\\n' >&2"
+        "printf OOOO; printf EEEE >&2"
     };
     let scheduled = owner
         .call(
@@ -817,6 +835,13 @@ async fn schedule_and_service_activity_against_the_pinned_owner() {
     assert_eq!(serde_json::to_value(scheduled).unwrap()["ok"], true);
     let execution = tokio::time::timeout(Duration::from_secs(20), async {
         loop {
+            let hint = next_t(&mut observer.ws, "changed").await;
+            if !hint["thread_ids"]
+                .as_array()
+                .is_some_and(|ids| ids.contains(output_tid))
+            {
+                continue;
+            }
             let list = c
                 .ok("shell.list", json!({"thread_id":output_tid}), None)
                 .await;
@@ -829,47 +854,49 @@ async fn schedule_and_service_activity_against_the_pinned_owner() {
                     break id.to_owned();
                 }
             }
-            tokio::time::sleep(Duration::from_millis(75)).await;
         }
     })
     .await
     .expect("fixture shell settled");
+    drop(observer);
     let plain = c
         .ok("shell.read", json!({"execution_id":execution}), None)
         .await;
-    let page = c
-        .ok(
-            "shell.read",
-            json!({"execution_id":execution,"segments":true}),
-            None,
-        )
-        .await;
     assert!(plain.get("segments").is_none());
-    assert_eq!(page["execution_id"], execution);
-    assert_eq!(page["text"], plain["text"]);
-    let text = page["text"].as_str().unwrap();
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-    for segment in page["segments"].as_array().unwrap() {
-        let start = segment["start_byte"].as_u64().unwrap() as usize;
-        let end = segment["end_byte"].as_u64().unwrap() as usize;
-        match segment["stream"].as_str().unwrap() {
-            "stdout" => stdout.push_str(&text[start..end]),
-            "stderr" => stderr.push_str(&text[start..end]),
-            stream => panic!("unexpected stream: {stream}"),
-        }
-    }
-    assert_eq!(stdout.trim_end(), "fixture-out");
-    assert_eq!(stderr.trim_end(), "fixture-err");
-    let end = c
+    let first = c
         .ok(
             "shell.read",
-            json!({"execution_id":execution,"segments":true,"cursor":page["cursor"]}),
+            json!({"execution_id":execution,"segments":true,"limit_bytes":4}),
             None,
         )
         .await;
-    assert_eq!(end["text"], "");
-    assert!(end.get("segments").is_none());
+    let second = c
+        .ok(
+            "shell.read",
+            json!({"execution_id":execution,"segments":true,"limit_bytes":4,"cursor":first["cursor"]}),
+            None,
+        )
+        .await;
+    // The pipe readers can save either stream first; each short page is its own coordinate space.
+    let mut joined = String::new();
+    let mut streams = Vec::new();
+    for page in [first, second] {
+        assert_eq!(page["execution_id"], execution);
+        let text = page["text"].as_str().unwrap();
+        let stream = match text {
+            "OOOO" => "stdout",
+            "EEEE" => "stderr",
+            other => panic!("unexpected fixture page: {other:?}"),
+        };
+        assert_eq!(
+            page["segments"],
+            json!([{ "stream":stream, "start_byte":0, "end_byte":4 }])
+        );
+        joined.push_str(text);
+        streams.push(stream);
+    }
+    assert_ne!(streams[0], streams[1]);
+    assert_eq!(plain["text"], joined);
     drop(c);
     cancel.cancel();
     stop_owner(&bin, &data, serve).await;
