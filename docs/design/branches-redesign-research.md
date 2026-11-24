@@ -1,0 +1,47 @@
+# Branches redesign: reference research (#138)
+
+Status: research for a static mock, 2026-11-24. No product code changes. Mock: `web/app/branches-mock.html`, captures `web/designs/console/mocks/branches-desktop.png` (1440 px) and `branches-phone.png` (390 px).
+
+## The question
+
+The first mock (`branch-review-desktop.png` on `wip/studio-screen-value-review`) drew points as unconnected cards. A first-time viewer could not tell what the screen was for. The screen has one job (#138): **see where a Thread split into lines of work, compare two of them, then continue from one** (open it, fork a new branch from a point, or rewind). This note records how established apps show that, and which patterns the mock uses.
+
+## What the references do
+
+| App | How it shows branching | What we take | Source |
+|---|---|---|---|
+| GitKraken Desktop | Rows are commits, columns are branches, lines show relationships; a detail panel on the right shows the selected commit. Hovering a branch highlights its commits. | Lanes as columns, rows as points, a detail beside the graph. | [GitKraken interface](https://help.gitkraken.com/gitkraken-desktop/interface/), [GitLens Commit Graph](https://help.gitkraken.com/gitlens/home-view/) |
+| VS Code Git Graph | Graph of branches with ref labels; clicking a commit opens its details; Ctrl/Cmd-click a second commit compares the two. Destructive actions (Reset, Drop) open a confirmation dialog. | Select-to-act (no hover-only menu), compare two picks, confirm destructive actions. | [mhutchie/vscode-git-graph](https://github.com/mhutchie/vscode-git-graph) |
+| Sourcetree | Colored ancestry lines; a branch label sits on its last commit in the same color as its line. | Branch name labels at the tip, colored like the lane, so color is never the only identifier. | [Atlassian Community: which color is which branch](https://community.atlassian.com/forums/Sourcetree-questions/How-to-know-which-branch-color-correlates-with-which-branch/qaq-p/408750) |
+| GitHub network graph | Timeline of branches across a repository network, one row per branch owner. | Confirms "one line per branch" is the familiar reading. | [GitHub Docs: network graph](https://docs.github.com/en/repositories/viewing-activity-and-data-for-your-repository/understanding-connections-between-repositories) |
+| GitHub compare | Two refs (base and compare); shows only what changed after the common ancestor. | Compare two branches **from the split point**: shared history once, then each side. | [GitHub Docs: comparing branches](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-comparing-branches-in-pull-requests) |
+| Tower | Compare shows only the commits unique to a branch against a base, plus how far behind it is. | "Only what this line did after the split", with counts. | [Tower for Windows 6: branch comparison](https://git-tower.com/blog/tower-windows-6), [Tower help: compare branches](https://www.git-tower.com/help/mac/commit-history/compare-branches-revisions) |
+| Fork (git client) | Commit list with graph, side-by-side diff. | Side-by-side as the comparison form on wide screens. | [git-fork.com](https://git-fork.com/) |
+| ChatGPT | Edited messages carried a `< 1/2 >` switcher; since 2025 "Branch in new chat" from a message's menu opens a separate chat. No tree view; users ask for one. | Inline switcher only shows one sibling at a time; branch from a message's menu. | [TechRadar: Branch in new chat](https://www.techradar.com/ai-platforms-assistants/chatgpt/chatgpt-has-added-a-great-new-feature-and-its-one-i-know-ill-be-using-a-lot), [OpenAI community: tree request](https://community.openai.com/t/conversation-tree-or-branching-inside-a-chat/1385220) |
+| Claude.ai | Editing a message makes a branch; `< 1/2 >` arrows under it switch versions. | Same as ChatGPT: good for "which version am I reading", not for comparing. | [Third-party guide](https://claudetopdf.vercel.app/branch-conversations-in-claude) (no official help page found) |
+| LibreChat | Fork from a message's menu with options (visible path, include branches, start here). No visual tree. | Fork is started from a point; the options explain what is copied. | [LibreChat docs: forking](https://www.librechat.ai/docs/features/fork) |
+| TypingMind | "Fork chat from here" from a message menu. Requests for a tree view and for seeing which messages are new in a fork. | Users want the tree and "what is new after the split", which is exactly the gap. | [TypingMind docs](https://docs.typingmind.com/chat-management/fork-chats), [tree request](https://feedback.typingmind.com/p/tree-style-display-for-forked-conversations), [fork comparison request](https://feedback.typingmind.com/p/chat-fork-comparison) |
+| Loom (LLM multiverse) | Tree view of continuations, navigate parent/child/sibling with arrows, read mode shows one path. | Tree + "read one path" split; free 2D layout not needed for few long branches. | [socketteer/loom](https://github.com/socketteer/loom), [Loom paper](https://arxiv.org/pdf/2102.06391) |
+| Obsidian Canvas LLM plugins | Messages as canvas nodes, edges are parent/child and define context; fork from any node. | Edges carry meaning; a free canvas is for exploration, not for long histories. | [Canvas LLM](https://community.obsidian.md/plugins/canvas-llm), [Canvas Branch Chat](https://community.obsidian.md/plugins/canvas-branch-chat) |
+| Figma version history | Right-side timeline; click a version to preview; "Restore" is non-destructive (adds checkpoints); "Duplicate" makes a new file from that version. | Restore keeps what it replaces; duplicate-from-version = fork from a point. | [Figma help: version history](https://help.figma.com/hc/en-us/articles/360038006754-View-a-file-s-version-history) |
+| Google Docs version history | Right-side list of versions; select one to see who changed what; "Restore this version" then confirm. | Preview first, confirm second. | [Google Docs help](https://support.google.com/docs/answer/190843) |
+
+## Chosen patterns
+
+1. **Vertical commit-graph lanes** (GitKraken, Git Graph, Sourcetree). Each line of work is a colored lane; rows are the points that matter (start, split, first request after the split, latest message); long stretches collapse to "N more messages", as the current `BranchGraph` already does with counts. The lane's name sits on its last message in the lane color, and the same name and color head the comparison, so color is never the only identifier. Adapted: time runs **top to bottom**, the reading order of Conversation, instead of git's newest-first.
+2. **Two-ref compare from the split point** (GitHub compare, Tower). Pick two lines; the screen states the shared history once ("Shared up to #6") and then shows only what each line did after the split, side by side on desktop and stacked on a phone. Each side ends with "Open in Conversation" to continue there.
+3. **Version-history actions on a selected point** (Figma, Google Docs, Git Graph dialogs). Selecting a row (click or tap, never hover) opens its actions in place: **New branch from here** (non-destructive, one press, like Figma's Duplicate or ChatGPT's Branch in new chat) and **Rewind to here…**, which first marks the rows that will leave on the graph and lists the impact; only a second, explicit press rewinds. As with Figma's Restore, nothing is lost: the removed part is kept as a new branch.
+
+Phone: the vertical lane graph already fits 390 px with three lanes, so the phone keeps the graph as a full-width list of rows (each row a 44 px touch target) and moves comparison and point actions to their own focused views (a stacked comparison, then bottom sheets), instead of shrinking the desktop columns.
+
+## Why this pattern, when not
+
+- **Why:** the job is to find a divergence and choose between lines. Lanes make the split points and the identity of each line visible without reading; compare-from-the-split answers "what is different" without re-reading shared history; acting on a selected point keeps fork and rewind next to the graph context they depend on. Git users (a large share of Shellboy users) already read this layout.
+- **When not:** for **one or two siblings at a single message** inside Conversation, an inline `< 1/2 >` switcher (ChatGPT, Claude) or the existing `BranchMark` link is enough; this screen is for the family. For **many short exploratory branches** (dozens of retries per message, Loom-style writing), a free 2D tree or canvas reads better than lanes. For **more than about six lanes** at once, lanes get wide and colors repeat; the graph should then fold inactive lanes (GitLens lane folding) or fall back to the indented `BranchList`. Colors come from the three chart tokens (`--chart-1..3`); a fourth lane would need another token or a repeated color plus its label.
+
+## What the mock does not add
+
+- No new owner reads. Everything shown maps to `thread.branches` (lanes, divergence ordinal and request, size, tip, running), the existing bounded excerpt reads (`history.window`) and the existing `dry_run` rewind facts (messages and turns that leave, shells, children, replies, attachments, the kept child).
+- No rename, archive or select-many controls on this screen (rename stays in the CLI and Conversation; #138).
+- No merge: Shellboy has no merge of Threads, so the graph never joins lanes.
+- No usage per branch since the split: not readable today (`branches-threads.md`, "Not shown").
