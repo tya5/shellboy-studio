@@ -2,9 +2,10 @@
 // ordinals, columns reused once a lane ends, and reads that a re-read never repeats or clears.
 import { describe, expect, it } from "vitest";
 import { Link } from "../../data/src/link";
-import { Cancel, Operations } from "../../data/src/operations";
+import { Operations } from "../../data/src/operations";
 import { FakeTransport, flush } from "../../data/test/harness";
-import { LANE_CONCURRENCY, LANE_OPENED_MAX, LANE_QUEUE_MAX, LaneReader, headNeed, laneGraph, leavingRows } from "../src/branch-lanes";
+import { LANE_CONCURRENCY, LANE_QUEUE_MAX, LaneReader, headNeed, laneGraph, leavingRows } from "../src/branch-lanes";
+import { Branches } from "../src/branching";
 import { readFamily, type BranchFamily } from "../src/branches";
 import { fixtureBranches } from "./fixture";
 
@@ -102,18 +103,20 @@ describe("lane reads", () => {
     link.start();
     t.open();
     const ops = new Operations(link, () => "op", () => true);
-    return { t, reader: new LaneReader(ops, () => supported) };
+    const b = new Branches(ops, undefined, undefined, () => supported);
+    b.state.value = { threadId: "lead", loading: false, family: family(), error: undefined };
+    return { t, b, reader: b.lanes };
   };
   const answer = (t: FakeTransport, id: number, threadId: string, items: { node_id: string; kind: string; excerpt: string; ordinal: number }[]) =>
-    t.ok(id, { thread_id: threadId, revision: 1, total: 300, items: items.map(({ ordinal, ...i }) => ({ ...i, execution_count: 0, selection: { ordinal } })) });
+    t.ok(id, { thread_id: threadId, revision: 1, total: family().items.find(i => i.threadId === threadId)?.pathNodes, items: items.map(({ ordinal, ...i }) => ({ ...i, execution_count: 0, selection: { ordinal } })) });
 
   it("reads one node or one head window per row, at most two at once, and never twice", async () => {
-    const { t, reader } = setup();
+    const { t, b, reader } = setup();
     const g = laneGraph(family());
-    reader.want({ kind: "node", threadId: "lead", nodeId: "n225" });
-    reader.want(headNeed(g.byId.get("lead")!));
-    reader.want(headNeed(g.byId.get("fork-a")!));
-    reader.want({ kind: "node", threadId: "lead", nodeId: "n225" });
+    b.want({ kind: "node", threadId: "lead", nodeId: "n225" });
+    b.want(headNeed(g.byId.get("lead")!));
+    b.want(headNeed(g.byId.get("fork-a")!));
+    b.want({ kind: "node", threadId: "lead", nodeId: "n225" });
     const calls = t.calls("history.window");
     expect(calls).toHaveLength(LANE_CONCURRENCY);
     expect(calls.map((c) => c.args)).toEqual([
@@ -124,64 +127,38 @@ describe("lane reads", () => {
     await flush();
     expect(t.calls("history.window")[2]!.args).toEqual({ thread_id: "fork-a", node_id: "n100", before: 0, after: 1, excerpt_chars: 160 });
     expect(reader.node("n225")).toEqual({ kind: "assistant_response", excerpt: "after", ordinal: 225 });
-    reader.want({ kind: "node", threadId: "lead", nodeId: "n225" });
+    b.want({ kind: "node", threadId: "lead", nodeId: "n225" });
     expect(t.calls("history.window")).toHaveLength(3);
   });
 
   it("keeps a bounded queue, drops rows that left the screen, and reads nothing without the capability", () => {
-    const { t, reader } = setup();
-    for (let n = 0; n < LANE_QUEUE_MAX + 10; n++) reader.want({ kind: "node", threadId: "lead", nodeId: `x${n}` });
+    const { t, b, reader } = setup();
+    for (let n = 0; n < LANE_QUEUE_MAX + 10; n++) b.want({ kind: "node", threadId: "lead", nodeId: `x${n}` });
     expect(t.calls("history.window")).toHaveLength(LANE_CONCURRENCY);
-    reader.release({ kind: "node", threadId: "lead", nodeId: `x${LANE_QUEUE_MAX + 9}` });
-    expect((reader as unknown as { queue: Map<string, unknown> }).queue.size).toBe(LANE_QUEUE_MAX - 1);
+    b.release({ kind: "node", threadId: "lead", nodeId: `x${LANE_QUEUE_MAX + 9}` });
+    expect((b as unknown as { queued: Map<string, unknown> }).queued.size).toBe(LANE_QUEUE_MAX - 1);
     const off = setup(false);
-    off.reader.want({ kind: "node", threadId: "lead", nodeId: "n1" });
+    off.b.want({ kind: "node", threadId: "lead", nodeId: "n1" });
     expect(off.t.calls("history.window")).toHaveLength(0);
   });
 
   it("a reset (owner change or leaving) drops late results and positions", async () => {
-    const { t, reader } = setup();
-    reader.want(headNeed(laneGraph(family()).byId.get("fork-a")!));
+    const { t, b, reader } = setup();
+    b.want(headNeed(laneGraph(family()).byId.get("fork-a")!));
     const call = t.calls("history.window")[0]!;
-    reader.reset(true);
+    b.ownerChanged("different");
     answer(t, call.id, "fork-a", [{ node_id: "n100", kind: "user", excerpt: "late", ordinal: 100 }, { node_id: "f101", kind: "user", excerpt: "late", ordinal: 101 }]);
     await flush();
     expect(reader.node("n100")).toBeUndefined();
     expect(reader.nodeAt("fork-a", 101)).toBeUndefined();
   });
 
-  it("Show more opens one guarded page; refresh preserves disclosure but requires new membership", async () => {
-    const { t, reader } = setup();
-    reader.want(headNeed(laneGraph(family()).byId.get("fork-a")!));
-    answer(t, t.calls("history.window")[0]!.id, "fork-a", [{ node_id: "n100", kind: "user", excerpt: "split", ordinal: 100 }, { node_id: "f101", kind: "user", excerpt: "first", ordinal: 101 }]);
-    await flush();
-    const opening = reader.open("fork-a", "fork-a|run|102", 102, 111);
-    expect(reader.opening.value.has("fork-a|run|102")).toBe(true);
-    const call = t.calls("history.window").at(-1)!;
-    expect(call.args).toEqual({ thread_id: "fork-a", ordinal: 101, expect_node_id: "f101", before: 0, after: 10, excerpt_chars: 160 });
-    answer(t, call.id, "fork-a", Array.from({ length: 11 }, (_, k) => ({ node_id: `f${101 + k}`, kind: "user", excerpt: `m${101 + k}`, ordinal: 101 + k })));
-    await opening;
-    expect([...reader.opened("fork-a")]).toEqual([102, 103, 104, 105, 106, 107, 108, 109, 110, 111]);
-    const f = family();
-    reader.familyChanged(f);
-    const grown = family();
-    grown.items[1]!.pathNodes = 114; grown.items[1]!.tipNodeId = "f113";
-    const revalidate = reader.readDisclosed(grown, undefined, new Cancel());
-    const request = t.calls("history.window").at(-1)!;
-    expect(request.args).toEqual({ thread_id: "fork-a", ordinal: 102, before: 0, after: 9, excerpt_chars: 160 });
-    answer(t, request.id, "fork-a", Array.from({ length: 10 }, (_, k) => ({ node_id: `f${102 + k}`, kind: "user", excerpt: `m${102 + k}`, ordinal: 102 + k })));
-    const windows = await revalidate;
-    reader.familyChanged(grown);
-    expect([...reader.opened("fork-a")]).toEqual([]);
-    for (const { threadId, snapshot } of windows) reader.refreshPoint(threadId, snapshot);
-    expect([...reader.opened("fork-a")]).toHaveLength(10);
-    const rewound = family();
-    rewound.items[1]!.pathNodes = 105; rewound.items[1]!.tipNodeId = "f104";
-    reader.familyChanged(rewound);
-    expect([...reader.opened("fork-a")]).toEqual([]);
-    expect(reader.nodeAt("fork-a", 101)).toBeUndefined();
-    expect(reader.node("f101")?.excerpt).toBe("first");
-    expect(reader.canOpenMore()).toBe(true);
-    expect(LANE_OPENED_MAX).toBeGreaterThan(0);
+  it("projects replacement membership while retaining immutable excerpts", () => {
+    const reader = new LaneReader();
+    const item = { node_id: "before", kind: "user", excerpt: "old text", execution_count: 0, selection: { ordinal: 5 } };
+    reader.project([{ thread_id: "lead", revision: 1, total: 7, items: [item] }], true);
+    reader.project([{ thread_id: "lead", revision: 2, total: 8, items: [{ ...item, node_id: "next", excerpt: "new text" }] }], true);
+    expect(reader.nodeAt("lead", 5)).toBe("next");
+    expect(reader.node("before")?.excerpt).toBe("old text");
   });
 });

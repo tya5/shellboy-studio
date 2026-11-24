@@ -7,7 +7,7 @@ import { signal } from "@preact/signals-core";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { flush as flushTransport, settle } from "../../../data/test/harness";
+import { settle } from "../../../data/test/harness";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import type { AppModel, DesignContext, Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
@@ -145,8 +145,9 @@ describe("Branches screen", () => {
     expect(el.querySelector<HTMLElement>(".branch-lanes > li[data-selected]")?.dataset.key).toBe("rel|split|r6");
     expect(scroller.scrollTop).toBe(120);
     expect(loadingSeen).toBe(false);
-    // Only the open point is checked. All other excerpts stay mounted and cached.
-    expect(t.calls("history.window").slice(reads).map(call => call.args)).toEqual(Array.from({ length: 2 }, () => ({
+    // The open point and displayed positional heads are checked; other immutable text stays cached.
+    const checks = t.calls("history.window").slice(reads).map(call => call.args as { node_id?: string });
+    expect(checks.filter(args => args.node_id)).toEqual(Array.from({ length: 2 }, () => ({
       thread_id: "rel", node_id: "r6", before: 0, after: 0, excerpt_chars: 160,
     })));
   });
@@ -249,44 +250,44 @@ describe("Branches screen", () => {
     expect(el.querySelector(".loadrows")).toBeNull();
   });
 
-  it("does not authorize an action from a point reply superseded by a newer lane window", async () => {
-    const { el, row, point, button, flush, model, t, db } = await open();
+  it("discards a round when an append lands between the disclosure and point reads", async () => {
+    const { el, row, point, button, flush, refresh, model, db, family, t } = await open();
+    await act(async () => { row("rel|run|6")!.querySelector<HTMLButtonElement>(".lanes-run")!.click(); });
+    await flush();
     await act(async () => { point("Compare provider behavior")!.click(); });
     await act(async () => { button("Rewind Release notes to here")!.click(); });
     await flush();
-    expect(model.branches.rewind.value.kind).toBe("ready");
-    expect(model.branches.targetRevision.value).toBe(14);
-    await act(async () => {
-      const refresh = model.branches.read("rel");
-      const familyCall = t.calls("thread.branches").at(-1)!;
-      const familyReply = db.answer(familyCall);
-      if (!familyReply.ok) throw new Error("Expected fixture family");
-      db.answered.add(familyCall.id);
-      t.ok(familyCall.id, familyReply.result);
-      await flushTransport();
-      const targeted = t.calls("history.window").at(-1)!;
-      expect(targeted.args).toMatchObject({ thread_id: "rel", node_id: "r6", before: 0, after: 0 });
-      row("rel|run|6")!.querySelector<HTMLButtonElement>(".lanes-run")!.click();
-      const newer = t.calls("history.window").at(-1)!;
-      expect(newer.id).not.toBe(targeted.id);
-      db.answered.add(newer.id);
-      t.ok(newer.id, { thread_id: "rel", revision: 20, total: 14,
-        items: [{ node_id: "r7", kind: "user", excerpt: "Keep the stable renderer and list the fixes.", selection: { ordinal: 6 } }] });
-      await flushTransport();
-      expect(model.branches.lanes.revision("rel")).toBe(20);
-      db.answered.add(targeted.id);
-      t.ok(targeted.id, { thread_id: "rel", revision: 19, total: 14,
-        items: [{ node_id: "r6", kind: "user", excerpt: "Compare provider behavior before writing.", selection: { ordinal: 5 } }] });
-      await refresh;
-    });
-    await flush();
-    expect(model.branches.targetRevision.value).toBeUndefined();
-    expect(model.branches.target.value).toBeUndefined();
-    expect(model.branches.lanes.revision("rel")).toBe(20);
+    const before = row("rel|n|r9");
+    const focused = point("Add the upgrade notes")!;
+    focused.focus();
+    const originalAction = el.querySelector(".lanes-actions input");
+    const answer = db.answer.bind(db);
+    const start = t.calls("thread.branches").length;
+    const firstWindow = t.calls("history.window").length;
+    let changed = false;
+    db.answer = call => {
+      const args = call.args as { thread_id?: string; ordinal?: number; node_id?: string };
+      if (!changed && call.command === "history.window" && args.thread_id === "rel" && args.node_id === "r6") {
+        expect(t.calls("history.window").slice(firstWindow).some(x => (x.args as typeof args).ordinal === 6 && (x.args as typeof args).thread_id === "rel")).toBe(true);
+        expect(row("rel|n|r9")).toBe(before);
+        expect(model.branches.targetRevision.value).toBe(14);
+        expect(el.querySelector(".lanes-actions input")).toBe(originalAction);
+        expect(model.branches.rewind.value.kind).toBe("ready");
+        family.append("rel", { node_id: "r15", kind: "user", excerpt: "Mid-round append" });
+        changed = true;
+      }
+      return answer(call);
+    };
+    await refresh();
+    expect(changed).toBe(true);
+    expect(t.calls("thread.branches").length - start).toBe(2);
+    expect(row("rel|n|r9")).toBe(before);
+    expect(document.activeElement).toBe(focused);
+    expect(model.branches.targetRevision.value).toBe(15);
     expect(model.branches.rewind.value.kind).toBe("idle");
-    expect(el.querySelector(".lanes-actions input")).toBeNull();
-    expect(el.querySelector("[data-leaving]")).toBeNull();
-    expect(t.calls("thread.rewind")).toHaveLength(1);
+    expect(el.querySelector(".lanes-actions input")).not.toBeNull();
+    expect(el.querySelector(".lanes-actions input")).not.toBe(originalAction);
+    expect(text(row("rel|tip"))).toContain("Mid-round append");
   });
 
   it("Show opens a run with one guarded read; loading shows only on that run", async () => {

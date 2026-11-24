@@ -654,15 +654,14 @@ node ID (node text is immutable), at most 2048, oldest out first, so a family
 re-read does not bulk reload or clear them. An owner change clears everything and
 cancels reads in flight; leaving the view drops queued reads and positions;
 late results never publish. A shorter path or a non-growing new tip drops that
-lane's positions. Because the family read has no path revision,
-refresh checks the one selected action point and re-reads disclosed coordinates
-on changed lanes or the selected lane, in bounded windows. Disclosure is not
-membership: older positions are discarded on revision advance, but immutable
-excerpts are cached by node ID. The refreshed graph publishes as a batch, so
-surviving rows keep their keys and focus. Branches accepts the point's membership
-and revision from one targeted owner reply. A newer observed revision invalidates
-standalone old proof; it never approves an action. An unchanged point preserves
-open actions; a new valid revision re-keys actions and withdraws a stale preview.
+lane's positions. Because the family reply has no path revision, Branches stages the family,
+shown positional heads, disclosed ranges and selected point before publication.
+For each lane, its windows must agree on revision and match the family size
+(and tip where read). A disagreement discards the round; bounded re-reads keep
+the prior cut, row keys and focus intact. Lazy reads cannot revise an accepted
+path or decide the selection. LaneReader projects only admitted positions and
+caches immutable excerpts. At publication, Branches updates the action key or
+withdraws the selection; a newer revision withdraws an unused preview.
 Mutation receipts survive these projection changes. The
 two-line comparison keeps its own bounded reads
 (`branch-compare.ts`: one anchor read and one 50-row page per side, four pages

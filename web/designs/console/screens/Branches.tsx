@@ -152,8 +152,8 @@ export function Branches({ model }: { model: AppModel }) {
   const family = state.family;
   const threadId = model.selectedId.value;
   const version = reader.version.value;
-  const opening = reader.opening.value;
-  const openFailed = reader.openFailed.value;
+  const opening = b.opening.value;
+  const openFailed = b.openFailed.value;
   const compare = c.state.value;
   const target = b.target.value;
   const rewind = b.rewind.value;
@@ -167,7 +167,7 @@ export function Branches({ model }: { model: AppModel }) {
   const held = useRef<Held>(new Map());
   const picked = useRef<string | undefined>(undefined);
 
-  const graph = useMemo(() => family ? laneGraph(family, (id, o) => reader.nodeAt(id, o), (id) => reader.opened(id)) : undefined, [family, version]);
+  const graph = useMemo(() => family ? laneGraph(family, (id, o) => reader.nodeAt(id, o), (id) => b.opened(id)) : undefined, [family, version]);
   const name = (i: BranchItem) => i.title ?? rowsById.get(i.threadId)?.summary.title ?? branchTitle(i);
 
   const needOf = (row: LaneRow): LaneNeed | undefined => {
@@ -179,13 +179,13 @@ export function Branches({ model }: { model: AppModel }) {
   // Rows on screen ask for their text; a re-read asks again only for what is missing (want is idempotent).
   useEffect(() => {
     if (!graph) return;
-    for (const row of graph.rows) if (visible.current.has(row.key)) { const need = needOf(row); if (need) reader.want(need); }
+    for (const row of graph.rows) if (visible.current.has(row.key)) { const need = needOf(row); if (need) b.want(need); }
   });
   const onVisible = (key: string, on: boolean) => {
     if (on) visible.current.add(key); else visible.current.delete(key);
     const row = graph?.rows.find((r) => r.key === key);
     const need = row && needOf(row);
-    if (need) on ? reader.want(need) : reader.release(need);
+    if (need) on ? b.want(need) : b.release(need);
   };
 
   // Default comparison: this Thread and the first line it can be compared with, once per Thread opened.
@@ -218,7 +218,7 @@ export function Branches({ model }: { model: AppModel }) {
   const targetExcerpt = reader.node(target?.nodeId);
   const targetOrdinal = targetRow?.ordinal ?? targetExcerpt?.ordinal;
   useEffect(() => {
-    if (target && !targetRow) reader.want({ kind: "node", threadId: target.threadId, nodeId: target.nodeId });
+    if (target && !targetRow) b.want({ kind: "node", threadId: target.threadId, nodeId: target.nodeId });
   });
 
   // Phone: the comparison is its own view; coming back restores where the lane list was.
@@ -252,18 +252,18 @@ export function Branches({ model }: { model: AppModel }) {
     if (row.kind === "run") {
       const from = row.from!, to = row.to!;
       const busy = opening.has(row.key);
-      const canOpen = supported && reader.canOpenMore();
+      const canOpen = supported && b.canOpenMore();
       return { ...base, run: {
         text: from === to ? t("branches.runOne", { n: from + 1 }) : t("branches.run", { n: (to - from + 1).toLocaleString("en-US"), from: from + 1, to: to + 1 }),
         action: busy ? t("common.loading") : openFailed.has(row.key) ? t("branches.showFailed") : canOpen ? t("branches.showMore") : supported ? t("branches.openedMax") : undefined,
         busy,
         label: t("branches.showMoreAria", { from: from + 1, to: to + 1 }),
-        ...(canOpen ? { onOpen: () => void reader.open(row.lane, row.key, from, to) } : {}),
+        ...(canOpen ? { onOpen: () => void b.open(row.lane, row.key, from, to) } : {}),
       }, leavingNote: targetOrdinal !== undefined ? t("branches.leavingNote", { lane: laneName, n: targetOrdinal + 1 }) : undefined };
     }
     const excerpt = reader.node(row.nodeId);
     const need = needOf(row);
-    const failed = need ? reader.failedFor(need) : false;
+    const failed = need ? b.failedFor(need) : false;
     const fallback = row.kind === "split" ? family!.items.find((i) => i.parentId === row.lane && i.divergence?.nodeId === row.nodeId)?.divergence?.request : row.kind === "tip" ? item.tipRequest : undefined;
     const pending = !excerpt && supported && !failed;
     const whoText = excerpt ? who(t, excerpt.kind) : fallback ? (row.kind === "tip" ? t("branches.lastRequest") : t("branches.request")) : undefined;

@@ -1,9 +1,6 @@
-// The Branches lane graph (#138): each Thread of a family is one line of work drawn as a vertical lane, in
-// Conversation's reading order (top is oldest). Rows and their keys come from `thread.branches` facts and node
-// IDs, so a re-read with the same facts yields the same rows and keys, and an appended message changes only the
-// lane's last stretch and tip. Message text comes from bounded `history.window` reads, cached by node ID.
-import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, type HistoryItem, type HistoryWindowResult, type Operations } from "../../data/src";
+// Branch rows use owner ordinals and stable node IDs.
+import { signal } from "@preact/signals-core";
+import type { HistoryItem, HistoryWindowResult } from "../../data/src";
 import type { BranchFamily, BranchItem } from "./branches";
 
 export type LaneRowKind = "start" | "message" | "split" | "run" | "tip";
@@ -49,7 +46,7 @@ export interface LaneGraph {
   columns: number;
 }
 
-/** Past six concurrent lanes the graph gets wide; further lanes share the last column and keep their names. */
+// Keep labels when lanes share the final column.
 export const LANE_COLUMNS = 6;
 
 /** Lane order: depth first from each root; children by where they leave, apart-started children last. */
@@ -76,11 +73,6 @@ function laneOrder(family: BranchFamily): { order: BranchItem[]; byId: Map<strin
   return { order, byId, joined };
 }
 
-/**
- * Rows of every lane, top to bottom. A lane shows its first message, each point where a branch leaves it, any
- * messages opened by "Show more", and its tip; the stretches between are runs with counts from the owner's
- * ordinals. `nodeAt` gives a node ID read for a position; `opened` lists positions opened on a lane.
- */
 export function laneGraph(family: BranchFamily, nodeAt: (threadId: string, ordinal: number) => string | undefined = () => undefined, opened: (threadId: string) => Iterable<number> = () => []): LaneGraph {
   const { order, byId, joined } = laneOrder(family);
   const rows: LaneRow[] = [];
@@ -158,215 +150,44 @@ export const headNeed = (lane: Lane): LaneNeed => ({ kind: "head", threadId: lan
 export const LANE_EXCERPT_CHARS = 160;
 /** Messages one "Show more" on a run opens. */
 export const LANE_PAGE = 24;
-/** Positions opened across the family before "Show more" stops; Conversation reads the rest. */
+/** Family-wide disclosure cap. */
 export const LANE_OPENED_MAX = 480;
-/** Node excerpts kept; the oldest go first. Node text is immutable, so a kept one is never re-read. */
+/** Immutable node excerpt LRU. */
 export const LANE_NODES_MAX = 2048;
 /** Reads waiting for a visible row; the oldest waiting one is dropped past this. */
 export const LANE_QUEUE_MAX = 48;
 /** Reads in flight at once. */
 export const LANE_CONCURRENCY = 2;
 
-const needKey = (n: LaneNeed): string => n.kind === "head" ? `head:${n.threadId}:${n.start}:${n.split ?? ""}` : `node:${n.threadId}:${n.nodeId}`;
-const excerptOf = (i: HistoryItem): NodeExcerpt => ({ kind: i.kind, excerpt: i.excerpt, ordinal: i.selection?.ordinal });
+export const needKey = (n: LaneNeed): string => n.kind === "head" ? `head:${n.threadId}:${n.start}:${n.split ?? ""}` : `node:${n.threadId}:${n.nodeId}`;
 
-/**
- * Bounded reads behind the lane rows. Only rows on screen ask (`want`), the queue and concurrency are fixed,
- * and immutable excerpts are kept by node ID. A path revision replaces positional membership, not
- * disclosure. Leaving the view or changing owners resets the bounded projection.
- */
+/** Positions are a projection of accepted Branches evidence; excerpts are immutable. */
 export class LaneReader {
-  /** Bumped when read results land, so rows re-render with them. */
-  readonly version: Signal<number> = signal(0);
-  /** Runs being opened ("Show more"), by row key, and runs whose last attempt failed. */
-  readonly opening: Signal<ReadonlySet<string>> = signal(new Set());
-  readonly openFailed: Signal<ReadonlySet<string>> = signal(new Set());
-  private revisions = new Map<string, number>();
+  readonly version = signal(0);
   private nodes = new Map<string, NodeExcerpt>();
-  private failed = new Set<string>();
   private positions = new Map<string, Map<number, string>>();
-  private openedAt = new Map<string, Set<number>>();
-  private openedCount = 0;
-  private sizes = new Map<string, { tip: string | undefined; path: number | undefined }>();
-  private queue = new Map<string, LaneNeed>();
-  private inFlight = new Set<string>();
-  private cancel = new Cancel();
-  private epoch = 0;
-
-  constructor(private readonly ops: Operations, private readonly supported: () => boolean, private readonly observeRevision?: (threadId: string, revision: number) => void) {}
-
-  revision(threadId: string): number | undefined { return this.revisions.get(threadId); }
-  node(nodeId: string | undefined): NodeExcerpt | undefined { return nodeId === undefined ? undefined : this.nodes.get(nodeId); }
-  /** The read for this need ended without text: show it as unknown, do not retry until reset. */
-  failedFor(need: LaneNeed): boolean { return this.failed.has(needKey(need)); }
-  nodeAt(threadId: string, ordinal: number): string | undefined { return this.positions.get(threadId)?.get(ordinal); }
-  opened(threadId: string): Iterable<number> {
-    return [...(this.openedAt.get(threadId) ?? [])].filter(o => this.nodeAt(threadId, o) !== undefined);
-  }
-
-  /** Refresh disclosed coordinates only; callers publish them together with the family. */
-  async readDisclosed(family: BranchFamily, targetThread: string | undefined, cancel: Cancel): Promise<{ threadId: string; snapshot: HistoryWindowResult }[]> {
-    const results: { threadId: string; snapshot: HistoryWindowResult }[] = [];
-    if (!this.supported()) return results;
-    for (const item of family.items) {
-      const { threadId, tipNodeId, pathNodes } = item;
-      const prior = this.sizes.get(threadId);
-      if (threadId !== targetThread && prior?.tip === tipNodeId && prior?.path === pathNodes) continue;
-      const ordinals = [...(this.openedAt.get(threadId) ?? [])].filter(o => pathNodes === undefined || o < pathNodes).sort((a, b) => a - b);
-      for (let i = 0; i < ordinals.length && !cancel.cancelled;) {
-        const from = ordinals[i++]!;
-        let to = from;
-        while (ordinals[i] === to + 1 && to - from + 1 < LANE_PAGE) to = ordinals[i++]!;
-        const out = await this.ops.historyWindow({ thread_id: threadId, ordinal: from, before: 0, after: to - from,
-          excerpt_chars: LANE_EXCERPT_CHARS }, { cancel });
-        if (out.ok && out.value.thread_id === threadId) results.push({ threadId, snapshot: out.value });
-      }
-    }
-    return results;
-  }
-  canOpenMore(): boolean { return this.openedCount < LANE_OPENED_MAX; }
-
-  /** A row came on screen. */
-  want(need: LaneNeed): void {
-    if (!this.supported()) return;
-    const key = needKey(need);
-    if (this.failed.has(key) || this.inFlight.has(key) || this.queue.has(key) || this.satisfied(need)) return;
-    this.queue.set(key, need);
-    if (this.queue.size > LANE_QUEUE_MAX) this.queue.delete(this.queue.keys().next().value!);
-    this.drain();
-  }
-  /** The row left the screen before its read started. */
-  release(need: LaneNeed): void { this.queue.delete(needKey(need)); }
-
-  private satisfied(need: LaneNeed): boolean {
-    if (need.kind === "node") return this.nodes.has(need.nodeId);
-    const id = this.nodeAt(need.threadId, need.start);
-    return id !== undefined && this.nodes.has(id);
-  }
-
-  private remember(threadId: string, { revision, items }: HistoryWindowResult): boolean {
-    const previous = this.revision(threadId);
-    if (previous !== undefined && revision < previous) return false;
-    if (previous !== undefined && revision > previous) this.positions.delete(threadId);
-    this.revisions.set(threadId, revision);
-    if (previous !== revision) this.observeRevision?.(threadId, revision);
-    let at = this.positions.get(threadId);
-    if (!at) this.positions.set(threadId, at = new Map());
-    for (const i of items) {
-      if (!i.node_id) continue;
-      if (i.selection?.ordinal !== undefined) at.set(i.selection.ordinal, i.node_id);
+  node(id: string | undefined): NodeExcerpt | undefined { return id === undefined ? undefined : this.nodes.get(id); }
+  nodeAt(id: string, ordinal: number): string | undefined { return this.positions.get(id)?.get(ordinal); }
+  touch(): void { this.version.value = this.version.peek() + 1; }
+  cache(items: HistoryItem[]): void {
+    for (const i of items) if (i.node_id) {
       this.nodes.delete(i.node_id);
-      this.nodes.set(i.node_id, excerptOf(i));
+      this.nodes.set(i.node_id, { kind: i.kind, excerpt: i.excerpt, ordinal: i.selection?.ordinal });
     }
     while (this.nodes.size > LANE_NODES_MAX) this.nodes.delete(this.nodes.keys().next().value!);
-    return true;
   }
-
-  private drain(): void {
-    while (this.inFlight.size < LANE_CONCURRENCY && this.queue.size) {
-      const [key, need] = this.queue.entries().next().value!;
-      this.queue.delete(key);
-      this.inFlight.add(key);
-      const epoch = this.epoch;
-      const cancel = this.cancel;
-      void this.readNeed(need, cancel).then((items) => {
-        if (epoch !== this.epoch) return;
-        this.inFlight.delete(key);
-        batch(() => {
-          if (items) this.remember(need.threadId, items);
-          else this.failed.add(key);
-          this.version.value = this.version.peek() + 1;
-        });
-        this.drain();
-      });
+  project(snapshots: readonly HistoryWindowResult[], replace = false): void {
+    if (replace) this.positions.clear();
+    for (const { thread_id, items } of snapshots) {
+      let at = this.positions.get(thread_id);
+      if (!at) this.positions.set(thread_id, at = new Map());
+      for (const i of items) if (i.node_id && i.selection?.ordinal !== undefined) at.set(i.selection.ordinal, i.node_id);
+      this.cache(items);
     }
+    this.touch();
   }
-
-  private async readNeed(need: LaneNeed, cancel: Cancel): Promise<HistoryWindowResult | undefined> {
-    const args = need.kind === "node"
-      ? { thread_id: need.threadId, node_id: need.nodeId, before: 0, after: 0, excerpt_chars: LANE_EXCERPT_CHARS }
-      : need.split !== undefined
-        ? { thread_id: need.threadId, node_id: need.split, before: 0, after: 1, excerpt_chars: LANE_EXCERPT_CHARS }
-        : { thread_id: need.threadId, ordinal: need.start, before: 0, after: 0, excerpt_chars: LANE_EXCERPT_CHARS };
-    const out = await this.ops.historyWindow(args, { cancel });
-    return out.ok && out.value.thread_id === need.threadId ? out.value : undefined;
-  }
-
-  /** "Show more" on a run: opens up to LANE_PAGE positions from `from`, guarded by the node before it when known. */
-  async open(threadId: string, runKey: string, from: number, to: number): Promise<void> {
-    if (!this.supported() || this.opening.peek().has(runKey) || !this.canOpenMore()) return;
-    const epoch = this.epoch;
-    const cancel = this.cancel;
-    const count = Math.min(LANE_PAGE, to - from + 1, LANE_OPENED_MAX - this.openedCount);
-    const anchor = from > 0 ? this.nodeAt(threadId, from - 1) : undefined;
-    const set = (s: Signal<ReadonlySet<string>>, on: boolean) => { const n = new Set(s.peek()); if (on) n.add(runKey); else n.delete(runKey); s.value = n; };
-    batch(() => { set(this.opening, true); set(this.openFailed, false); });
-    const out = await this.ops.historyWindow(anchor !== undefined
-      ? { thread_id: threadId, ordinal: from - 1, expect_node_id: anchor, before: 0, after: count, excerpt_chars: LANE_EXCERPT_CHARS }
-      : { thread_id: threadId, ordinal: from, before: 0, after: count - 1, excerpt_chars: LANE_EXCERPT_CHARS }, { cancel });
-    if (epoch !== this.epoch) return;
-    batch(() => {
-      set(this.opening, false);
-      const items = out.ok && out.value.thread_id === threadId ? out.value.items.filter((i) => i.node_id && i.selection?.ordinal !== undefined && i.selection.ordinal >= from && i.selection.ordinal <= to) : [];
-      if (!items.length) { set(this.openFailed, true); return; }
-      if (!out.ok || !this.remember(threadId, { ...out.value, items })) return;
-      let shown = this.openedAt.get(threadId);
-      if (!shown) this.openedAt.set(threadId, shown = new Set());
-      for (const i of items) if (!shown.has(i.selection!.ordinal!)) { shown.add(i.selection!.ordinal!); this.openedCount++; }
-      this.version.value = this.version.peek() + 1;
-    });
-  }
-
-  /** Admit the open point from its targeted refresh, not from cached membership. */
-  refreshPoint(threadId: string, snapshot: HistoryWindowResult): void {
-    if (this.remember(threadId, snapshot)) this.version.value = this.version.peek() + 1;
-  }
-
-  /** A targeted owner read disproved a cached position, even if the lane grew. */
-  invalidatePath(threadId: string, revision?: number): void {
-    if (revision !== undefined && revision < (this.revision(threadId) ?? 0)) return;
-    if (revision !== undefined) this.revisions.set(threadId, revision);
-    this.positions.delete(threadId);
-    this.version.value = this.version.peek() + 1;
-  }
-
-  /**
-   * Disclosed lanes swap their positional evidence with the refreshed family, including on growth.
-   * For other lanes, window admission handles revision changes; a shrink also invalidates positions.
-   */
-  familyChanged(family: BranchFamily): void {
-    let dropped = false;
-    for (const i of family.items) {
-      const had = this.sizes.get(i.threadId);
-      this.sizes.set(i.threadId, { tip: i.tipNodeId, path: i.pathNodes });
-      if (!had || (had.tip === i.tipNodeId && had.path === i.pathNodes)) continue;
-      if (this.openedAt.has(i.threadId) || i.pathNodes === undefined || had.path === undefined || i.pathNodes <= had.path) {
-        this.positions.delete(i.threadId);
-        dropped = true;
-      }
-    }
-    if (dropped) this.version.value = this.version.peek() + 1;
-  }
-
-  /** Owner change or the view closed: nothing in flight may land, positions are re-read next time. */
   reset(clearNodes: boolean): void {
-    ++this.epoch;
-    const old = this.cancel;
-    this.cancel = new Cancel();
-    this.queue.clear();
-    this.inFlight.clear();
-    this.failed.clear();
-    this.positions.clear();
-    this.openedAt.clear();
-    this.openedCount = 0;
-    this.sizes.clear();
-    this.revisions.clear();
     if (clearNodes) this.nodes.clear();
-    old.cancel();
-    batch(() => {
-      if (this.opening.peek().size) this.opening.value = new Set();
-      if (this.openFailed.peek().size) this.openFailed.value = new Set();
-      this.version.value = this.version.peek() + 1;
-    });
+    if (this.positions.size || clearNodes) this.project([], true);
   }
 }
