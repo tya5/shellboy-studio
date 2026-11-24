@@ -135,7 +135,7 @@ describe("Open Thread facts (#103)", () => {
       await act(async () => { await settle(t, db); });
       expect(model.data.listThreadIds.value).not.toContain("broken");
       expect(footer(el).textContent).toContain("Recovery wait");
-      expect(footer(el).textContent).toContain("provider: connection interrupted");
+      expect(el.querySelector("[data-owner-diagnostic]")?.textContent).toContain("provider: connection interrupted");
       expect(retryButtons(el)).toHaveLength(1);
       expect(footer(el).contains(retryButtons(el)[0]!)).toBe(true);
       // The charge warning is supporting text on its own row under the status line, not a hover-only title.
@@ -172,10 +172,12 @@ describe("Open Thread facts (#103)", () => {
       expect(noteStyle.textOverflow).not.toBe("ellipsis");
       expect(noteStyle.overflow).not.toBe("hidden");
       expect(note.closest(".conversation-status")).toBeNull();
-      // The status line itself stays one line; only its reason shortens.
+      // The status line stays one line; the evidence and hint wrap together below it.
       expect(getComputedStyle(footer(el)).whiteSpace).toBe("nowrap");
-      expect(getComputedStyle(footer(el).querySelector("[data-status-description]")!).textOverflow).toBe("ellipsis");
-      expect(footer(el).querySelectorAll("[data-status-description]")).toHaveLength(1);
+      const evidence = el.querySelector('[data-owner-diagnostic]')!.parentElement!;
+      expect(getComputedStyle(evidence).whiteSpace).toBe("normal");
+      expect(getComputedStyle(evidence).overflowWrap).toBe("anywhere");
+      expect(evidence.textContent).toContain("Choose an action");
     } finally {
       model.dispose(); style.remove();
       (window as unknown as { happyDOM: { setWindowSize(size: { width: number; height: number }): void } }).happyDOM.setWindowSize({ width: 1024, height: 768 });
@@ -188,7 +190,7 @@ describe("Open Thread facts (#103)", () => {
       const el = draw(model);
       await act(async () => { await settle(t, db); });
       expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe("awaiting");
-      expect(footer(el).textContent).toContain("provider: connection interrupted");
+      expect(el.querySelector("[data-owner-diagnostic]")?.textContent).toContain("provider: connection interrupted");
       expect(retryButtons(el)).toHaveLength(1);
       expect(footer(el).contains(retryButtons(el)[0]!)).toBe(true);
     } finally { model.dispose(); }
@@ -199,7 +201,7 @@ describe("Open Thread facts (#103)", () => {
     try {
       const el = draw(model);
       await act(async () => { await settle(t, db); });
-      expect(footer(el).textContent).toContain("provider: connection interrupted");
+      expect(el.querySelector("[data-owner-diagnostic]")?.textContent).toContain("provider: connection interrupted");
       expect(retryButtons(el)).toHaveLength(0);
       expect(el.querySelector("[data-retry-note]")).toBeNull();
     } finally { model.dispose(); }
@@ -276,3 +278,44 @@ describe("Open Thread's own hint (#103, defect seen on main in #111)", () => {
     } finally { model.dispose(); }
   });
 });
+
+for (const lang of ['en', 'ja'] as const) {
+  it.each(['failed', 'held', 'recovery_wait'] as const)(`keeps %s diagnostics stable in ${lang}`, async state => {
+    const thread = state === 'recovery_wait' ? 'broken' : 'lead';
+    const { model, t, db } = await fixtureModel({ lang, route: 'conversation', threadId: thread });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      if (state !== 'recovery_wait') {
+        await act(async () => {
+          const send = model.send('Synthetic input');
+          const call = t.calls('message.send').at(-1)!;
+          db.answered.add(call.id);
+          if (state === 'held') t.ok(call.id, { thread_id: thread, message_id: 'fixture-held', assignment: 'pending', delivery_status: 'held' });
+          else t.push({ t: 'result', id: call.id, response: { protocol_version: 5, operation_id: 'fixture', ok: false,
+            error: { code: 'io_failed', message: 'Saved evidence', hint: 'Choose an action' } } });
+          await send;
+          await settle(t, db);
+        });
+      }
+      const diagnostic = () => el.querySelector('[data-owner-diagnostic]');
+      const initial = diagnostic();
+      const text = initial?.textContent;
+      expect(text).toContain(lang === 'ja' ? 'コード:' : 'Code:');
+      expect(text).toContain(state === 'held' ? 'held' : 'io_failed');
+      if (state === 'held') {
+        expect(text).toContain(lang === 'ja' ? '受理時は保留中でした。' : 'Held at acceptance.');
+        expect(text).not.toContain(lang === 'ja' ? '次の操作:' : 'Next action:');
+      } else {
+        expect(text).toContain(state === 'failed' ? 'Saved evidence' : 'provider: connection interrupted');
+        expect(text).toContain(`${lang === 'ja' ? '次の操作:' : 'Next action:'} Choose an action`);
+      }
+      if (state !== 'recovery_wait') expect(text).toContain(lang === 'ja' ? '操作ID:' : 'Operation ID:');
+      await act(async () => { t.push({ t: 'changed', thread_ids: [thread], list: false, config_changed: false }); await settle(t, db); });
+      expect(diagnostic()).toBe(initial);
+      expect(diagnostic()?.textContent).toBe(text);
+      expect(t.calls('run.retry')).toHaveLength(0);
+      expect(t.calls('message.send')).toHaveLength(state === 'recovery_wait' ? 0 : 1);
+    } finally { model.dispose(); model.data.stop(); }
+  });
+}

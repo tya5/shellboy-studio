@@ -58,6 +58,7 @@ export function needsConnectionSetup(code: unknown, details: unknown): boolean {
 }
 
 export interface RecoveryFacts {
+  code?: string;
   configuration?: boolean;
   message: string | undefined;
   hint: string | undefined;
@@ -72,6 +73,7 @@ export function recoveryFacts(d: ThreadDetails | undefined): RecoveryFacts | und
     if (parsed) {
       return {
         ...(needsConnectionSetup(parsed.code, parsed.details) ? { configuration: true } : {}),
+        ...(typeof parsed.code === "string" && { code: parsed.code }),
         message: typeof parsed.message === "string" ? parsed.message : undefined,
         hint: typeof parsed.hint === "string" ? parsed.hint : undefined,
       };

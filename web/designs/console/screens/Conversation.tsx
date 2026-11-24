@@ -1,4 +1,5 @@
 import { SchedulePanel } from "./SchedulePanel";
+import { OwnerDiagnostic } from "./OwnerDiagnostic";
 import { ReplyAnnouncement } from "./ReplyAnnouncement";
 import { PanelPage } from "../system/components/PanelTabs/PanelPage";
 import { External, FIRST_SETUP_GUIDE } from "./SetupParts";
@@ -299,6 +300,7 @@ function outputLimitNoticeFacts(live: AttemptOutputLimit | null | undefined, sav
 function OwnSendContent({model,snapshot,plan,trailing,openThreadSettings}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren;openThreadSettings?:OpenThreadSettings}) {
   const projection = useMemo(() => projectionFromDisplayPlan(plan), [plan.entries, plan.sequence, plan.workGroups]);
   const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow,{kind:"live"}>)=> { if ("kind" in message) { const fact = outputLimitNoticeFacts(message.outputLimit); return fact ? <OutputLimitNotice model={model} fact={fact} openThreadSettings={openThreadSettings} /> : null; } return <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
+    {message.heldAtAcceptance ? <div class="caption muted"><OwnerDiagnostic t={model.t.value} code="held" message={model.t.value("diagnostic.heldAtAcceptance")} hint={message.heldAtAcceptance.hint} operationId={message.operationId} /></div> : null}
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="ghost" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>; };
   return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}
     localRegion={plan.localRegion.tailRows.length?{kind:"unqualified",tailRows:plan.localRegion.tailRows,renderRow:renderLocal}:undefined}
@@ -358,10 +360,11 @@ export function ConversationStatus({ model }: { model: AppModel }) {
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
       {start === undefined ? null : <span>{formatDuration(model.now.value - start)}</span>}
     </> : null}
-    {recovery ? <><span data-status-description>{recovery.message ?? recovery.hint}</span>{model.canRetry.value ? <Button aria-describedby="conversation-retry-note" onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}{recovery.configuration ? <ConnectionRecovery model={model} /> : null}</> : null}
+    {recovery ? <>{model.canRetry.value ? <Button aria-describedby="conversation-retry-note" onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}{recovery.configuration ? <ConnectionRecovery model={model} /> : null}</> : null}
   </> : " "}</div>;
   // Supporting text under the one-line status (Material 3 supporting text): it wraps in full, never ellipsized.
   return <>{line}{recovery && model.canRetry.value ? <div key="conversation-retry-note" id="conversation-retry-note" class="conversation-retry-note muted" data-retry-note>{t("recovery.body")}</div> : null}
+    {recovery ? <div key="conversation-recovery-evidence" class="conversation-retry-note muted"><OwnerDiagnostic t={t} {...recovery} /></div> : null}
     <span key="conversation-announcement" class="conversation-announcement" data-conversation-announcement role="status" aria-live="polite" aria-atomic="true">
       {interrupted ? t("core.runInterrupted") : status === "idle" ? statusLabel(t, "idle") : label}
     </span>
@@ -1003,7 +1006,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
           </EmptyState>}
         <ConversationStatus key="permanent-conversation-status" model={model} />
         {handle ? <div class="dock">
-          {send.kind === "failed" ? <Notice tone="bad" actions={send.configuration ? <ConnectionRecovery model={model} /> : undefined}>{t("composer.failed", { message: send.message })}</Notice> : null}
+          {send.kind === "failed" ? <Notice tone="bad" actions={send.configuration ? <ConnectionRecovery model={model} /> : undefined}><OwnerDiagnostic t={t} {...send.diagnostic} message={t("composer.failed", { message: send.message })} /></Notice> : null}
           {send.kind === "unconfirmed" ? (
             <Notice tone="wait" actions={<Button variant="warn" disabled={!model.canResend()} onClick={() => void model.resend(pendingOwn)}>{t("composer.retry")}</Button>}>
               {t("composer.unconfirmed")}{!model.canResend()?<div>{t("composer.retryUnavailable")}</div>:null}

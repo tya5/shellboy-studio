@@ -47,7 +47,7 @@ export type ConnectionView = "connected" | "connecting" | "ownerDown" | "authNee
 export type SendState =
   | { kind: "idle" }
   | { kind: "sending" }
-  | { kind: "failed"; message: string; configuration?: boolean }
+  | { kind: "failed"; message: string; configuration?: boolean; diagnostic?: { code?: string; hint?: string; operationId?: string } }
   | { kind: "unconfirmed"; operationId: string; text: string };
 
 export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info" | "settings";
@@ -66,6 +66,7 @@ export interface PendingOwnMessage {
   readonly text: string;
   readonly phase: "sending" | "accepted" | "failed" | "unconfirmed";
   readonly messageId?: string;
+  readonly heldAtAcceptance?: { hint?: string };
   readonly plainMessageSend?: true;
   readonly clientOrdinal: number;
 }
@@ -1258,7 +1259,7 @@ export class AppModel {
     if (out.ok && out.value.thread_id === threadId) {
       const accepted = originalPlainOperation;
       batch(() => {
-        this.acceptedOwnMessages.value = [...this.acceptedOwnMessages.peek(), { ...accepted, phase: "accepted", messageId: out.value.message_id }];
+        this.acceptedOwnMessages.value = [...this.acceptedOwnMessages.peek(), { ...accepted, phase: "accepted", messageId: out.value.message_id, ...(out.value.delivery_status === "held" && { heldAtAcceptance: { hint: typeof out.value.hint === "string" ? out.value.hint : undefined } }) }];
         this.pendingOwnMessage.value = undefined;
         this.sendState.value = { kind: "idle" };
       });
@@ -1273,7 +1274,7 @@ export class AppModel {
     this.pendingOwnMessage.value = {...originalPlainOperation,phase:uncertain?"unconfirmed":"failed"};
     this.sendState.value = uncertain
       ? { kind: "unconfirmed", operationId, text }
-      : { kind: "failed", message: errorMessage(out.error), ...(out.error.kind === "owner" && needsConnectionSetup(out.error.code, out.error.details) ? { configuration: true } : {}) };
+      : { kind: "failed", message: errorMessage(out.error), diagnostic: { ...(out.error.kind === "owner" ? { code: out.error.code, hint: out.error.hint } : out.error.kind === "bridge" ? { code: out.error.code } : {}), operationId: out.operationId }, ...(out.error.kind === "owner" && needsConnectionSetup(out.error.code, out.error.details) ? { configuration: true } : {}) };
     return false;
   }
 

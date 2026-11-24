@@ -1,6 +1,7 @@
+import { ReadDiagnostic } from "./OwnerDiagnostic";
 import { memoryReadIssue, type CacheFact } from "../../../data/src";
 import { formatBytes, formatClock, type AppModel, type Translate } from "../../../ui-core/src";
-import { BarList, Button, DataTable, FactList, LoadingRows, LogBlock, Meter, Notice, PageHeader, Section, Stat } from "../system/components";
+import { BarList, Button, DataTable, FactList, LoadingRows, Meter, Notice, PageHeader, Section, Stat } from "../system/components";
 import { Rich } from "./Rich";
 
 const cacheName = (t: Translate, name: string): string => (["body", "layout", "attachment", "replay"].includes(name) ? t(`res.cache.${name}` as "res.cache.body") : name);
@@ -40,7 +41,7 @@ export function StoragePane({ model }: { model: AppModel }) {
         sub={<>{s ? t(s.limitReached ? "res.storageLimit" : s.warning ? "res.storageWarning" : "res.storageOk") : null}</>}
         source={<>{t("common.source", { source: "" })}<code>storage.status</code></>}
       >
-        {storage.error ? <Notice tone="bad">{t("common.readError", { message: storage.error.message })}</Notice> : null}
+        {storage.error ? <Notice tone="bad"><ReadDiagnostic t={t} error={storage.error} /></Notice> : null}
         {storage.loading && !s ? <LoadingRows label={t("common.loading")} /> : null}
         {s?.limitReached ? <Notice tone="bad">{t("res.storageLimit")}</Notice> : s?.warning ? <Notice tone="wait">{t("res.storageWarning")}</Notice> : null}
         {s ? (
@@ -64,7 +65,7 @@ export function StoragePane({ model }: { model: AppModel }) {
       </Section>
 
       <Section title={t("res.receipts")} source={<>{t("common.source", { source: "" })}<code>status</code></>}>
-        {receipts.error ? <Notice tone="bad">{t("common.readError", { message: receipts.error.message })}</Notice> : null}
+        {receipts.error ? <Notice tone="bad"><ReadDiagnostic t={t} error={receipts.error} /></Notice> : null}
         {receipts.loading && !receipts.value ? <LoadingRows label={t("common.loading")} rows={1} /> : null}
         {receipts.value ? (
           <Meter label={t("res.receipts")} tone={receipts.value.atLimit ? "bad" : undefined} value={receipts.value.accounted} limit={receipts.value.limit} text={t("res.cacheText", { used: formatBytes(receipts.value.accounted ?? 0), limit: formatBytes(receipts.value.limit ?? 0) })} aria={t("res.cacheAria", { name: t("res.receipts"), used: receipts.value.accounted ?? "", limit: receipts.value.limit ?? "" })} />
@@ -103,14 +104,14 @@ export function MemoryPane({ model }: { model: AppModel }) {
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}
         source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}
       >
-        {memory.value && memoryFailure ? <Notice tone="wait">{memoryFailure}<div class="muted caption">{t("res.memory.readFailedStale")}</div></Notice> : null}
+        {memoryFailure ? <Notice tone="wait">{memoryFailure}{memory.error?.kind === "owner" ? <div><ReadDiagnostic t={t} error={memory.error} /></div> : null}{memory.value ? <div class="muted caption">{t("res.memory.readFailedStale")}</div> : null}</Notice> : null}
         {memory.value ? (
           <FactList missing={missing} facts={memory.value.metrics.map(m => ({ label: metricName(t, m.name),
             ...(m.bytes !== undefined ? { value: formatBytes(m.bytes), mono: true } : { note: m.reason }) }))} />
         ) : null}
       </Section>
       <Section title={t("res.bridge")} sub={t("res.bridgeSub")} source={<>{t("common.source", { source: "" })}<code>bridge.memory</code></>}>
-        {bridge.error ? <Notice tone="bad">{t("common.readError", { message: bridge.error.message })}</Notice> : null}
+        {bridge.error ? <Notice tone="bad"><ReadDiagnostic t={t} error={bridge.error} /></Notice> : null}
         {bridge.value ? (
           <FactList missing={missing} facts={[{ label: t("res.bridgeRss"), note: bridge.value.reason,
             ...(bridge.value.rssBytes !== undefined ? { value: formatBytes(bridge.value.rssBytes), mono: true } : {}) }]} />
@@ -136,7 +137,7 @@ export function IndexPane({ model }: { model: AppModel }) {
     <>
       <Head t={t} title={t("res.index")} sub={t("ana.sub.index")} loading={index.loading} onRefresh={() => i.refreshRead("index")} />
       <Section title={t("res.spaces")} sub={index.value ? t("res.indexCounts", { pending: index.value.pending ?? 0, running: index.value.running ?? 0, done: index.value.done ?? 0, failed: index.value.failed ?? 0, held: index.value.held ?? 0 }) : undefined} source={<>{t("common.source", { source: "" })}<code>index.status</code></>}>
-        {index.error ? <Notice tone="bad"><LogBlock text={t("common.readError", { message: index.error.message })} /></Notice> : null}
+        {index.error ? <Notice tone="bad"><ReadDiagnostic t={t} error={index.error} /></Notice> : null}
         {index.value?.paused ? <Notice tone="wait">{t("res.indexPaused")}</Notice> : null}
         {index.value?.reason ? <div class="muted">{index.value.reason}</div> : null}
         {index.value && index.value.spaces.length > 0 ? (
