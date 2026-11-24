@@ -25,6 +25,7 @@ Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa
 - Use **Archive** and **Unarchive** in the sidebar selection bar to change archive status for the selected Threads (#127; Monitor was removed in #138).
 - On phones, use the **Thread panel** picker and full-screen details; dialogs scroll in one place. When formatting is available in an expanded shell step, turn **Formatted** off to see raw text. **Wrap lines** controls shell output; **Load earlier messages** appears when earlier history is available (#128 items 3–7).
 - Expanded shell steps count saved lines containing standard error. Where the display keeps the original lines, those lines have a `stderr` label and a line along the left edge. Raw text and copied output stay unchanged (#140).
+- In **Activity**, use **Move to background** to let a shell keep running in the background, or **Stop this shell** to stop it without stopping the Run. In the composer, choose **Now** instead of **Next boundary** to deliver a message right away, or choose a running shell under **Send input to:** to type directly into it (#134). Sending input to a running shell has not been verified on Windows ([Core #415](https://github.com/tya5/shellboy/issues/415)).
 - Global shortcuts stay out of dialogs, editable fields, Japanese text composition, and key events already handled by a control (#130).
 - Tab moves from a row menu to the next control after the row (#130).
 - Collapsed Work rows keep their keyboard focus outline (#130).
