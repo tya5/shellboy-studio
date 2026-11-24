@@ -170,3 +170,25 @@ it('opens the visible phone sheet from the inline action without changing panel 
   expect(detail.querySelector('.output-header, .output-format')).toBeNull();
   expect([...detail.querySelectorAll('.output-actions button')].map(button => button.textContent)).toEqual(['Copy', 'Wrap lines']);
 });
+
+it('toggles completed inline shell output between formatted and raw text', async () => {
+  const r = await toolFixture('exited');
+  const raw = '--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-before\n+after\n';
+  r.db.outputs['exec-1'] = raw;
+  const row = await r.expand();
+  const button = () => row.querySelector<HTMLButtonElement>('.output-header button[aria-label="Formatted"]')!;
+  const log = () => row.querySelector('.output-log pre')!;
+  expect(button().getAttribute('aria-pressed')).toBe('true');
+  expect(log().querySelector('.output-add')?.textContent).toContain('+after');
+  expect(log().textContent).not.toBe(raw);
+
+  await act(async () => { button().click(); });
+  expect(button().getAttribute('aria-pressed')).toBe('false');
+  expect(log().querySelector('.output-add')).toBeNull();
+  expect(log().textContent).toBe(raw);
+
+  await act(async () => { button().click(); });
+  expect(button().getAttribute('aria-pressed')).toBe('true');
+  expect(log().querySelector('.output-add')?.textContent).toContain('+after');
+  expect(log().textContent).not.toBe(raw);
+});
