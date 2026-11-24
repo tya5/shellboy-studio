@@ -11,8 +11,9 @@ import type { DesignContext, Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { Analytics } from "../screens/Analytics";
 
-async function mounted(incomplete = false, largeCount = false) {
+async function mounted(incomplete = false, largeCount = false, title?: string) {
   const f = await fixtureModel({ route: "analytics", section: "threads", configure(db) {
+    if (title !== undefined) db.threads.lead = { ...db.threads.lead!, title };
     const fallback = db.answer.bind(db);
     db.answer = call => {
       const args = call.args as { group_by?: string; cursor?: string };
@@ -72,19 +73,23 @@ it("opens the same-period model view and restores the row on Back", async () => 
 });
 
 it("keeps exact text beside the chart in the compact phone table", async () => {
-  const f = await mounted(false, true);
+  const title = "Improve history search and verify the ranking across all retained Threads";
+  const f = await mounted(false, true, title);
   try {
     const table = f.host.querySelector("table[data-compact][data-center-rows]")!;
     expect(table.querySelectorAll("thead th")).toHaveLength(4);
     const value = table.querySelector("tbody tr td:nth-child(3) .cell")!;
     expect(value.textContent).toBe((10_000_160).toLocaleString());
     expect(value.childNodes).toHaveLength(1);
-    expect(readFileSync("designs/console/system/components/DataTable/style.css", "utf8"))
-      .toContain('.tbl[data-compact="true"] td.num .cell{white-space:nowrap;overflow-wrap:normal}');
+    const tableCss = readFileSync("designs/console/system/components/DataTable/style.css", "utf8");
+    expect(tableCss).toContain('.tbl[data-compact="true"] td.num .cell{white-space:nowrap;overflow-wrap:normal}');
+    expect(tableCss).toContain('.tbl[data-compact="true"] td:not(.num){inline-size:100%;max-inline-size:0}');
     const label = table.querySelector(".ranked-bar-label")!;
-    expect(label.firstElementChild?.textContent).toBe("Improve history search");
+    expect(label.firstElementChild?.textContent).toBe(title);
+    expect(label.closest("button")?.getAttribute("aria-label")).toBe(`Open breakdown for ${title}`);
     expect(label.lastElementChild?.getAttribute("aria-hidden")).toBe("true");
     const css = readFileSync("designs/console/system/components/RankedBar/style.css", "utf8");
+    expect(css).toMatch(/\.ranked-bar-name\{[^}]*text-overflow:ellipsis/);
     expect(css).toMatch(/@container app \(max-width:899px\).*grid-template-columns:minmax\(0,1fr\)/);
   } finally { f.done(); }
 });

@@ -23,6 +23,7 @@
 }
 
 .tbl[data-compact="true"] th.num{inline-size:1%}
+.tbl[data-compact="true"] td:not(.num){inline-size:100%;max-inline-size:0}
 .tbl[data-compact="true"] td.num .cell{white-space:nowrap;overflow-wrap:normal}
 .tbl[data-compact="true"] .cell>button{display:grid;inline-size:100%;min-inline-size:0;min-block-size:var(--size-touch)}
 @container app (max-width:899px){
