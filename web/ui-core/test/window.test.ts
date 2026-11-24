@@ -215,7 +215,7 @@ describe("append, rewind and delayed replies", () => {
     const answer = r.owner.answer.bind(r.owner);
     r.owner.answer = (call) => (call.args as { node_id?: string }).node_id === anchor.nodeId
       ? answer({ ...call, args: { ...call.args as object, node_id: undefined, ordinal: at } }) : answer(call);
-    r.pause(); await r.settle(); paint(r);
+    r.pause(); await r.settle();
     expect(r.w.pathChanged.value).toBe(false);
     expect(r.w.heightOf(at)).toBe(137);
     expect(r.w.anchor(r.w.scrollTop)).toEqual({ ...anchor, ordinal: at });
