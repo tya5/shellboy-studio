@@ -129,6 +129,9 @@ it('keeps execution facts and details when Core reports reclaimed output', async
   expect(row.querySelector('[role="note"]')?.textContent).toContain('no longer retained');
   expect(row.textContent).not.toContain('Retained fixture log');
   expect(row.querySelector('.shell-step-facts [data-status="running"]')).not.toBeNull();
+  const duration = row.querySelector('.shell-step-facts [aria-label^="Duration:"]');
+  expect(duration?.textContent).toMatch(/ so far$/);
+  expect(duration?.getAttribute("aria-label")).toBe(`Duration: ${duration?.textContent}`);
   expect(row.querySelector<HTMLButtonElement>('button[aria-label="Copy output"]')?.disabled).toBe(true);
   expect(row.querySelector<HTMLButtonElement>('button[aria-label="Open execution details"]')?.disabled).toBe(false);
 });

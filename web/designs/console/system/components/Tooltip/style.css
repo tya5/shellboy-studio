@@ -1,3 +1,3 @@
 .tooltip-anchor{display:inline-flex;flex:none}
-.tooltip-bubble{position:fixed;inset:auto;margin:0;padding:var(--space-2) var(--space-8);border:thin solid var(--line-strong);border-radius:var(--radius-s);background:var(--raised);color:var(--fg);font:var(--type-caption)}
+.tooltip-bubble{position:fixed;inset:auto;margin:0;padding:var(--space-4) var(--space-8);border:thin solid var(--line-strong);border-radius:var(--radius-s);background:var(--raised);color:var(--fg);font:var(--type-caption)}
 @supports not selector(:popover-open){.tooltip-bubble{display:none}}

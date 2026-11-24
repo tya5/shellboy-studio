@@ -464,6 +464,7 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   const command = fullCommand ?? step.command;
   const summary = [step.description, formatted.contentLabel].find(candidate => candidate?.trim() && candidate.trim() !== step.command.trim() && candidate.trim() !== command.trim())?.trim() ?? t("output.shellSummary");
   const elapsed = open ? stepDuration(step, step.status === "running" ? model.now.value : 0) : undefined;
+  const duration = elapsed && step.status === "running" ? t("output.durationSoFar", { duration: elapsed }) : elapsed;
   return <WorkElementRow display={{...shellDisplay, contentLabel: summary, visibleContext: []}} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={next => {
     if(next!==open)model.toolStepChoices.value=new Map(model.toolStepChoices.peek()).set(step.executionId,next);
   }}>
@@ -473,7 +474,7 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
       <div class="shell-step-facts">
         {step.status ? <StatusMark shell status={step.status} label={activityStatusLabel(t, step.status)} /> : null}
         {typeof step.exitCode === "number" ? <span class="mono">{t("details.exit")} {step.exitCode}</span> : null}
-        {elapsed ? <span class="mono" aria-label={`${t("details.duration")}: ${elapsed}`}>{elapsed}</span> : null}
+        {duration ? <span class="mono" aria-label={`${t("details.duration")}: ${duration}`}>{duration}</span> : null}
         {step.cwd ? <span class="mono" aria-label={`${t("details.directory")}: ${step.cwd}`}>{step.cwd}</span> : null}
       </div>
       <div class="shell-step-output"><Output model={model} id={step.executionId} command={command} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"} boxed onDetails={opener => {
