@@ -47,8 +47,8 @@ Company PC
 Downloaded ZIP. Verify the download and extract it in full. Mark of the Web
 may carry through to the unsigned executables. Only unblock a verified ZIP
 if your organization explicitly permits it or IT directs you to; ask IT
-about a block on either executable. Do not disable Defender or bypass
-SmartScreen or application control.
+about a block on either executable. Do not disable Defender or bypass your
+organization's SmartScreen or application-control policy.
 
 Data. Keep Core's live data on a local, non-synced disk (normally
 %LOCALAPPDATA%\shellboy\data). If necessary, use --data-dir with an approved

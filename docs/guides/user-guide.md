@@ -14,7 +14,7 @@ The desktop app opens your default browser and signs in locally. It attaches to 
 
 ### Windows on a company PC
 
-**Downloaded ZIP.** Verify the download and extract it in full. Mark of the Web may carry through to the unsigned executables. Only unblock a verified ZIP if your organization explicitly permits it or IT directs you to; ask IT about a block on either executable. Do not disable Defender or bypass SmartScreen or application control.
+**Downloaded ZIP.** Verify the download and extract it in full. Mark of the Web may carry through to the unsigned executables. Only unblock a verified ZIP if your organization explicitly permits it or IT directs you to; ask IT about a block on either executable. Do not disable Defender or bypass your organization's SmartScreen or application-control policy.
 
 **Data.** Keep Core's live data on a local, non-synced disk (normally `%LOCALAPPDATA%\shellboy\data`). If necessary, use `--data-dir` with an approved local folder, not a mapped or UNC share or a OneDrive sync folder. Studio settings and logs are separate, under `%APPDATA%\shellboy-studio`.
 
@@ -128,7 +128,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 
 ### 会社の Windows PC で使う
 
-**ダウンロードした ZIP。** 入手元とチェックサムを確認し、ZIP をすべて展開します。インターネット由来のマーク（Mark of the Web）が署名のない EXE に引き継がれる場合があります。確認済みの ZIP のブロック解除は、組織が明示的に許可している場合か IT の指示がある場合だけ行い、どちらかの EXE が止められたら IT に相談してください。Defender を無効にしたり、SmartScreen やアプリ実行制御を回避したりしないでください。
+**ダウンロードした ZIP。** 入手元とチェックサムを確認し、ZIP をすべて展開します。インターネット由来のマーク（Mark of the Web）が署名のない EXE に引き継がれる場合があります。確認済みの ZIP のブロック解除は、組織が明示的に許可している場合か IT の指示がある場合だけ行い、どちらかの EXE が止められたら IT に相談してください。Defender を無効にしたり、組織の SmartScreen やアプリ実行制御のポリシーを回避したりしないでください。
 
 **データの場所。** Core の使用中のデータは同期対象外のローカルディスク（通常は `%LOCALAPPDATA%\shellboy\data`）に置きます。必要なら `--data-dir` で承認済みのローカルフォルダを指定し、UNC・割り当て共有ドライブや OneDrive 同期フォルダは使わないでください。Studio の設定とログは別の `%APPDATA%\shellboy-studio` にあります。
 
