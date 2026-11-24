@@ -75,7 +75,7 @@ export class HumanInbox implements PendingAdapter {
     this.loading = computed(() => state.value.loading);
     this.loadingMore = computed(() => state.value.loadingMore === true);
     this.loaded = computed(() => state.value.loaded === true);
-    this.stale = computed(() => { const s = state.value; return s.loading || s.error !== undefined || !s.loaded; });
+    this.stale = computed(() => { const s = state.value; return s.error !== undefined || !s.loaded; });
     this.complete = computed(() => state.value.complete === true);
     this.capped = computed(() => state.value.capped === true);
     // Observe disconnects even if reactive subscribers coalesce an unknown -> same-owner ABA.

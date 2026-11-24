@@ -464,7 +464,7 @@ function PanelPossessions({ model }: { model: AppModel }) {
     </section>) : null}
     {state.loading && !state.loaded || state.loadingMore ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
     {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
-    {!state.items.length && !state.loading && !state.error ? <EmptyState compact role="empty.panelAttachments" title={t("panel.empty.attachments")} body={t("panel.empty.attachmentsBody")} /> : null}
+    {!state.items.length && !(state.loading && !state.loaded) && !state.error ? <EmptyState compact role="empty.panelAttachments" title={t("panel.empty.attachments")} body={t("panel.empty.attachmentsBody")} /> : null}
     {state.cursor !== undefined ? <Button disabled={state.loading} onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
     {state.capped ? <p class="muted caption">{t("panel.attachmentsCapped", { n: ATTACHMENT_RETENTION })}</p> : null}
   </div>;
@@ -558,7 +558,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
     })}
     {page.loading && !page.loaded || page.loadingMore ? <p role="status">{t("common.loading")}</p> : null}
     {page.error ? <p role="alert">{errorMessage(page.error)}</p> : null}
-    {!page.items.length && !page.loading && !page.error ? <EmptyState compact role={side === "owed_by" ? "empty.panelReplies" : "empty.panelAwaiting"} title={t(side === "owed_by" ? "panel.empty.owed" : "panel.empty.asked")} body={t(side === "owed_by" ? "panel.empty.owedBody" : "panel.empty.askedBody")} /> : null}
+    {!page.items.length && !(page.loading && !page.loaded) && !page.error ? <EmptyState compact role={side === "owed_by" ? "empty.panelReplies" : "empty.panelAwaiting"} title={t(side === "owed_by" ? "panel.empty.owed" : "panel.empty.asked")} body={t(side === "owed_by" ? "panel.empty.owedBody" : "panel.empty.askedBody")} /> : null}
     {page.cursor ? <Button disabled={page.loading} onClick={() => model.replyPages.more(side)}>{t("panel.attachmentsMore")}</Button> : null}
   </div>;
 }

@@ -201,6 +201,38 @@ it.each(["loading","success","error","finally"].flatMap(boundary=>["B","ABA","un
   else expect(f.inbox.items.value[0]!.question).toBe("updated");
  }finally{stop();f.close();}
 });
+it("coalesces hints during a page reread and keeps loadingMore specific to append", async () => {
+  const f = await fixture(); await fill(f);
+  expect(f.inbox.loadingMore.value).toBe(false);
+  const previous = f.inbox.items.value;
+  const first = await reread(f);
+  expect(f.inbox.loading.value).toBe(true);
+  expect(f.inbox.loadingMore.value).toBe(false);
+  for (let i = 0; i < 3; i++) {
+    f.t.push({ t: "changed", thread_ids: [], list: true, config_changed: false });
+    await flush();
+  }
+  expect(humanCalls(f)).toHaveLength(2);
+  expect(f.inbox.items.value).toBe(previous);
+  f.t.ok(first.id, { items: [human("h2"), human("h")], next_cursor: "next-key" }); await flush();
+  expect(humanCalls(f)).toHaveLength(3);
+  expect(f.inbox.items.value.map(item => item.id)).toEqual(["h2", "h"]);
+  expect(f.inbox.loading.value).toBe(true);
+  expect(f.inbox.loadingMore.value).toBe(false);
+  const rerun = humanCalls(f).at(-1)!;
+  f.t.ok(rerun.id, { items: [human("h2"), human("h")], next_cursor: "next-key" }); await flush();
+  expect(f.inbox.loading.value).toBe(false);
+  expect(f.inbox.items.value.map(item => item.id)).toEqual(["h2", "h"]);
+
+  const more = f.inbox.more(); await flush();
+  expect(f.inbox.loadingMore.value).toBe(true);
+  const append = humanCalls(f).at(-1)!;
+  f.t.ok(append.id, { items: [human("h3")] }); await more;
+  expect(f.inbox.loadingMore.value).toBe(false);
+  expect(f.inbox.items.value.map(item => item.id)).toEqual(["h2", "h", "h3"]);
+  f.close();
+});
+
 it("same-session refresh notification reentry is finite and does not erase current page",async()=>{
  const f=await fixture();await fill(f);const previous=f.inbox.items.value;let once=false;
  const stop=effect(()=>{if(!once&&f.inbox.loading.value)once=true;});

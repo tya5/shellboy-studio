@@ -30,7 +30,7 @@ export function ArtifactList({ model, onSelect }: { model: AppModel; onSelect: (
       onSelect={opener => onSelect(row.artifact_id, opener)}><Icon role="artifact.detail" size="small" /></ListRow>)}
     {page.loading && !page.loaded || page.loadingMore ? <p role="status">{t("artifact.loading")}</p> : null}
     {page.error ? <p role="alert">{t("artifact.failed")}</p> : null}
-    {!page.items.length && !page.loading && !page.error ? <p class="muted caption">{t("artifact.empty")}</p> : null}
+    {!page.items.length && !(page.loading && !page.loaded) && !page.error ? <p class="muted caption">{t("artifact.empty")}</p> : null}
     {page.cursor !== undefined ? <Button variant="ghost" disabled={page.loading} onClick={() => model.artifacts.list.more()}>{t("panel.attachmentsMore")}</Button> : null}
     {page.capped ? <p class="muted caption">{t("artifact.capped")}</p> : null}
   </section>;
