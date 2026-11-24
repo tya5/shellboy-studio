@@ -2085,7 +2085,7 @@ async fn intervention_provider(
                             .to_owned(),
                     )
                 } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-                    let args = json!({"command":if cfg!(windows){"[Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); $inputText=[Console]::In.ReadToEnd(); [Console]::Out.Write('READ:' + $inputText); [Console]::Out.Flush(); Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
+                    let args = json!({"command":if cfg!(windows){"[Console]::Out.Write('READY'); $inputText=[Console]::In.ReadToEnd(); [Console]::Out.Write('READ:' + $inputText); Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
                     let call = json!({"type":"function_call","id":"intervention-shell","call_id":"intervention-shell","name":"shell","arguments":args.to_string()});
                     let reply = json!({"id":"intervention-tool","status":"completed","output":[call],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
                     ("application/json".to_owned(), reply.to_string())
