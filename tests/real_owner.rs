@@ -2085,7 +2085,7 @@ async fn intervention_provider(
                             .to_owned(),
                     )
                 } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-                    let args = json!({"command":if cfg!(windows){"[Console]::In.ReadLine() | ForEach-Object { 'READ:' + $_ | Write-Output }; Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
+                    let args = json!({"command":if cfg!(windows){"[Console]::In.ReadLine() | ForEach-Object { Write-Output ('READ:' + $_) }; Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
                     let call = json!({"type":"function_call","id":"intervention-shell","call_id":"intervention-shell","name":"shell","arguments":args.to_string()});
                     let reply = json!({"id":"intervention-tool","status":"completed","output":[call],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
                     ("application/json".to_owned(), reply.to_string())
@@ -2173,7 +2173,7 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
                 .await;
             if read["text"]
                 .as_str()
-                .is_some_and(|text| text.contains("studio-input"))
+                .is_some_and(|text| text.contains("READ:studio-input"))
             {
                 break read;
             }
@@ -2183,7 +2183,10 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     .await
     .expect("shell output must confirm the input reached the child process");
     assert!(
-        output["text"].as_str().unwrap().contains("studio-input"),
+        output["text"]
+            .as_str()
+            .unwrap()
+            .contains("READ:studio-input"),
         "{output}"
     );
     let eof = client
