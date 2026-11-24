@@ -32,4 +32,4 @@ existing `SettingsDestination` to that panel.
 The composer trigger uses the shared Button label type, `space-8` inline inset,
 and `size-control` / `size-touch` minimum height. Only the label truncates; the
 button inset and full accessible name remain intact when space is tight.
-The model name in the trigger and picker buttons is a control label (`type-label`), not model-name content styled in monospace.
+The model name in the composer trigger uses monospace (`type-code`).

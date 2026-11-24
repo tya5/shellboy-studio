@@ -184,7 +184,7 @@ A frame error includes only the decoder's numeric line and column when available
 A call decoded from a JSON value identifies the `command`/`args` section, not an
 input-derived field path. The bridge does not redact or rewrite owner responses.
 
-Hints and live text are not queued per message (live text is one bounded copy shared by tabs, at most 16 attempts of 64 KiB, with a sent position per watched Thread per tab; a tab that falls behind the bound is told with `gap`). A list tab holds at most `hub::MAX_PENDING_THREADS` (256) changed IDs plus flags, then one `resync`; watched-only tabs hold only IDs they watch, up to `hub::MAX_WATCH` (64). A slow tab gets one larger `changed` frame, never a growing backlog. This mirrors the owner's own coalescing and needs no extra buffer.
+Hints and live text are not queued per message (live text is one bounded copy shared by tabs, at most 16 attempts of 64 KiB, with a sent position per watched Thread per tab; a tab that falls behind the bound is told with `gap`). A list tab holds at most 256 (private `MAX_PENDING_THREADS` constant in `hub.rs`) changed IDs plus flags, then one `resync`; watched-only tabs hold only IDs they watch, up to `hub::MAX_WATCH` (64). A slow tab gets one larger `changed` frame, never a growing backlog. This mirrors the owner's own coalescing and needs no extra buffer.
 
 **Mutations and lost replies.** The frontend generates `operation_id` (UUID v4)
 for every mutation and reuses it on retry. Shellboy's receipts make a retried
@@ -519,7 +519,7 @@ the foundation works end to end (§2.1).
 | Decision | Reason | Revisit when |
 |---|---|---|
 | Browser issues reads; bridge only proxies and fans out hints | no projection logic in the bridge; one place for view logic | measurement shows many tabs duplicate the same reads |
-| Empty `thread_ids` filter on the single long-poll | Thread list gets changed IDs even for unwatched Threads; bridge fan-out is capped at `hub::MAX_PENDING_THREADS` (256) per list tab, then resync | owner load from hints for unwatched Threads is measured as significant |
+| Empty `thread_ids` filter on the single long-poll | Thread list gets changed IDs even for unwatched Threads; bridge fan-out is capped at 256 (private `MAX_PENDING_THREADS` constant in `hub.rs`) per list tab, then resync | owner load from hints for unwatched Threads is measured as significant |
 | No polling stand-in before `events.wait` | avoids the cost #243 removes and receipt writes from `wait` | never for M1; a development-only stand-in may exist behind a dev flag |
 | Preact + Vite + markdown-it; highlight.js deferred (`design-system.md`) | smallest familiar stack that covers M1–M2 | streaming or rendering measured too slow on phones |
 | Token in URL fragment + HttpOnly cookie | not sent to servers/proxies; scripts on the page cannot read the cookie | a tunnel or browser breaks fragment handling |
