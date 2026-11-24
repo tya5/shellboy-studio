@@ -1,7 +1,7 @@
-import { artifactContent, Cancel, type ArtifactContentTarget, type ArtifactSelected, type ArtifactVersion } from "../../../data/src";
+import { artifactContent, artifactRevealPlatform, revealArtifact, Cancel, type ArtifactRevealError, type ArtifactRevealPlatform, type ArtifactContentTarget, type ArtifactSelected, type ArtifactVersion } from "../../../data/src";
 import { parseTime, type AppModel } from "../../../ui-core/src";
-import { useEffect, useState } from "preact/hooks";
-import { Button, CopyButton, Disclosure, Icon, KeyValue, ListDivider, ListRow } from "../system/components";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { Button, CopyButton, Disclosure, Icon, KeyValue, ListDivider, ListRow, Tooltip } from "../system/components";
 import type { IconRole } from "../system/components/Icon";
 
 import { Markdown } from "../system/components/Message";
@@ -18,7 +18,55 @@ function time(iso: string, lang: string): string {
   return at === undefined ? iso : new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(at);
 }
 
-export function ArtifactList({ model, onSelect }: { model: AppModel; onSelect: (id: string, opener: HTMLButtonElement) => void }) {
+export function useArtifactReveal(active: boolean, owner: AppModel["data"]["owner"]["value"]) {
+  const [capability, setCapability] = useState<{ owner: typeof owner; platform: ArtifactRevealPlatform }>();
+  useEffect(() => {
+    if (!active || owner.state !== "connected") return;
+    const abort = new AbortController();
+    setCapability(undefined);
+    void artifactRevealPlatform(abort.signal).then(platform => {
+      if (platform && !abort.signal.aborted) setCapability({ owner, platform });
+    }, () => {});
+    return () => abort.abort();
+  }, [active, owner]);
+  return active && capability?.owner === owner ? capability.platform : undefined;
+}
+
+function fileArtifact(uri: string, platform: ArtifactRevealPlatform): boolean {
+  if (platform === "explorer" ? /^[a-z]:[\\/]/i.test(uri) : uri.startsWith("/")) return true;
+  try {
+    const url = new URL(uri);
+    return url.protocol === "file:" && !url.host && !url.search && !url.hash
+      && (platform !== "explorer" || /^\/[a-z]:\//i.test(url.pathname));
+  } catch { return false; }
+}
+
+function RevealButton({ model, target, platform }: { model: AppModel; target: ArtifactContentTarget; platform: ArtifactRevealPlatform }) {
+  const t = model.t.value;
+  const label = t(`artifact.reveal.${platform}`);
+  const request = useRef<AbortController>();
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const [status, setStatus] = useState<ArtifactRevealError | "busy_request" | "revealed">();
+  useEffect(() => () => { request.current?.abort(); clearTimeout(timer.current); }, []);
+  const reveal = async () => {
+    if (request.current) return;
+    const abort = new AbortController();
+    request.current = abort;
+    clearTimeout(timer.current);
+    setStatus("busy_request");
+    let error: ArtifactRevealError | undefined;
+    try { error = await revealArtifact(target, abort.signal); }
+    catch { error = "reveal_failed"; }
+    if (abort.signal.aborted) return;
+    request.current = undefined;
+    setStatus(error ?? "revealed");
+    if (!error) timer.current = setTimeout(() => setStatus(undefined), 1500);
+  };
+  return <><Tooltip label={label}><Button variant="ghost" icon label={label} disabled={status === "busy_request"} onClick={() => void reveal()}><Icon role="artifact.reveal" size="small" /></Button></Tooltip>
+    {status && status !== "busy_request" ? <span role={status === "revealed" ? "status" : "alert"} class="caption">{t(`artifact.reveal.${status}`)}</span> : null}</>;
+}
+
+export function ArtifactList({ model, platform, onSelect }: { model: AppModel; platform: ArtifactRevealPlatform | undefined; onSelect: (id: string, opener: HTMLButtonElement) => void }) {
   const t = model.t.value;
   const page = model.artifacts.list.state.value;
   const lang = model.lang.value;
@@ -27,6 +75,7 @@ export function ArtifactList({ model, onSelect }: { model: AppModel; onSelect: (
     {page.items.map(row => <ListRow key={row.artifact_id} id={row.artifact_id} title={row.latest.title} icon={artifactIcon(row.latest.mime)}
       subtitle={`${row.latest.version > 1 ? `v${row.latest.version} · ` : ""}${time(row.updated_at, lang)}`}
       selected={model.panelOpener.value.possessions?.kind === "artifact" && model.panelOpener.value.possessions.id === row.artifact_id}
+      afterActions={platform && fileArtifact(row.latest.uri, platform) ? <RevealButton key={row.latest.version} model={model} platform={platform} target={{ thread_id: row.thread_id, artifact_id: row.artifact_id, version: row.latest.version }} /> : null}
       onSelect={opener => onSelect(row.artifact_id, opener)}><Icon role="artifact.detail" size="small" /></ListRow>)}
     {page.loading && !page.loaded || page.loadingMore ? <p role="status">{t("artifact.loading")}</p> : null}
     {page.error ? <p role="alert">{t("artifact.failed")}</p> : null}
@@ -87,7 +136,7 @@ function Preview({ model, target, mime, title }: { model: AppModel; target: Arti
   </div>;
 }
 
-export function ArtifactDetail({ model }: { model: AppModel }) {
+export function ArtifactDetail({ model, platform }: { model: AppModel; platform: ArtifactRevealPlatform | undefined }) {
   const t = model.t.value;
   const lang = model.lang.value;
   const cut = model.artifacts.history.state.value;
@@ -127,6 +176,7 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
     {version ? <>
       <KeyValue rows={[{ key: `v${version.version} · URI`, value: <bdi class="mono artifact-uri">{version.uri}</bdi> }]} />
       <CopyButton text={version.uri} label={t("artifact.copyPath")} copiedLabel={t("code.copied")} failedLabel={t("guide.copyFailed")} />
+      {target && platform && fileArtifact(version.uri, platform) ? <RevealButton key={version.version} model={model} platform={platform} target={target} /> : null}
       {action?.kind === "link" ? <a class="nav-link" href={action.href} target="_blank" rel="noopener noreferrer">{t("artifact.open")}</a> : null}
       {target && action?.kind === "preview" ? <Preview key={JSON.stringify([target, action.mime])} model={model} target={target} mime={action.mime} title={version.title} /> : null}
       {target && action?.kind === "open" ? <Button variant="ghost" onClick={() => {
