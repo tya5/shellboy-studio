@@ -261,6 +261,22 @@ describe("paging", () => {
     }
   });
 
+  it("makes Needs-you exclusive with query, tags and directory", async () => {
+    const { t, data, db } = await setup();
+    data.trackThreadList();
+    await settle(t, db);
+    data.setListFilter({ query: "needle", tags: ["work"], cwd: "/tmp" });
+    await settle(t, db);
+    data.setListFilter({ awaiting: "human", query: "needle", tags: ["work"], cwd: "/tmp" });
+    expect(data.listFilter.value).toEqual({ awaiting: "human", query: undefined, tags: undefined, cwd: undefined });
+    await settle(t, db);
+    expect(t.calls("thread.list").at(-1)!.args).toMatchObject({ awaiting: "human" });
+    expect(t.calls("thread.list").at(-1)!.args).not.toHaveProperty("query");
+    data.setListFilter({ awaiting: "human", query: "next" });
+    expect(data.listFilter.value).toEqual({ awaiting: undefined, query: "next" });
+    data.stop();
+  });
+
   it("changing the list filter re-reads with the new filter", async () => {
     const { t, data, db } = await setup();
     data.trackThreadList();

@@ -123,8 +123,8 @@ export function App({ context }: { context: DesignContext }) {
   const appliedFilter = list.filter;
   const flat = !!(appliedFilter?.query || appliedFilter?.cwd || appliedFilter?.tags?.length
     || appliedFilter?.awaiting || (appliedFilter?.archived && appliedFilter.archived !== "exclude"));
-  const pinned = model.data.pinnedThreads.value;
-  const pinnedIds = model.data.pinnedThreadIds.value;
+  const pinned = appliedFilter?.awaiting ? [] : model.data.pinnedThreads.value;
+  const pinnedIds = appliedFilter?.awaiting ? [] : model.data.pinnedThreadIds.value;
   const sidebarRows = useMemo(() => {
     const exact = model.data.threadRows.value;
     const rows = new Map(list.items.map(row => [row.thread_id, exact.get(row.thread_id) ?? row]));
@@ -163,7 +163,13 @@ export function App({ context }: { context: DesignContext }) {
   };
   const canTag = model.data.capabilities.value.includes(CAPABILITY_TAGS);
   const canCwd = model.data.capabilities.value.includes(CAPABILITY_CWDS);
-  const changeFilters = (change: ListFilter) => setFilters(value => ({ ...value, ...change }));
+  const changeFilters = (change: ListFilter) => {
+    const other = change.query !== undefined || change.cwd !== undefined || change.tags !== undefined;
+    if (change.awaiting) setQuery("");
+    setFilters(value => ({ ...value, ...change,
+      ...(change.awaiting ? { query: undefined, cwd: undefined, tags: undefined } : other ? { awaiting: undefined } : {}),
+    }));
+  };
   const activeFilters = [
     ...(filters.awaiting ? [{ key: "awaiting", label: t("sidebar.needsYou"), remove: () => changeFilters({ awaiting: undefined }) }] : []),
     ...(filters.archived ? [{ key: "archived", label: t("sidebar.archived"), remove: () => changeFilters({ archived: undefined }) }] : []),
@@ -235,7 +241,7 @@ export function App({ context }: { context: DesignContext }) {
           </div>
           <div class="side-search">
             <div class="side-controls">
-              <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+              <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => { setQuery(e.currentTarget.value); if (e.currentTarget.value) setFilters(value => ({ ...value, awaiting: undefined })); }} />
               {route.view !== "monitor" ? <FilterMenu key={formatRoute(route)} label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} data={model.data} canTag={canTag} canCwd={canCwd} /> : null}
               <Button icon label={t("threads.new")} title={t("threads.new")} onClick={() => { setDrawer(false); void model.createThread(); }}><Icon role="thread.create" size="small" /></Button>
             </div>
