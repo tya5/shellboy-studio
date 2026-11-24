@@ -7,12 +7,14 @@
 
 | Thread mark | Meaning and shape |
 | --- | --- |
-| Running | Work in progress; accent arc, static but still gapped under reduced motion. |
+| Running | Work in progress; accent arc rotates in a same-size HTML wrapper; it is static but still gapped under reduced motion. |
 | Awaiting | A person needs to answer; `wait` ring and question mark. |
 | Error | Recovery or failed; `bad` ring and exclamation. Retry remains a separate owner-qualified action. |
 | Waiting | The Run is inside its own `shellboy wait`; muted ring and center point. |
 | No activity | Completed, stopped, or idle; empty muted ring with no visible status text. The name is for accessibility and tooltips. |
 
 Use a 15 px box. Static ring shapes use a 1.5 px non-scaling stroke. The running arc uses 2.4 in its 24-unit viewBox so the gap survives and the stroke resolves to 1.5 px in the 15 px box. The intentionally compact ChildrenChip keeps its existing sizing and row controls. Running shells share the same arc; shell completed and failed remain distinct; the conversation footer uses the same textless idle mark.
+
+The running arc transform targets an inline-grid HTML wrapper rather than the SVG root (Studio #144; compositor-friendly transform pattern from the web.dev Animations guide). The wrapper is sized to the existing icon token so placement and row geometry do not change; `will-change` is present only while running and only under no-preference motion.
 
 Styles: style.css in this directory

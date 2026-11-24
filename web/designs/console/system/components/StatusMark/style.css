@@ -1,4 +1,5 @@
 .status-shape:not([data-running-arc]) svg>*{vector-effect:non-scaling-stroke;stroke-width:1.5px}
 .status-shape[data-running-arc] svg>circle{stroke-width:2.4}
-@media(prefers-reduced-motion:no-preference){.status-shape[data-running-arc] svg{animation:status-arc-spin var(--motion-spin) linear infinite}}
+.status-arc-motion{display:inline-grid;place-items:center;width:var(--size-icon-small);height:var(--size-icon-small)}
+@media(prefers-reduced-motion:no-preference){.status-arc-motion[data-running]{will-change:transform;animation:status-arc-spin var(--motion-spin) linear infinite}}
 @keyframes status-arc-spin{to{transform:rotate(360deg)}}

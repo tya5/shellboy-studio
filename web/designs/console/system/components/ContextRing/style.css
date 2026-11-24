@@ -5,5 +5,6 @@
 .context-ring[data-context-state=summarizing]{color:var(--wait)}
 .context-ring-activity{stroke-dasharray:25 75;stroke-linecap:round}
 @keyframes context-ring-spin{from{transform:rotate(-90deg)}to{transform:rotate(270deg)}}
-@media(prefers-reduced-motion:no-preference){svg.context-ring[data-context-state=summarizing]{transform-origin:center;animation:context-ring-spin var(--motion-spin) linear infinite}}
+.context-ring-motion{display:inline-grid;place-items:center;width:var(--space-24);height:var(--space-24)}
+@media(prefers-reduced-motion:no-preference){.context-ring-motion[data-running]{will-change:transform;animation:context-ring-spin var(--motion-spin) linear infinite}}
 @media(prefers-reduced-motion:reduce){.context-ring-activity{stroke-dasharray:1 9}}

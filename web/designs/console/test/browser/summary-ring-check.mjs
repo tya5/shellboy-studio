@@ -25,21 +25,25 @@ try{
   await until(()=>evaluate("!!document.querySelector('.context-ring[data-context-state=summarizing]')"));
   const inspect = () => evaluate(`(() => {
    const ring=document.querySelector('.context-ring');
+   const motion=ring.closest('.context-ring-motion');
    const arc=ring.lastElementChild;
+   const motionBox=motion.getBoundingClientRect(), ringBox=ring.getBoundingClientRect();
    const ringStyle=getComputedStyle(ring);
+   const motionStyle=getComputedStyle(motion);
    const arcStyle=getComputedStyle(arc);
    const bounds=ring.closest('button').getBoundingClientRect();
    const amber=ringStyle.getPropertyValue('--wait').trim();
    const probe=document.createElement('span'); probe.style.color=amber; document.body.append(probe);
    const amberMatches=getComputedStyle(probe).color===ringStyle.color; probe.remove();
    return { state:ring.dataset.contextState,width:innerWidth, theme:document.documentElement.dataset.ds,
-    label:ring.closest('button').getAttribute('aria-label'),amberMatches, rootAnimation:ringStyle.animationName, arcAnimation:arcStyle.animationName, dash:arcStyle.strokeDasharray,
+    label:ring.closest('button').getAttribute('aria-label'),amberMatches, rootAnimation:motionStyle.animationName, svgAnimation:ringStyle.animationName, arcAnimation:arcStyle.animationName, dash:arcStyle.strokeDasharray,
+    wrapperBounds:{width:motionBox.width,height:motionBox.height},svgBounds:{width:ringBox.width,height:ringBox.height},
     fits:bounds.left>=0 && bounds.right<=innerWidth && document.documentElement.scrollWidth<=innerWidth };
   })()`);
   const active=await inspect();
   assert.equal(active.width,width); assert.equal(active.theme,theme); assert.equal(active.state,'summarizing');
-  assert(active.amberMatches && active.label.includes('要約中') && active.fits); assert.equal(active.rootAnimation,'context-ring-spin');
-  assert.equal(active.arcAnimation,'none');
+  assert(active.amberMatches && active.label.includes('要約中') && active.fits); assert.equal(active.wrapperBounds.width,active.svgBounds.width); assert.equal(active.wrapperBounds.height,active.svgBounds.height); assert.equal(active.rootAnimation,'context-ring-spin');
+  assert.equal(active.arcAnimation,'none'); assert.equal(active.svgAnimation,'none');
   const shot = async suffix => {
    const png=await call('Page.captureScreenshot',{format:'png'});
    await writeFile(`${process.env.SHOTS}/summary-${width}-${theme}-${suffix}.png`,Buffer.from(png.data,'base64'));
