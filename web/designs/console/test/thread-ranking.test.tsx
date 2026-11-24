@@ -11,7 +11,7 @@ import type { DesignContext, Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { Analytics } from "../screens/Analytics";
 
-async function mounted(incomplete = false) {
+async function mounted(incomplete = false, largeCount = false) {
   const f = await fixtureModel({ route: "analytics", section: "threads", configure(db) {
     const fallback = db.answer.bind(db);
     db.answer = call => {
@@ -21,7 +21,7 @@ async function mounted(incomplete = false) {
         usageItem("child", { input: 160, cached: 150, output: 10 }),
       ]), excluded_time_count: incomplete ? 1 : 0 } };
       return { ok: true, result: usagePage([
-        usageItem("lead", { input: 120, cached: 20, output: 20, compactions: 1, summary: [30, 10, 10] }),
+        usageItem("lead", { input: largeCount ? 10_000_120 : 120, cached: 20, output: 20, compactions: 1, summary: [30, 10, 10] }),
       ], "next") };
     };
   } });
@@ -72,10 +72,15 @@ it("opens the same-period model view and restores the row on Back", async () => 
 });
 
 it("keeps exact text beside the chart in the compact phone table", async () => {
-  const f = await mounted();
+  const f = await mounted(false, true);
   try {
     const table = f.host.querySelector("table[data-compact][data-center-rows]")!;
     expect(table.querySelectorAll("thead th")).toHaveLength(4);
+    const value = table.querySelector("tbody tr td:nth-child(3) .cell")!;
+    expect(value.textContent).toBe((10_000_160).toLocaleString());
+    expect(value.childNodes).toHaveLength(1);
+    expect(readFileSync("designs/console/system/components/DataTable/style.css", "utf8"))
+      .toContain('.tbl[data-compact="true"] td.num .cell{white-space:nowrap;overflow-wrap:normal}');
     const label = table.querySelector(".ranked-bar-label")!;
     expect(label.firstElementChild?.textContent).toBe("Improve history search");
     expect(label.lastElementChild?.getAttribute("aria-hidden")).toBe("true");
