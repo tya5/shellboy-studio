@@ -80,11 +80,17 @@ try {
       const connectors = await evaluate(`[...document.querySelectorAll('.branch-lanes>li[data-kind=split]')].map(li=>{const d=li.querySelector('.lanes-node').getBoundingClientRect();return [...li.querySelectorAll('.lanes-curve')].map(c=>{const r=c.getBoundingClientRect();const start=c.dataset.dir==='left'?r.right:r.left;return {key:li.dataset.key,width:r.width,offset:Math.abs(start-(d.left+d.width/2)),top:Math.abs(r.top-(d.top+d.height/2))}})}).flat()`);
       assert(connectors.length >= 2, `${kind}: split connectors drawn ${JSON.stringify(connectors)}`);
       for (const c of connectors) assert(c.width > 0 && c.offset <= 2 && c.top <= 2, `${kind}: connector leaves the diamond ${JSON.stringify(c)}`);
-      // Identity: a refresh (owner hint) keeps every row element.
-      const before = await evaluate(`(()=>{window.__rows=[...document.querySelectorAll('.branch-lanes>li')];return window.__rows.length})()`);
-      await evaluate(`window.branchesFixture.model.branches.read('rel')`);
-      await delay(300);
-      assert(await evaluate(`[...document.querySelectorAll('.branch-lanes>li')].every((li,i)=>li===window.__rows[i])&&document.querySelectorAll('.branch-lanes>li').length===${before}`), `${kind}: rows kept across refresh`);
+      // The fixture sends a real owner `changed` hint. The refreshed family has a visible title
+      // change for the same Core Thread, so this cannot pass without consuming the hint.
+      await evaluate(`(()=>{const main=document.querySelector('.branches-main');const row=document.querySelector('.branch-lanes>li[data-key="rel|tip"]');row.querySelector('.lanes-point').click();row.scrollIntoView({block:'center'});main.scrollTop=Math.min(120,main.scrollHeight-main.clientHeight);return true})()`);
+      await until(`document.querySelector('.branch-lanes>li[data-key="rel|tip"]')?.dataset.selected==='true'`, `${kind}: select the stable Core Thread row`);
+      await evaluate(`(()=>{const main=document.querySelector('.branches-main');const row=document.querySelector('.branch-lanes>li[data-key="rel|tip"]');window.__hintRow=row;window.__hintSelection=row.dataset.selected;window.__hintScroll=main.scrollTop})()`);
+      await evaluate(`window.branchesFixture.hint()`);
+      await until(`document.querySelector('.branch-lanes>li[data-key="rel|tip"] .lanes-head')?.textContent.includes('Release notes refreshed')`, `${kind}: distinguishable owner-hint family update`);
+      const continuity = await evaluate(`(()=>{const main=document.querySelector('.branches-main');const row=document.querySelector('.branch-lanes>li[data-key="rel|tip"]');return {same:row===window.__hintRow,selected:row.dataset.selected,beforeSelected:window.__hintSelection,scroll:main.scrollTop,beforeScroll:window.__hintScroll}})()`);
+      assert(continuity.same && continuity.selected === continuity.beforeSelected && continuity.scroll === continuity.beforeScroll, `${kind}: original same-Core-ID row remains mounted with selection and scroll unchanged ${JSON.stringify(continuity)}`);
+      await evaluate(`document.querySelector('.branch-lanes>li[data-key="rel|tip"] .lanes-point').click()`);
+      await until(`!document.querySelector('.branch-lanes>li[data-key="rel|tip"]')?.dataset.selected`, `${kind}: clear the witness selection`);
       shots.push(await capture(`branches-${kind}-${theme}`, width, mobile));
       await metrics(width, height, mobile);
       await click('button.lanes-run', '#7');
@@ -93,7 +99,7 @@ try {
       await until(`!!document.querySelector('.lanes-actions')`, 'actions under the selected row');
       shots.push(await capture(`branches-${kind}-${theme}-selected`, width, mobile));
       await metrics(width, height, mobile);
-      await click('.lanes-actions button', 'Rewind Release notes to here');
+      await click('.lanes-actions button', 'Rewind Release notes refreshed to here');
       await until(`!!document.querySelector('.lanes-row[data-leaving]')`, 'rows marked as leaving');
       await noSideScroll(`${kind} ${theme} rewind`);
       shots.push(await capture(`branches-${kind}-${theme}-rewind`, width, mobile));

@@ -48,6 +48,8 @@ export interface BranchesFixture {
   /** Paths by Thread; edit them, then call `bump` to make the next read see a new family. */
   paths: Record<string, Node[]>;
   extra: { thread_id: string; parent: string; at: string; title: string }[];
+  /** Mutable owner title facts used by the production-hint browser witness. */
+  titles: Record<string, string>;
   forks: number;
   append(threadId: string, node: Node): void;
 }
@@ -60,6 +62,7 @@ export function branchesFamily(db: FakeOwnerDb, options: { running?: boolean } =
       retry: [...shared, ...streamOwn.slice(0, 4), ...retryOwn],
     },
     extra: [],
+    titles: {},
     forks: 0,
     append(threadId, node) { this.paths[threadId]!.push(node); },
   };
@@ -91,7 +94,7 @@ export function branchesFamily(db: FakeOwnerDb, options: { running?: boolean } =
       ancestors_truncated: false, family_threads: 3 + fixture.extra.length, family_truncated: false, root_parent_unavailable: false, root_thread_id: "rel", thread_id: a.thread_id,
       limits: { ancestors: 32, bytes: "not_measured", excerpt_chars: 160, family_threads: 256, request_scan_rows: 256 },
       items: [
-        item("rel", "Release notes", null, null),
+        item("rel", fixture.titles.rel ?? "Release notes", null, null),
         item("stream", "Streaming output", "rel", "r6", { running: options.running !== false }),
         item("retry", "Streaming + retry", "stream", "s10"),
         ...fixture.extra.map((x) => item(x.thread_id, x.title, x.parent, x.at)),
