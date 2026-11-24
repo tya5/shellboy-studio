@@ -5,7 +5,7 @@
 - **Why:** The message can preserve readable formatting without rendering raw HTML or allowing arbitrary link schemes.
 - **Source:** [Studio Console decisions](../../../../../../docs/design/design-system.md#the-console-design)
 
-One saved message: who, when, and the text rendered from Markdown. Raw HTML in the text is not rendered and links only open http, https and mailto addresses. Code blocks have a copy button.
+One saved message: who, when, and the text rendered from Markdown. Raw HTML in the text is not rendered and links only open http, https and mailto addresses. Code blocks have a copy button. During live answer growth, completed blank-line-delimited Markdown blocks stay rendered and only the open tail is reparsed; fenced code blocks are kept intact until closed.
 
 Styles are colocated in `system/components/Message/style.css`.
 
