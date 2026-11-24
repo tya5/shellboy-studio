@@ -59,12 +59,13 @@ Studio binds to loopback (`127.0.0.1:8751`) by default and requires authenticati
 
 ## Development
 
-Install Node and the pinned Rust toolchain. Build the frontend before running Studio with an [isolated owner](docs/development/isolated-owner.md), not your everyday data directory:
+Install Node and the pinned Rust toolchain, then build the frontend:
 
 ```sh
 (cd web && npm ci && npm run build)
-cargo run --release -- --data-dir DIR
 ```
+
+Follow the [isolated-owner guide](docs/development/isolated-owner.md) to start the paired Core and Studio with temporary data, configuration, and authentication.
 
 The bridge embeds the built frontend; plain Vite runs only the frontend. See [AGENTS.md](AGENTS.md) and the [architecture](docs/design/architecture.md). Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` from the root, and `npm run check` from `web/`. The explicit `real-owner-tests` suite uses the exact paired Core and temporary data in CI; owner-free checks are not integration evidence.
 
