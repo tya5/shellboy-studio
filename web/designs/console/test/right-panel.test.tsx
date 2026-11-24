@@ -232,8 +232,9 @@ describe('right panel purpose',()=>{
  });
 
  it.each(['finder', null] as const)('keeps artifact order and handles reveal capability %s', async platform => {
+  let succeeds = false;
   const fetchArtifact = vi.fn(async (_path: string, init?: RequestInit) => init?.method === 'POST'
-    ? init.body && JSON.parse(String(init.body)).action === 'preview' ? new Response(null, {status: 204})
+    ? succeeds || (init.body && JSON.parse(String(init.body)).action === 'preview') ? new Response(null, {status: 204})
       : Response.json({code: 'file_unavailable'}, {status: 404})
     : Response.json({platform}));
   vi.stubGlobal('fetch', fetchArtifact);
@@ -278,6 +279,11 @@ describe('right panel purpose',()=>{
     const request = fetchArtifact.mock.calls.find(([path, init]) => path === '/artifact-reveal' && init?.method === 'POST');
     expect(JSON.parse(String(request?.[1]?.body))).toEqual({thread_id:'lead',artifact_id:'z',version:2});
     expect(page.querySelector('[data-panel-detail]')).toBeNull();
+    succeeds = true;
+    await pump(() => revealRow.click());
+    const toast = page.querySelector('[data-panel-row-id="z"] .artifact-reveal-toast[role="status"]:not([hidden])');
+    expect(toast?.textContent).toBe(f.model.t.peek()('artifact.reveal.revealed'));
+    expect(page.querySelector('[data-panel-row-id="z"] [role="alert"]')).toBeNull();
    }
    await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z"] button')!.click());
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-2.md');

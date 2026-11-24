@@ -12,7 +12,9 @@ on hover, row focus, selection or while open; touch always shows the action.
 Panel items provide a title, an optional `command` caption, and `onSelect`, which receives the actual row button
 for focus return. A per-target error can be displayed after the row. Thread rows
 supply their native link or checkbox layout; the action stays a sibling of those
-controls. `afterActions` keeps trailing metadata in its existing position.
+controls. For Thread rows, `afterActions` keeps trailing metadata in its existing
+position. Panel rows can use this slot for an always-visible, independently
+labelled action after the selection button, such as revealing an artifact.
 Do not use for conversation message bodies.
 
 References: WAI-ARIA APG Menu Button; shadcn/ui SidebarMenuAction; system `useRowMenu`.

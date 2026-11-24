@@ -118,8 +118,7 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
         )
         .route(
             "/artifact-reveal",
-            get(crate::artifact_content::reveal_capability::<O>)
-                .post(crate::artifact_content::reveal::<O>),
+            crate::artifact_content::reveal_route::<O>(),
         )
         .route(
             "/login-startup",
