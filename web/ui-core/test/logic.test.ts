@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  activityLabel, byUrgency, composerAction, contextFacts, countByStatus, folderName, formatAge, plainExcerpt, formatDuration, formatRoute, formatTokens,
+  activityLabel, composerAction, contextFacts, countByStatus, folderName, formatAge, plainExcerpt, formatDuration, formatRoute, formatTokens,
   LANGS, loadPrefs, MESSAGES, noPending, parseRoute, materializeHistoryPresentation, recoveryFacts, savePrefs, statusOfActivity, statusOfShell, threadTree,
   translator, usageFacts, viewShortcut, navShortcut, panelShortcut,
 } from "../src";
@@ -72,9 +72,8 @@ describe("inbox", () => {
   it("a parent cycle can't hide a Thread", () => {
     expect(threadTree([s("a", { parent_id: "b" }), s("b", { parent_id: "a" })])).toHaveLength(2);
   });
-  it("urgency puts what needs a person first and counts by state", () => {
+  it("counts status independently of owner order", () => {
     const rows = threadTree([s("x", { activity: "completed" }), s("y", { activity: "recovery" }), s("z", { activity: "tools" }), s("q", { activity: "idle" })], new Map([["q", 1]]));
-    expect(byUrgency(rows).map((r) => r.summary.thread_id)).toEqual(["q", "y", "z", "x"]);
     expect(countByStatus(rows)).toEqual({ idle: 1, error: 1, running: 1, awaiting: 1 });
   });
 });

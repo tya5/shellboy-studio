@@ -56,7 +56,7 @@ try {
     assert(didClick, `Found ${selector}`);
   };
   const assertMinHeight = async (selector, label) => {
-    const result = await evaluate(`(()=>[...document.querySelectorAll(${JSON.stringify(selector)})].map(e=>({name:e.getAttribute('aria-label')||e.innerText||e.tagName,height:e.getBoundingClientRect().height})))()`);
+    const result = await evaluate(`(()=>[...document.querySelectorAll(${JSON.stringify(selector)})].filter(e=>getComputedStyle(e).display!=='none'&&e.getBoundingClientRect().height>0).map(e=>({name:e.getAttribute('aria-label')||e.innerText||e.tagName,height:e.closest('.form-field-root')?.getBoundingClientRect().height||e.getBoundingClientRect().height})))()`);
     assert(result.length, `${label} are rendered`);
     assert(result.every(item => item.height >= 44), `${label} reach 44px: ${JSON.stringify(result)}`);
   };
@@ -68,27 +68,62 @@ try {
   await until("!!document.querySelector('.app .tabbar') && !!document.querySelector('.phone-panel-footer button')", 'mounted phone fixture');
 
   await click('.phone-panel-footer button');
-  await until("!!document.querySelector('dialog[open] .panel-tabs:not(.panel-tabs-rail)')", 'right-panel sheet tabs');
-  await assertMinHeight('dialog[open] .panel-tabs:not(.panel-tabs-rail) button[role=tab]', 'right-panel tabs');
+  await until("!!document.querySelector('dialog[open] .panel-tabs-phone-picker select')", 'right-panel sheet tabs');
+  await assertMinHeight('dialog[open] .panel-tabs-phone-picker select', 'right-panel tabs');
   await click('dialog[open] .work-sheet-head button');
   await until("!document.querySelector('dialog[open]')", 'sheet close');
 
-  await evaluate("location.hash='#/monitor'");
-  await until("document.querySelector('.crumb b')?.textContent==='Monitor'", 'Monitor');
-  await assertMinHeight('.monitor-tabs .btn-group>.btn', 'Monitor ButtonGroup choices');
-  await evaluate("location.hash='#/threads'");
-  await until("document.querySelector('.crumb b')?.textContent==='Threads'", 'Threads');
-  await assertMinHeight('.org .btn-group>.btn', 'Threads ButtonGroup choices');
+  await call('Page.navigate', { url: `http://127.0.0.1:${appPort}/designs/console/test/browser/integration-fixture.html?view=sidebar#/monitor` });
+  await until("!!document.querySelector('.app .tabbar')", 'monitor fallback fixture mounted');
+  await delay(500);
+  await until("!['Monitor','Threads'].includes(document.querySelector('.crumb b')?.textContent||'')", 'removed Monitor route fallback');
+  await call('Page.navigate', { url: `http://127.0.0.1:${appPort}/designs/console/test/browser/integration-fixture.html?view=sidebar#/threads` });
+  await until("!!document.querySelector('.app .tabbar')", 'threads fallback fixture mounted');
+  await delay(500);
+  await until("!['Monitor','Threads'].includes(document.querySelector('.crumb b')?.textContent||'')", 'removed Threads route fallback');
 
-  await evaluate("location.hash='#/conversation/lead'");
+  await call('Page.navigate', { url: `http://127.0.0.1:${appPort}/designs/console/test/browser/integration-fixture.html?view=sidebar#/conversation/lead` });
   await until("!!document.querySelector('[data-settings-toggle]')", 'selected conversation');
+  const columns = await evaluate("getComputedStyle(document.querySelector('.app .tabbar')).gridTemplateColumns.split(' ').length");
+  assert.equal(columns, 3, 'phone navigation has exactly three tabs');
   await click('button[aria-label="Open thread list"]');
   await until("document.querySelector('#thread-sidebar.side.open')", 'sidebar drawer');
-  const links = await evaluate(`(()=>[...document.querySelectorAll('#thread-sidebar .thread-item-root')].map(row=>{const link=row.querySelector(':scope > .tree-link'),menu=row.querySelector(':scope > .list-row-action button');const a=link.getBoundingClientRect(),r=row.getBoundingClientRect();return {title:link.innerText,linkHeight:a.height,rowHeight:r.height,linkTop:a.top,rowTop:r.top,linkBottom:a.bottom,rowBottom:r.bottom,menuSeparate:!!menu&&menu.parentElement.parentElement.parentElement===row,menuHeight:menu?.getBoundingClientRect().height}}))()`);
-  assert(links.length, 'sidebar Thread rows are rendered');
-  assert(links.every(item => item.linkHeight >= 44 && item.linkTop === item.rowTop && item.linkBottom === item.rowBottom), `Thread links fill their 44px rows: ${JSON.stringify(links)}`);
-  assert(links.every(item => item.menuSeparate && item.menuHeight >= 44), `Thread row menus remain separate 44px targets: ${JSON.stringify(links)}`);
-  console.log(JSON.stringify({ viewport: 390, panelTabs: '>=44px', monitorChoices: '>=44px', threadsChoices: '>=44px', threadLinks: links.map(({ title, linkHeight, rowHeight, menuHeight }) => ({ title, linkHeight, rowHeight, menuHeight })) }));
+  const textButton = async text => {
+    const found = await evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!b)return false;b.click();return true})()`);
+    assert(found, `Found button ${text}`);
+  };
+  await textButton('Select Threads');
+  const firstCheckbox = await evaluate("(()=>{const e=document.querySelector('#thread-sidebar input[aria-label^=\"Select \"]');if(!e)return false;e.click();return true})()");
+  assert(firstCheckbox, 'active Thread row can be selected');
+  const selectionButtons = await evaluate("[...document.querySelectorAll('.selbar button')].map(b=>({text:b.textContent.trim(),height:b.getBoundingClientRect().height}))");
+  assert(selectionButtons.some(button => button.text === 'Archive'), `selection bar exposes Archive: ${JSON.stringify(selectionButtons)}`);
+  assert(selectionButtons.every(button => button.height >= 44), `selection actions reach touch size: ${JSON.stringify(selectionButtons)}`);
+  await textButton('Archive');
+  assert(await evaluate("[...document.querySelectorAll('.selbar button')].some(b=>b.textContent.trim()==='Confirm archive')"), 'archive requires a second explicit press');
+  const secondCheckbox = await evaluate("(()=>{const e=document.querySelectorAll('#thread-sidebar input[aria-label^=\"Select \"]')[1];if(!e)return false;e.click();return true})()");
+  assert(secondCheckbox, 'selection change target exists');
+  assert(await evaluate("[...document.querySelectorAll('.selbar button')].some(b=>b.textContent.trim()==='Archive')"), 'changing selection re-arms archive confirmation');
+
+  const closeSelection = await evaluate("(()=>{const b=[...document.querySelectorAll('.selbar button')].find(e=>e.textContent.trim()==='Close');if(!b)return false;b.click();return true})()");
+  assert(closeSelection, 'close selection mode');
+  const rowMenu = '#thread-sidebar .thread-item-root .list-row-action button';
+  await click(rowMenu);
+  await textButton('Edit tags…');
+  await until("document.querySelector('.alerts')?.innerText.includes('Tags for this Thread')", 'single-Thread tag editor');
+  await assertMinHeight('.alerts button', 'tag editor actions');
+  await textButton('Close');
+  await click('button[aria-label="Open thread list"]');
+  await until("document.querySelector('#thread-sidebar.side.open')", 'sidebar reopened after tag editor');
+  await click(rowMenu);
+  await textButton('Set parent');
+  await until("document.querySelector('.alerts')?.innerText.includes('New parent')", 'single-Thread Move picker');
+  await assertMinHeight('.thread-move-list button', 'Move picker choices');
+  await evaluate("document.querySelector('.thread-move-list')?.scrollTo(0,document.querySelector('.thread-move-list').scrollHeight)");
+  const moveBounds = await evaluate("(()=>{const e=document.querySelector('.thread-move-list');return {height:e?.clientHeight,scroll:e?.scrollHeight}})()");
+  assert(moveBounds.height && moveBounds.scroll >= moveBounds.height, `Move list has a bounded scroll viewport: ${JSON.stringify(moveBounds)}`);
+  await textButton('Close');
+
+  console.log(JSON.stringify({ viewport: 390, panelTabs: '>=44px', selectionActions: '>=44px', tagActions: '>=44px', moveChoices: '>=44px', archiveConfirmation: 'verified' }));
 } finally {
   ws?.close();
   for (const child of [chrome, vite]) if (child.exitCode === null) {

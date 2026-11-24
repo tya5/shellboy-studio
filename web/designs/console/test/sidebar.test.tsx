@@ -6,6 +6,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
 import { fixtureModel } from "../../../ui-core/test/fixture";
+import type { DesignContext } from "../../../ui-core/src";
 import { summary, details, settle, flush } from "../../../data/test/harness";
 import { sidebarGroups } from "../../../ui-core/src/sidebar";
 import { loadPrefs } from "../../../ui-core/src/prefs";
@@ -13,6 +14,33 @@ import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 import { StatusMark } from "../system/components/StatusMark";
 import { ThreadGroup } from "../system/components/ThreadGroup";
+
+it("re-arms bulk archive when selection or descendant scope changes", async () => {
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {
+    db.threads = { lead: summary("lead"), other: summary("other") };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const context = { model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false };
+  const button = (text: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find(el => el.textContent?.trim() === text)!;
+  try {
+    await act(async () => { render(<App context={context} />, host); await settle(f.t, f.db); });
+    await act(async () => button("Select Threads").click());
+    await act(async () => host.querySelector<HTMLInputElement>('input[aria-label="Select t-lead"]')!.click());
+    expect(button("Archive")).toBeTruthy();
+    await act(async () => button("Archive").click());
+    expect(button("Confirm archive")).toBeTruthy();
+    await act(async () => host.querySelector<HTMLInputElement>('input[aria-label="Select t-other"]')?.click());
+    expect(button("Archive")).toBeTruthy();
+    expect(host.querySelector('button')?.textContent).not.toBe("Confirm archive");
+    await act(async () => button("Archive").click());
+    expect(button("Confirm archive")).toBeTruthy();
+    await act(async () => host.querySelector<HTMLInputElement>('.selbar-acts input[type="checkbox"]')?.click());
+    expect(button("Archive")).toBeTruthy();
+    expect(f.t.calls("thread.archive")).toHaveLength(0);
+  } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
+});
 
 it("orders the complete pin band by creation time without changing filtered All order", () => {
   const recent = summary("recent", { tags: ["pin"], created_at: "2024-01-01T00:00:00Z" });
@@ -35,7 +63,7 @@ it("keeps status updates in place, persists child folds, and adds a pinned copy 
   const sides = () => [...host.querySelectorAll(".side-list [data-thread-row] a")].map(el => el.id);
   const hint = async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     const parent = link("lead")!;
     const tree = parent.closest('[role="tree"]')!;
     expect(tree.getAttribute("aria-label")).toBe("All, Threads: 3");
@@ -112,7 +140,7 @@ it("keeps the owner's created order on status hints and inserts a new Thread at 
     await settle(f.t, f.db);
   };
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(order()).toEqual(["other", "lead", "child"]);
     Object.assign(f.db.threads.other!, { activity: "tools", updated_at: "2099-01-01T00:00:00Z" });
     await act(() => hint("other"));
@@ -239,7 +267,7 @@ it("opens all ten cross-directory descendants, gives overlapping pins independen
   const links = (band: string) => [...host.querySelectorAll<HTMLAnchorElement>(`.side-list section[aria-label="${band}"] a.tree-link`)];
   const fold = (band: string) => links(band).find(link => link.getAttribute("href") === "#/conversation/lead")!.parentElement!.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(fold("All").getAttribute("aria-label")).toContain("10 children");
     expect(fold("Pinned").getAttribute("aria-label")).toContain("10 children");
     expect(links("All")).toHaveLength(1);
@@ -286,7 +314,7 @@ it('settles the mounted tag session while hidden and ignores late results after 
   } });
   const host = document.createElement('div'); document.body.append(host);
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
-  const panel = () => host.querySelector<HTMLElement>('section[aria-label="Tags for 1 chosen Threads"]');
+  const panel = () => host.querySelector<HTMLElement>('section[aria-label="Tags for this Thread"]');
   const button = (label: string) => [...panel()!.querySelectorAll<HTMLButtonElement>('button')].find(el => el.textContent === label)!;
   const field = () => panel()!.querySelector<HTMLInputElement>('input[aria-label="Tag to add"]')!;
   const input = (value: string) => { field().value = value; field().dispatchEvent(new Event('input', { bubbles: true })); };
@@ -296,18 +324,18 @@ it('settles the mounted tag session while hidden and ignores late results after 
   }); await act(async () => {
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(el => el.textContent === 'Edit tags…')!.click();
   }); };
-  const apply = () => button('Apply to 1 Threads');
+  const apply = () => button('Apply to this Thread');
   const close = async () => { await act(async () => button('Close').click()); };
   const finish = async (tag: string) => {
     const call = f.t.calls('thread.tag').at(-1)!;
     await act(async () => { f.db.answered.add(call.id); f.t.ok(call.id, { changed: ['lead'], unchanged: [], not_found: [], add: [tag], remove: [] }); await flush(); });
   };
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     await open('lead'); await stage('new-tag');
     await act(async () => { apply().click(); await flush(); });
     await close(); await open('lead');
-    expect(apply().disabled).toBe(true); expect(field().disabled).toBe(false);
+    expect(apply().disabled).toBe(true); expect(field().disabled).toBe(true);
     apply().click(); expect(f.t.calls('thread.tag')).toHaveLength(1);
     await close();
     const reads = f.t.calls('thread.list').length;
@@ -318,7 +346,8 @@ it('settles the mounted tag session while hidden and ignores late results after 
     expect(panel()?.textContent).not.toContain('new-tag');
     Object.assign(f.db.threads.lead!, { tags: ['old', 'new-tag'] });
     await act(async () => { f.t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
-    expect(panel()?.textContent).not.toContain('new-tag');
+    expect(f.model.data.threadRows.value.get('lead')?.tags).toEqual(['old', 'new-tag']);
+    expect(panel()?.textContent).toContain('new-tag');
     await stage('old-request'); await act(async () => input('raw-a'));
     await act(async () => { apply().click(); await flush(); });
     await open('other');
@@ -355,7 +384,7 @@ it("bolds a background completion only after the list hint and clears on open or
     await act(async () => { item.click(); await settle(f.t, f.db); });
   };
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
     expect(prefs.peek().sidebarUnread?.filter(r => r.thread === "other")).toEqual([
       { thread: "other", node: "a", manual: false },
@@ -413,7 +442,7 @@ it("renders the approved sidebar section band, trailing column, and disclosure b
   const host = document.createElement("div"); document.body.append(host);
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(host.querySelector("#sidebar-thread-list-heading")?.classList.contains("group-label")).toBe(true);
     const group = host.querySelector<HTMLElement>('.side-list .tgroup[data-group-heading="section"][aria-label="All"]')!;
     const name = group.querySelector<HTMLElement>(".tgroup-name")!;
@@ -508,7 +537,7 @@ it("shows every pinned Thread older than the loaded page and marks lower-bound c
   const count = (name: string) => band(name).querySelector(".tgroup-count")?.textContent;
   const row = (id: string) => band("All").querySelector(`a[href="#/conversation/${id}"]`)!;
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(f.data.threadList.peek().items).toHaveLength(50);
     expect(band("Pinned").querySelectorAll("a.tree-link")).toHaveLength(60);
     expect(band("Pinned").querySelector('a[href="#/conversation/old59"]')).not.toBeNull();
@@ -537,7 +566,7 @@ it("keeps archived Threads out of All and shows them with their children in a cl
   const links = (name: string) => [...band(name)?.querySelectorAll<HTMLAnchorElement>("a.tree-link") ?? []].map(link => link.getAttribute("href")!.replace("#/conversation/", ""));
   const toggle = (name: string) => band(name)!.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(f.t.calls("thread.list").map(call => call.args)).toContainEqual({ archived: "only", order: "created", limit: 50 });
     // All is Core's default (archived excluded): no archived Thread and no child chip for the archived child.
     expect(links("All")).toEqual(["live"]);
@@ -588,7 +617,7 @@ it("keeps an archived pin in Pinned, copies it into Archive as All does, and hid
   const band = (name: string) => host.querySelector<HTMLElement>(`.side-list section[aria-label="${name}"]`);
   const links = (name: string) => [...band(name)?.querySelectorAll<HTMLAnchorElement>("a.tree-link") ?? []].map(link => link.getAttribute("href")!.replace("#/conversation/", ""));
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(f.t.calls("thread.list").map(call => call.args)).toContainEqual({ archived: "include", tags: ["pin"], limit: 50 });
     expect(links("Pinned")).toEqual(["kept"]);
     expect(band("Pinned")!.querySelector('a[href="#/conversation/kept"]')!.parentElement!.querySelector("button[aria-expanded]")?.getAttribute("aria-label")).toContain("1 children");

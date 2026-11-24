@@ -7,7 +7,7 @@
 
 The Conversation composer chip shows owner-confirmed connection, model and effort.
 Focus model search when the chooser opens and return focus to the trigger on Escape.
-Use the existing MonitorPopover for dismissal and the shared searchable
+Use the existing shared popover for dismissal and the shared searchable
 ConnectionModelList and EffortControl. The catalog is scoped to the open picker;
 AppModel reads models for configured connections and uses Settings' ConfigEditor
 for connection discovery. Selecting a pair sends both fields together. Enter on
@@ -17,7 +17,7 @@ presets apply immediately; press Enter to commit Other. The chip and selection
 mark follow the existing changed/resync Thread detail readback. The link opens Thread Settings for advanced values; the picker does not edit them.
 
 Settings also uses the shared model list and effort control. The Settings picker
-uses MonitorPopover with search focused on open and focus returned to the
+uses shared popover with search focused on open and focus returned to the
 trigger on Escape. Do not infer
 supported effort values, or include effort for embedding models.
 

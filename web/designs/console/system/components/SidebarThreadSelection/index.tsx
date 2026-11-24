@@ -25,6 +25,7 @@ export function useSidebarThreadSelection(model: AppModel, getHeading: () => HTM
   const update = (next: Map<string, { title: string; archived: boolean }>) => {
     current.current = next;
     setSelected(next);
+    setArmed(undefined);
   };
   const toggle = (id: string, title: string, archived: boolean) => {
     const next = new Map(current.current);
@@ -50,7 +51,7 @@ export function useSidebarThreadSelection(model: AppModel, getHeading: () => HTM
   return {
     start: !selecting ? <Button variant="ghost" onClick={() => setSelecting(true)}>{t("thread.deleteSetSelect")}</Button> : null,
     bar: selecting ? <>
-      <SelectionBar text={t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: includeDescendants, onChange: setIncludeDescendants }}>
+      <SelectionBar text={t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: includeDescendants, onChange: value => { setIncludeDescendants(value); setArmed(undefined); } }}>
       {activeIds.length ? <Button variant={armed === "archive" ? "warn" : "outline"} disabled={archiveRunning} onClick={() => void archive("archive", activeIds)}>{t(armed === "archive" ? "org.archiveConfirm" : "action.archive")}</Button> : null}
       {archivedIds.length ? <Button variant="outline" disabled={archiveRunning} onClick={() => void archive("unarchive", archivedIds)}>{t("org.unarchive")}</Button> : null}
       <Button variant="ghost" buttonRef={opener} disabled={!selected.size} onClick={() => setReviewing(true)}>{t("thread.deleteSetAction")}</Button>

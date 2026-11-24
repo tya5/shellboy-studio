@@ -16,7 +16,7 @@ wire, Core version or bridge surface is introduced.
 - Conversation shows current title (or honest unresolved state), full ID/link and
   separate unchanged self-asserted label. No label is auto-filled. Model titles
   are display only; same titles and renames do not change sender ID/link keys.
-  Monitor tiles retain full sender ID and distinguish unknown from bot, but do
+  The removed Monitor tiles retained full sender ID and distinguished unknown from bot, but did
   not create another lookup cache or per-tile subscription.
 - Resolver: 16 lifetime candidates/entries, 16 attempts, one in flight. Dedup and
   current owner-scoped list cache precede new RPC. Background hint/revision/render

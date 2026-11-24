@@ -178,9 +178,7 @@ export function App({ context }: { context: DesignContext }) {
     const keys = (context.prefs.peek()[field] ?? []).filter(key => key !== id);
     context.setPrefs({ [field]: add ? [...keys, id].slice(-1000) : keys });
   };
-  const editThreadTags = (id: string, archived: boolean) => {
-    const row = model.data.threadRows.value.get(id);
-    if (!row) return;
+  const editThreadTags = (id: string) => {
     model.threadActions.openTagsFor(id);
     setTagEditorId(id);
     setDrawer(false);
@@ -321,7 +319,7 @@ export function App({ context }: { context: DesignContext }) {
                         } } : undefined}
                       onSelect={() => setDrawer(false)}
                       menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary,
-                        target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), { ...(canTag ? { onEditTags: () => { model.threadActions.openTagsFor(id); setTagEditorId(id); setDrawer(false); } } : {}), ...(model.data.capabilities.value.includes(CAPABILITY_REPARENT) ? { onMove: () => { model.threadActions.pickParent(id, r.summary.title, r.summary.parent_id); setMovePickerOpen(true); setDrawer(false); } } : {}) })] }} />;
+                        target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), { ...(canTag ? { onEditTags: () => editThreadTags(id) } : {}), ...(model.data.capabilities.value.includes(CAPABILITY_REPARENT) ? { onMove: () => { model.threadActions.pickParent(id, r.summary.title, r.summary.parent_id); setMovePickerOpen(true); setDrawer(false); } } : {}) })] }} />;
                   })}
                   </SidebarTree> : null}
                   {/* Each paged band ends with its own Show more, so All's does not sit under Archive; `.side-note` gives it the rows' space-8 inset. */}
@@ -338,7 +336,7 @@ export function App({ context }: { context: DesignContext }) {
           <ShellFooter side="left"><ShellToggle panel={false} expanded={!context.prefs.value.navCollapsed} label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={`${context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} (Cmd/Ctrl+B)`} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })} /></ShellFooter>
         </aside>
         <div class="main">
-          {route.view === "conversation" ? <ThreadHeader key={selected} model={model} settings={settings} onSettings={() => setSettings(!settings)} onList={() => setDrawer(true)} onDelete={(threadId) => setDeleteThread({ threadId, rowKey: threadId })} onEditTags={editThreadTags} /> : <header class="top">
+          {route.view === "conversation" ? <ThreadHeader key={selected} model={model} settings={settings} onSettings={() => setSettings(!settings)} onList={() => setDrawer(true)} onDelete={(threadId) => setDeleteThread({ threadId, rowKey: threadId })} onEditTags={threadId => { editThreadTags(threadId); setDrawer(false); }} /> : <header class="top">
             <span class="menu"><Button icon label={t("threads.open")} onClick={() => setDrawer(true)}><Icon role="nav.openThreadList" /></Button></span>
             <div class="crumb"><b>{title ?? ""}</b></div>
             <div class="right"><Button icon label={settings ? t("settings.close") : t("settings.open")} aria-expanded={settings} data-settings-toggle onClick={() => setSettings(!settings)}><Icon role="settings.applicationPanel" /></Button></div>
@@ -350,10 +348,10 @@ export function App({ context }: { context: DesignContext }) {
             {conn === "ownerDown" && !model.data.coreManagement.value ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
             {desktopDiagnostic ? <Notice tone="wait">{desktopDiagnostic}</Notice> : null}
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
+            {tagEditorId ? <ThreadTagEditor model={model} threadId={tagEditorId} /> : null}
+            {movePickerOpen ? <ThreadMovePicker model={model} /> : null}
           </div>
           {threadSelection.dialog(id => sidebarRows.find(row => row.thread_id === id)?.title)}
-          {tagEditorId ? (() => { const row = model.data.threadRows.value.get(tagEditorId); return row ? <ThreadTagEditor model={model} row={row} /> : null; })() : null}
-          {movePickerOpen ? <ThreadMovePicker model={model} /> : null}
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={id => resolveSidebarLink(sidebarLinkId(deleteThread.rowKey), id)} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />

@@ -16,7 +16,6 @@ export { useRowMenu } from "./useRowMenu";
 export { useSidebarThreadSelection } from "./SidebarThreadSelection";
 export { ThreadDeleteDialog, type ThreadDeleteTarget } from "./ThreadDeleteDialog";
 export { Chip } from "./Chip";
-export { ThreadCard } from "./ThreadCard";
 export { LogBlock } from "./LogBlock";
 export { StepRow } from "./StepRow";
 export { QuestionCard } from "./QuestionCard";

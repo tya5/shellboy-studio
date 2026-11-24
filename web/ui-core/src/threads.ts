@@ -59,12 +59,3 @@ export function countByStatus(rows: ThreadRow[]): StatusCounts {
   for (const r of rows) if (r.status) counts[r.status] = (counts[r.status] ?? 0) + 1;
   return counts;
 }
-
-/** Sidebar ordering: what needs a person first, then live work, then the rest; owner order within a state. */
-export function byUrgency(rows: ThreadRow[]): ThreadRow[] {
-  const rank = (r: ThreadRow) => (r.status ? STATUS_KEYS.indexOf(r.status) : STATUS_KEYS.length);
-  return rows
-    .map((r, i) => ({ r, i }))
-    .sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i)
-    .map((x) => x.r);
-}

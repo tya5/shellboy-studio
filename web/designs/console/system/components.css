@@ -72,7 +72,6 @@
 @import "./components/StepRow/style.css";
 @import "./components/SubView/style.css";
 @import "./components/PageHeader/style.css";
-@import "./components/ThreadCard/style.css";
 @import "./components/ThreadDeleteDialog/style.css";
 @import "./components/WorkElementRow/style.css";
 @import "./components/WorkSheet/style.css";
@@ -91,3 +90,4 @@
 
 @import "./components/ContextRing/style.css";
 @import "./components/ConversationHeader/style.css";
+@import "./components/ThreadMovePicker/style.css";

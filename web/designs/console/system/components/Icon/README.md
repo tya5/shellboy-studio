@@ -12,7 +12,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.archive` | Archive the current Thread; row action before it is archived. | `archive` |
 | `action.unarchive` | Restore an archived Thread; archive-toggle row action. | `archiveRestore` |
 | `action.stop` | Stop the active Run; row and Conversation stop controls. | `square` |
-| `action.retry` | Retry a recoverable Run; recovery, Monitor, Analytics, and Settings compaction controls. | `retry` |
+| `action.retry` | Retry a recoverable Run; recovery, Analytics, and Settings compaction controls. | `retry` |
 | `action.delete` | Delete a Thread after its exact preview is confirmed; destructive last row-menu item. | `trash` |
 | `action.editTags` | Open the tag editor for a Thread from any shared row menu. | Lucide `tag` |
 | `row.menu` | Open a row’s action menu in the sidebar. | `more` |

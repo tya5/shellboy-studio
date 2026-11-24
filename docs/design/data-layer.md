@@ -69,7 +69,6 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 | Row cache (`threadRows`, one per owner, #96) | 1000 rows (`MAX_LIST_ROWS`), oldest first out, except rows still held: open Threads (64) and every ID the list, Archive and pinned states hold (1000 each), so it can reach 3064 | A row leaves once nothing holds it and the cache is past 1000; cleared on owner change |
 | `rows`, `rowById` | Derived once per list change, from those rows | With the list |
 | An open Thread's row | Read by ID (`thread.list.thread_ids`, archived included) when it opens, on each `hello`/`resync`/restart (one coalesced `open-rows` read) and on its own hints; never dropped at the 1000-row bound while open (at most 64). The conversation status line, recovery, Retry and header take it from here, not from a list page (#103) | Like any row, once closed |
-| Threads view | 5 pages of 200 (`ORG_MAX_PAGES`), re-read on a list change, one read at a time and one trailing; grouping is memoized | Mode or filter change |
 | Branches view | One family, at most 256 Threads (owner's bound); 4 pages, 3 restarts | Thread change |
 | Open Thread handles | 64 watched (`MAX_WATCHED_THREADS`); the Web UI holds 1, closed when another opens | On close |
 | History window | 400 items of up to 4096 characters; up to 6400 if asked for | With the handle |
@@ -91,7 +90,6 @@ Measured (2026-11-07, one run, facts and not bounds): macOS arm64, headless Chro
 
 | Scenario | First paint | Ready | JS heap after GC | DOM nodes | Long tasks | Frames while scrolling |
 |---|---|---|---|---|---|---|
-| Threads view, 200 rows | 44 ms | 79 ms | 2.2 MiB | 2,528 | 0 | 17 ms |
 | By Thread (no usage in this seed) | 40 ms | 79 ms | 1.5 MiB | 450 | 0 | 17 ms |
 | 100,000-node Thread | | 30.8 s, 1,002 `history.list` calls | 3.1 MiB | 2,205 | 0 | 17 ms over 140 messages |
 | Four tabs on it at once | | 150 s each | about 3 MiB each | | | |

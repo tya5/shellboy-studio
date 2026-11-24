@@ -592,6 +592,10 @@ export class ThreadActions {
 
   openTagsFor(threadId: string): void {
     const draft = this.tagDraft.peek();
+    if (draft.target === threadId) {
+      this.tagDraft.value = { ...draft, open: true };
+      return;
+    }
     this.tagDraft.value = { id: draft.id + 1, action: { kind: "idle" }, open: true, target: threadId, add: [], remove: new Set() };
   }
 

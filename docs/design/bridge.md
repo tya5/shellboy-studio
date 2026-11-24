@@ -157,7 +157,7 @@ Playwright); its behaviour is unverified beyond syntax and the frames it relies 
 covered by the bridge tests. Not tested: Linux, Windows, phone, LAN binding, TLS tunnel, several
 hundred hints per second, concurrent real tabs, `message.send` with a real provider.
 
-`thread.branches` (read), `thread.fork`, `thread.rewind` and `thread.unarchive` (mutations) serve the Branches and Threads views (`branches-threads.md`). A rewind dry run is the same command with `dry_run: true` and no operation id. `tests/real_owner.rs` drives them against a real owner with a loopback provider.
+`thread.branches` (read), `thread.fork`, `thread.rewind` and `thread.unarchive` (mutations) serve Branches and shellboy CLI operations (`branches-threads.md`). A rewind dry run is the same command with `dry_run: true` and no operation id. `tests/real_owner.rs` drives them against a real owner with a loopback provider.
 
 ## Live text validation record (2026-11-07)
 

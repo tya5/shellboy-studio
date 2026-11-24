@@ -40,7 +40,7 @@ pub fn access(command: &Command) -> Access {
         | Command::MessageCancel(..)
         | Command::RunRetry(..)
         | Command::ThreadArchive(..)
-        // Branches and Threads views. A rewind is shown as a dry run first (`dry_run`).
+        // Branches view. A rewind is shown as a dry run first (`dry_run`).
         | Command::ThreadFork(..)
         | Command::ThreadRewind(..)
         | Command::ThreadUnarchive(..) => Access::Mutation,

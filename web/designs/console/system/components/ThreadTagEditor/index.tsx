@@ -1,5 +1,4 @@
 import { useEffect, useState } from "preact/hooks";
-import type { ThreadSummary } from "../../../../../data/src";
 import type { AppModel, TagInvalid } from "../../../../../ui-core/src";
 import { Button } from "../Button";
 import { ButtonGroup } from "../ButtonGroup";
@@ -8,7 +7,9 @@ import { Notice } from "../Notice";
 import { Section } from "../Section";
 
 /** Edits one Thread's tags from its existing row menu. */
-export function ThreadTagEditor({ model, row }: { model: AppModel; row: ThreadSummary }) {
+export function ThreadTagEditor({ model, threadId }: { model: AppModel; threadId: string }) {
+  const row = model.data.threadRows.value.get(threadId);
+  if (!row) return null;
   const t = model.t.value;
   const org = model.threadActions;
   const draft = org.tagDraft.value;

@@ -37,7 +37,7 @@ If there is no model connection, choose **Connect a model service**. Select your
 The v2 interface uses consistent headings, links, action buttons, and loading and empty states. Change Studio's display language in **Settings > Appearance > Language**; this is separate from Core's terminal language.
 
 - Use **Pin** in a Thread's row menu to put it in **Pinned**, above **All**. The pinned band can include older Threads outside the loaded **All** list, and orders them by creation time, newest first; entries without a creation time come last.
-- **Archived**, below **All**, lists archived Threads separately. **All** excludes them; archived Threads with a pin remain in **Pinned**. In **Monitor**, use **Archive scope**: **Active** excludes archived Threads, **All archives** includes them, and **Archived** shows only archived Threads. This does not change the sidebar.
+- **Archived**, below **All**, lists archived Threads separately. **All** excludes them; archived Threads with a pin remain in **Pinned**. To archive several Threads, select them in the sidebar and use **Archive** in the selection bar; press **Archive** again to confirm. **Unarchive** is available for selected archived Threads. **Include descendants** controls whether the owner applies the action to their descendants.
 - **Awaiting you** is a separate sidebar filter. It clears search, tag, and directory filters and hides **Pinned** and **Archived**. Choosing any of those filters turns **Awaiting you** off. The **Awaiting you** screen also lists requests directed to you. A count with `+` is a lower bound.
 - In **Conversation**, send a message from the composer, expand tool output, or use **Stop** for a Run that can be stopped. A recovery wait does not clear a reply duty. If recovery offers **Retry**, it may incur additional usage; if unavailable, read the reason shown. Drafts stay with their Thread when you switch.
 
@@ -62,7 +62,7 @@ For model messages, **From Thread** is the recorded sender ID; **Current title**
 
 ### Delete selected Threads
 
-In the sidebar use **Select Threads**, select the Threads, then choose **Delete**. Review the exact names and IDs; active scheduled executions listed in the preview will be stopped. Live or stopping Runs block deletion. **Delete selected Threads** permanently deletes the selected set in a single all-or-none operation (up to 256 on the matching owner). Unselected descendants stay. If the selection or targets change, review and confirm the new preview. Archive is a separate action.
+In the sidebar use **Select Threads**, select the rows, then use **Delete**, **Archive**, or **Unarchive** in the selection bar. Archive requires a second press to confirm; Unarchive applies immediately. **Include descendants** controls the archive scope. For Delete, review the exact names and IDs; active scheduled executions listed in the preview will be stopped. Live or stopping Runs block deletion. **Delete selected Threads** permanently deletes the selected set in a single all-or-none operation (up to 256 on the matching owner). Unselected descendants stay. If the selection or targets change, review and confirm the new preview. Use a Thread row's **Move** action to choose a parent, and **Edit tags** to add or remove tags for that Thread.
 
 ## Inspect usage and cost
 
@@ -153,7 +153,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 デザインシステム v2 では、見出し、移動リンク、操作ボタン、読み込み中・空の表示が各画面で統一されています。Studio の表示言語は **設定 > 外観 > 言語** で変更できます。Core のターミナル表示言語とは別です。
 
 - 行メニューの **ピン留め** で **すべて** の上にある **ピン留め** 欄に追加します。**すべて** の読み込み範囲外にある古いスレッドも表示されます。作成日時の新しい順で、日時が不明なものは最後です。
-- **すべて** の下の **アーカイブ済み** にアーカイブしたスレッドが表示されます。**すべて** には表示されませんが、ピン留めしたものは **ピン留め** に残ります。**モニター** の **アーカイブ範囲** では、**未アーカイブ** で除外し、**アーカイブも含む** で含め、**アーカイブ済み** でアーカイブしたものだけを表示します。サイドバーには影響しません。
+- **すべて** の下の **アーカイブ済み** にアーカイブしたスレッドが表示されます。**すべて** には表示されませんが、ピン留めしたものは **ピン留め** に残ります。複数のスレッドを選択し、サイドバーの選択バーで **アーカイブ** を押します。確認のためもう一度押してください。選択したアーカイブ済みスレッドには **アーカイブ解除** を使えます。**子孫も含める** は子孫への適用を切り替えます。
 - **あなた待ち** の絞り込みを有効にすると検索語、タグ、ディレクトリの条件が解除され、**ピン留め** と **アーカイブ済み** が隠れます。いずれかの条件を選び直すと **あなた待ち** は解除されます。**あなた待ち** 画面では自分宛ての依頼も確認できます。`+` 付きの件数は下限です。
 - **会話** では入力欄から送信し、ツール出力を展開できます。停止できる Run には **停止** を使えます。復旧待ちになっても返信義務は消えません。**再試行** では追加の利用量が発生する場合があります。使えないときは画面の理由を確認してください。書きかけはスレッドを切り替えても元のスレッドに残ります。
 
@@ -178,7 +178,7 @@ v0.4.2 向け（反映待ち）：**要返信** や **返信待ち** などの�
 
 #### スレッドの一括削除
 
-サイドバーで **スレッドを選択** を選び、対象にチェックを入れて **削除** を押します。プレビューで名前と ID、停止対象となるスケジュール実行を確認してください。実行中または停止処理中の Run があると削除できません。**選択したスレッドを削除** を押すと、対応するオーナーでは最大 256 件を一度の操作で全件削除するか、何も削除しません。選択していない子孫は残ります。対象が変わった場合は新しいプレビューで確認し直してください。アーカイブは別の操作です。
+サイドバーで **スレッドを選択** を選び、対象にチェックを入れます。選択バーの **削除**、**アーカイブ**、**アーカイブ解除** を使います。アーカイブはもう一度押して確認し、アーカイブ解除はそのまま適用します。**子孫も含める** で子孫にも適用できます。削除では、プレビューで名前と ID、停止対象となるスケジュール実行を確認してください。実行中または停止処理中の Run があると削除できません。**選択したスレッドを削除** は、対応するオーナーでは最大 256 件を一度の操作で全件削除するか、何も削除しません。選択していない子孫は残ります。対象が変わった場合は新しいプレビューで確認し直してください。行メニューの **移動** で親を選び、**タグを編集** でそのスレッドのタグを追加・削除できます。
 
 ### 使用量とコストを確認する
 

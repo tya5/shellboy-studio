@@ -21,9 +21,9 @@ export function ThreadMovePicker({ model }: { model: AppModel }) {
     const shown = rows.filter(r => r.thread_id !== move.threadId && r.title.toLowerCase().includes(filter.trim().toLowerCase())).slice(0, 50);
     return <Section title={t("org.moveTitle", { title })} actions={close}>
       <Field ariaLabel={t("org.moveFilter")} placeholder={t("org.moveFilter")} value={filter} onInput={e => setFilter(e.currentTarget.value)} />
-      <div class="band"><Button onClick={() => org.previewMove(move.threadId, "")}>{t("org.noParent")}</Button>
+      <div class="thread-move-list"><div class="band"><Button onClick={() => org.previewMove(move.threadId, "")}>{t("org.noParent")}</Button>
         {shown.map(r => <Button key={r.thread_id} disabled={move.kind === "picking" && move.parentId === r.thread_id} aria-pressed={self?.parent_id === r.thread_id} onClick={() => org.previewMove(move.threadId, r.thread_id)}>{r.title}</Button>)}
-      </div>
+      </div></div>
     </Section>;
   }
   const text = move.parent === "" ? t("org.previewDetach", { title }) : t("org.previewUnder", { title, parent: titleOf(move.parent) });

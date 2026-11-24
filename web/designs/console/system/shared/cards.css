@@ -1,4 +1,4 @@
-.card{content-visibility:auto;contain-intrinsic-size:auto var(--size-thread-card-estimate);display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-16);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
+.card{content-visibility:auto;contain-intrinsic-size:auto var(--size-card-estimate);display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-16);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
 .card.lead{border-color:var(--accent);background:var(--lead-bg)}
 .card.need{border-color:var(--wait);background:var(--need-bg)}
 .card.err{border-color:var(--bad);background:var(--err-bg)}

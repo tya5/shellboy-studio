@@ -55,13 +55,14 @@
   --space-6: 6px;
   --space-2: 2px;
   --space-10: 10px;
+  --size-move-list: 320px;
   --letter-caps: 0.06em;
   --radius-s: 2px;
   --radius: 2px;
   --radius-m: 2px;
   --motion-spin: 1.6s;
-  /* Intrinsic size reserved for a skipped Monitor or App card. */
-  --size-thread-card-estimate: 180px;
+  /* Intrinsic size reserved for a skipped card in a long content list. */
+  --size-card-estimate: 180px;
   /* Minimum width of an Analytics stat column. */
   --size-stat-column: 170px;
   /* Preferred minimum width of an Analytics chart. */

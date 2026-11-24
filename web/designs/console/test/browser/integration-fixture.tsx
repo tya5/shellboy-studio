@@ -12,9 +12,10 @@ const ownSendFixture = params.get('view') === 'own-send';
 const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
 const sectionGeometryFixture = params.get('view') === 'section-geometry';
-const fixtureOptions = sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
+const fixtureOptions = sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
-const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
+const initialRoute = parseRoute(location.hash);
+const { model, t, db } = await fixtureModel({ ...fixtureOptions, route: initialRoute.view, ...(initialRoute.view === 'conversation' && initialRoute.threadId ? { threadId: initialRoute.threadId } : {}), configure(db) {
   if (params.get('view') === 'sidebar' && params.get('state') === 'running') {
     db.threads.lead = { ...db.threads.lead!, title: 'Running — verify indexes' };
     db.threads.broken = { ...db.threads.broken!, title: 'Error — check endpoint' };

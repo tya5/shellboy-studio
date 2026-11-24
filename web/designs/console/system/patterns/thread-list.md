@@ -25,9 +25,9 @@ archived Threads (`archived: "include"`), so an archived pin stays in Pinned wit
 its loaded descendants; as a pin also keeps its copy in All, an archived pin also
 keeps its copy in Archive. Needs-you hides Archive as it hides Pinned, and its
 read is not sent. Archive is re-read on resync, a filter change, and a list hint
-whose rows changed archive state, parent or a filtered field. Monitor sets the
-shared list to include archived Threads for its own scope, so while Monitor is
-shown All lists them flat as before (not changed by #126).
+whose rows changed archive state, parent or a filtered field. Archive/unarchive
+mutations are initiated from the sidebar selection bar or a row menu; the owner
+event refreshes the same sidebar projections.
 
 A band count is Threads: pinned Threads for Pinned, listed rows for All and
 Archive. It carries `+` when Core says more exist: a list continuation for All

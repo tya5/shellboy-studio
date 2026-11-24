@@ -1,19 +1,10 @@
 # MonitorPopover
 
-- **Use for:** Open nondestructive local controls from a toolbar trigger or use the controlled form for an owner-scoped picker.
-- **Do not use for:** Use Menu for short row actions and a dialog for confirmation.
-- **Why:** Preview can close without moving focus; Escape or outside press dismisses the panel, and a persistent panel can return focus to its trigger. The controlled panel
-  consumes Escape from inside its root so the parent view does not also act.
-- **Source:** [Radix Hover Card Escape behavior, as recorded in the Studio audit](https://github.com/tya5/shellboy-studio/commit/833470949af0d0ff59bc85b580fdb9c93c4e4155); [Studio #39](https://github.com/tya5/shellboy-studio/issues/39)
+Shared accessible popover behavior retained for existing toolbar and model-picker controls. The legacy component name is kept to avoid unrelated API churn (#138); this component does not render or own a Monitor screen.
 
-A local toolbar popover for Monitor display controls. Click toggles its persistent
-open state; optional hover/focus preview is transient. Escape closes hover previews without stealing focus;
-when a click-opened panel is closed, focus returns to its trigger. Outside pointer closes the
-persistent panel. Use for nondestructive local settings, not confirmations.
+- **Use for:** A local toolbar or picker popover that needs outside-click and Escape dismissal.
+- **Placement:** Next to the control that opens it.
+- **Do not use for:** Modal confirmation or long workflows; use a dialog or page-level component.
 
-Reference: Radix `hover-card:334` handles Escape while the surface is open/hovered.
-
-Styles: style.css in this directory
-
-The controlled form uses the same dismissal and focus behavior for an owner-scoped
-picker. Its caller owns the open state and may supply the existing panel style.
+Styles: shared popover rules in `../shared/popover.css`.
+Styles: style.css in this directory.

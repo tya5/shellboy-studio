@@ -123,7 +123,6 @@ const glyphs = {
   bot: <><path d="M12 2v3M5 9a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3zM2.5 11v3M21.5 11v3M9 21h6" /><circle cx="9.5" cy="11" r="1.1" fill="currentColor" /><circle cx="14.5" cy="11" r="1.1" fill="currentColor" /><path d="M9.5 14.5h5" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
   chat: <path d="M21 12a8 8 0 0 1-8 8H4l1.8-3A8 8 0 1 1 21 12z" />,
-  monitor: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 14l3-3 3 2 4-5" /></>,
   inbox: <path d="M3 13l3-8h12l3 8v6H3zM3 13h5l1.5 3h5L16 13h5" />,
   term: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M12 15h5" /></>,
   cross: <path d="M6 6l12 12M18 6L6 18" />,
