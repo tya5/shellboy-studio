@@ -27,23 +27,22 @@ windows-desktop = []
 # Explicit integration suite: never part of owner-free unit/synthetic checks.
 real-owner-tests = []
 default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
-# Core v0.16.0 prep pin: keep this exact Core-main revision until v0.16.0 is tagged, then repoint to that tag commit.
+# Exact stable Core pair: v0.16.0 at 46212b5391e2d486efec770291359a2ba671fa01, protocol 26.
 next-shellboy = []
 # #262 owner branch adds message.ask; never forward it from Studio.
 next-reply = ["next-shellboy"]
 # First-run connection setup (Shellboy #269): `credentials.set`, `credentials.clear`, `connection.test`.
-# Connection operations are enabled for the pinned Core v0.16.0 prep;
+# Connection operations are enabled for the pinned Core v0.16.0 tag;
 # validate the exact owner pair (docs/design/connection-setup.md).
 next-connection-setup = ["next-shellboy"]
 # Thread tags (Shellboy #222 stage 3): `thread.tag`, `thread.tags`, and `tags` / `cwd` on `thread.list`.
-# Validate these operations against the published tag before merging this branch.
 next-tags = ["next-shellboy"]
-# `thread.cwds` (the list of directories). Validate it against the published tag.
+# `thread.cwds` (the list of directories).
 next-cwds = ["next-tags"]
 
 [dependencies]
 # Core-main prep pin; exact-pair acceptance verifies manifest revision, lock commit, package, and binary.
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "a9c57e156c7ee792b1e67298ee78b99be76834ea" }
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "46212b5391e2d486efec770291359a2ba671fa01" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt", "io"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }

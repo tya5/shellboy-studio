@@ -1,10 +1,10 @@
 # Studio v0.4.2 pairing
 
-Studio v0.4.2 release preparation is on hold for the stable Core v0.16.0 tag.
+Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa01`, protocol 26. This document records the prepared pairing; it does not announce a Studio release.
 
 - Studio package version: 0.4.2.
-- Core pairing: **TODO — repoint to the published Core v0.16.0 tag** (#111). Do not release or build desktop archives from this preparation branch before the exact tagged pairing is recorded.
-- Until that tag exists, main retains the published v0.4.1 pairing; this release branch keeps the development pin only as preparation. Once available, repoint `Cargo.toml`'s Core `rev` and `Cargo.lock`, update `tools/exact-owner.py`'s `VERSION`, the `0.16.0-dev` fixtures in `tools/test-exact-owner.py`, `tests/protocol_pair.rs`'s expected `PROTOCOL_VERSION`, and the guide URL in `web/designs/console/screens/SetupParts.tsx` to the v0.16.0 tag. Verify manifest, lock, owner identity and protocol all match that exact tag commit. Then grep `TODO` in `README.md`, `docs/guides/`, and `docs/design/` and replace every release-preparation placeholder with the verified pairing.
+- main retains the published v0.4.1 pairing until v0.4.2 is released.
+- Exact pin: `Cargo.toml` and `Cargo.lock` use the published Core v0.16.0 tag commit; the exact-owner fixture reports version 0.16.0 and protocol 26. The Setup guide links to the v0.16.0 documentation.
 - macOS and Windows desktop package versions are generated from the Cargo package version; there are no independent checked-in product-version literals for those bundles.
 - Before upgrading, quit Studio and Core and back up the entire Core data directory and any settings files stored outside it; see [v0.4.0](release-v0.4.0.md) for backup and phone-pairing guidance. This supersedes the [previous v0.4.1 pairing](release-v0.4.1.md) only after the Core tag is finalized.
 
@@ -28,8 +28,6 @@ Studio v0.4.2 release preparation is on hold for the stable Core v0.16.0 tag.
 - Collapsed Work rows keep their keyboard focus outline (#130).
 - Tab can reach a right-panel page even when it has no controls of its own (#130).
 - When a focused **Stop** button disappears, focus returns to the message field (#130).
-
-## Pending landing
 
 - The sidebar exposes its tree structure to assistive technology, and a focused conversation row stays mounted when the window moves. Studio announces **Reply is arriving.** and **Reply saved.**, not each chunk. The page cannot guarantee an independent screen-reader browse cursor (#130 follow-up).
 

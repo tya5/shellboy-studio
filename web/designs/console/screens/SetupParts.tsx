@@ -2,7 +2,7 @@ import type { DesignContext, MessageKey, TestState } from "../../../ui-core/src"
 import { Button, Notice, Section } from "../system/components";
 import { Rich } from "./Rich";
 
-export const FIRST_SETUP_GUIDE = "https://github.com/tya5/shellboy/blob/v0.15.0/docs/guides/configuration.md#first-setup-without-an-owner";
+export const FIRST_SETUP_GUIDE = "https://github.com/tya5/shellboy/blob/v0.16.0/docs/guides/configuration.md#first-setup-without-an-owner";
 
 export type T = DesignContext["model"]["t"]["value"];
 

@@ -101,6 +101,8 @@ pub fn access(command: &Command) -> Access {
         | Command::ShellWrite(..)
         | Command::ShellEof(..)
         | Command::ShellStop(..)
+        | Command::ShellBackground(..)
+        | Command::TurnInterrupt(..)
         | Command::ArtifactAdd(..)
         | Command::ArtifactUpdate(..)
         | Command::ArtifactRemove(..)

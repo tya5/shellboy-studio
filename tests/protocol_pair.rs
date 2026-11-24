@@ -26,8 +26,8 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_twenty_three_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 23);
+fn exact_protocol_twenty_six_has_directional_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 26);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
@@ -187,5 +187,20 @@ fn core_schedule_and_service_reads_require_a_thread() {
         for thread_id in [None, Some("".into())] {
             assert_eq!(access(&list(ThreadTarget { thread_id })), Access::Denied);
         }
+    }
+}
+
+#[test]
+fn core_v016_intervention_commands_stay_out_of_browser_until_studio_surfaces_them() {
+    use shellboy::protocol::{ExecutionTarget, TurnTarget};
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 26);
+    for command in [
+        Command::ShellBackground(ExecutionTarget { execution_id: "shell".into() }),
+        Command::ShellStop(ExecutionTarget { execution_id: "shell".into() }),
+        Command::ShellWrite(shellboy::protocol::ShellWriteArgs { execution_id: "shell".into(), text: "x".into(), encoding: "utf-8".into() }),
+        Command::ShellEof(ExecutionTarget { execution_id: "shell".into() }),
+        Command::TurnInterrupt(TurnTarget { turn_id: "turn".into() }),
+    ] {
+        assert_eq!(access(&command), Access::Denied, "{command:?}");
     }
 }
