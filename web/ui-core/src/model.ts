@@ -739,7 +739,7 @@ export class AppModel {
     this.branches.leave();
     this.pending.close?.();
     this.modelListCancel.cancel();
-    this.longReader.peek()?.dispose();
+    this.releaseConversationReader();
     this.apps.leaveFolders();
     for (const d of this.disposers) d();
     this.disposers = [];
@@ -813,16 +813,21 @@ export class AppModel {
     this.navigate({ view: "conversation", threadId });
   }
 
+  /** Drop the strong reference to accepted rows whenever the conversation reader leaves. */
+  private releaseConversationReader(): void {
+    this.longReader.peek()?.dispose();
+    this.longReader.value = undefined;
+    this.readerThread = undefined;
+    this.shellScan = undefined;
+  }
+
   /** One reader per open Thread while the Conversation shows and the owner has the positional read. */
   private syncWindow(): void {
     const h = this.handle.value;
     const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
     const cur = this.longReader.peek();
     if (cur && (!want || this.readerThread !== h?.threadId || this.handle.peek() !== h || (h !== undefined && !cur.isCurrentThread(h)))) {
-      cur.dispose(); // leaving the view, Thread, or owner lifetime cancels its reads
-      this.longReader.value = undefined;
-      this.readerThread = undefined;
-      this.shellScan = undefined;
+      this.releaseConversationReader(); // leaving the view, Thread, or owner lifetime cancels its reads
     }
     if (!want || !h) return;
     if (!this.longReader.peek()) {

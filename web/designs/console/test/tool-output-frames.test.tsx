@@ -306,6 +306,12 @@ it('does not reread saved shell facts for live-only frames in a long mounted con
     expect(t.calls('shell.list')).toHaveLength(reads);
     await act(async () => { t.push({ t: 'changed', thread_ids: ['lead'], list: false, config_changed: false }); await settle(t, db); });
     expect(t.calls('shell.list').length).toBeGreaterThan(reads);
+    const retainedReader = model.longReader.peek()!;
+    expect((model as unknown as { shellScan?: unknown }).shellScan).toBeDefined();
+    model.dispose();
+    expect(model.longReader.peek()).toBeUndefined();
+    expect((model as unknown as { shellScan?: unknown }).shellScan).toBeUndefined();
+    expect((retainedReader as unknown as { disposed: boolean }).disposed).toBe(true);
   } finally {
     render(null, host);
     host.remove();
