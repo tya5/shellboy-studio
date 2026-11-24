@@ -168,13 +168,14 @@ export class FakeOwnerDb {
         const args = c.args as { thread_id: string; before?: number; after?: number; ordinal?: number; node_id?: string; expect_node_id?: string; revision?: number };
         const all = this.history[args.thread_id] ?? [];
         const total = all.length;
+        const stale = { ok: false as const, code: "cursor_expired", details: { revision: this.historyRevisions[args.thread_id] ?? 1, total } };
         const nodeOrdinal = args.node_id === undefined ? undefined : all.findIndex(item => (item as {node_id?:string}).node_id === args.node_id);
-        if (nodeOrdinal === -1) return { ok: false, code: "path_changed" };
+        if (nodeOrdinal === -1 || (args.ordinal !== undefined && args.ordinal >= total)) return stale;
         const anchor = args.ordinal ?? nodeOrdinal ?? Math.max(0, total - 1);
         const selectedFirst = Math.max(0, anchor - (args.before ?? 0));
         const last = Math.min(total - 1, anchor + (args.after ?? 0));
         if (args.expect_node_id !== undefined && (all[anchor] as { node_id?: string } | undefined)?.node_id !== args.expect_node_id)
-          return { ok: false, code: "path_changed" };
+          return stale;
         const items = all.slice(selectedFirst, last + 1).map((item, index) => ({ ...item, selection: { ordinal: selectedFirst + index } }));
         return { ok: true, result: { thread_id: args.thread_id, revision: this.historyRevisions[args.thread_id] ?? 1, total, items } };
       }
