@@ -1539,7 +1539,7 @@ const ja: Record<MessageKey, string> = {
   "panel.empty.attachmentsBody": "このスレッドのメッセージに添付したファイルがここに表示されます。",
   "panel.empty.compactions": "圧縮はまだありません",
   "panel.empty.compactionsBody": "このスレッドを圧縮するたびにここに記録されます。",
-  "panel.pending": "履歴の読み込み待ち",
+  "panel.pending": "履歴追加待ち",
   "panel.rowActions": "項目の操作",
   "panel.openThread": "スレッドを開く",
   "panel.collapse": "右パネルを折りたたむ",
