@@ -44,6 +44,12 @@ try{
    await writeFile(`${process.env.SHOTS}/studio-${name}-${width}.png`,Buffer.from(shot.data,'base64'));
   };
   await capturePanel('list');
+  await until(()=>evaluate("!!document.querySelector('[data-panel-row-id=report] [data-artifact-reveal-status]')"));
+  const reveal = await evaluate('window.measureArtifactReveal()');
+  console.log(JSON.stringify({width,reveal}));
+  assert(reveal.before.titleWidth > 0);
+  assert.deepEqual(reveal.during,reveal.before,'Reveal toast must not move the button or resize the title');
+  assert.deepEqual(reveal.after,reveal.before,'Toast expiry must not move the button or resize the title');
   await evaluate("window.runArtifactFixture('detail')");
   const old=await evaluate("window.runArtifactFixture('old')");
   console.log(JSON.stringify({width,old}));

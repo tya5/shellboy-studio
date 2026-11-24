@@ -3,4 +3,5 @@
 .artifact-preview { box-sizing:border-box; block-size:var(--size-preview); overflow:auto; padding:var(--space-8); border:1px solid var(--line); background:var(--inset); border-radius:var(--radius-s); }
 .artifact-preview > img { display:block; margin-inline:auto; width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; }
 .artifact-preview > pre { margin:0; font:var(--type-code); white-space:pre-wrap; overflow-wrap:anywhere; }
+[data-artifact-reveal-status]:not(.artifact-reveal-toast){position:absolute;inline-size:0;block-size:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .artifact-reveal-toast{position:fixed;z-index:30;inset:auto var(--space-16) var(--space-16);inline-size:fit-content;max-inline-size:calc(100% - 2 * var(--space-16));margin-inline:auto;box-sizing:border-box;padding:var(--space-8) var(--space-12);border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);font:var(--type-label);pointer-events:none}
