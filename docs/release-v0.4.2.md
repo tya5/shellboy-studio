@@ -1,6 +1,6 @@
 # Studio v0.4.2 pairing
 
-Draft: the #130 keyboard fixes below are still pending. Confirm their landing and the final Core pairing before publishing.
+Draft: confirm the pending changes below and the final Core pairing before publishing.
 
 - Studio main has moved off Core v0.15.0 to the Core v0.16.0 preparation build (`0.16.0-dev`, commit `62023b082a181e71b77400fa90b5a551acba4a2e`, protocol 22).
 - The stable Core v0.16.0 tag is not published yet; desktop ZIPs must wait for a published stable Core tag matching Studio's exact pin.
@@ -8,26 +8,28 @@ Draft: the #130 keyboard fixes below are still pending. Confirm their landing an
 
 ## Changes on main since v0.4.1
 
-- The sidebar now has an **Archive** section below **All**; **All** leaves archived Threads out, and archived pins stay in **Pinned** (#126).
+- The sidebar now has an **Archived** section below **All**; **All** leaves archived Threads out, and archived pins stay in **Pinned** (#126).
 - Inbox and right-panel lists keep loaded rows in place during refreshes, and empty lists no longer flash a loading state on a quiet refresh.
 - Long conversations draw only nearby rows and reuse work they have already done, making scrolling and updates lighter (#125).
 - Grouped Work and streaming replies do less work as new content arrives (#125).
 - Long formatted tool output takes less work to display without cutting off the text, and Studio avoids retrying the same automatic message-text read repeatedly (#125).
-- On phones, the composer follows the space left by the keyboard so Send and Stop stay within reach (#128).
+- On phones, the composer follows the space left by the keyboard so **Send** and **Stop** stay within reach (#128).
 - Sidebar row menus have a larger, separate touch target that does not overlap the Thread link (#128).
 - The README and bilingual [user guide](guides/user-guide.md) now match the current setup steps, screen labels, and upgrade and pairing guidance.
-- **Settings > Studio > Startup** lets authenticated local desktop users open Studio at sign-in on macOS and Windows; on Windows, use Windows Startup settings or remove the Startup shortcut to turn it off. Linux does not have this setting (#85).
-- Monitor can show archived Threads without adding them to **All** in the sidebar (#127).
-
-## Pending landing: Keyboard fixes (#130)
-
+- **Settings > Studio > Startup** offers **Open Studio at login** to authenticated local desktop users on macOS and Windows; on Windows, use Windows Startup settings or remove the Startup shortcut to turn it off. Linux does not have this setting (#85).
+- In **Monitor**, use **Archive scope** to choose **Active**, **All archives**, or **Archived** without changing the sidebar (#127).
+- On phones, use the **Thread panel** picker and full-screen details; dialogs scroll in one place, logs offer **Wrap lines** and **Raw text**, and **Load earlier messages** appears when earlier history is available (#128 items 3–7).
 - Global shortcuts stay out of dialogs, editable fields, Japanese text composition, and key events already handled by a control (#130).
 - Tab moves from a row menu to the next control after the row (#130).
 - Collapsed Work rows keep their keyboard focus outline (#130).
 - Tab can reach a right-panel page even when it has no controls of its own (#130).
-- When a focused Stop button disappears, focus returns to the message field (#130).
+- When a focused **Stop** button disappears, focus returns to the message field (#130).
 
-The separate #128 follow-up for phone panel navigation, dialogs, log wrapping, and loading earlier messages is not included in the changes above; verify its landing before adding those items.
+## Pending landing
+
+- The sidebar exposes its tree structure to assistive technology, and a focused conversation row stays mounted when the window moves. Studio announces **Reply is arriving.** and **Reply saved.**, not each chunk. The page cannot guarantee an independent screen-reader browse cursor (#130 follow-up).
+- Right-panel count badges, such as those on **Reply needed** and **Awaiting reply**, use higher-contrast text (#133).
+- In **Analytics > By Thread**, compare **Excl. cached**, **Total**, **Cached input**, or **Summary tokens** over the chosen **Period**. Bars and shares follow the selected metric; open a row for the same-period breakdown. Counts are recorded tokens, not prices, and incomplete scans do not show a ranking (#132).
 
 ## Check on a device
 
