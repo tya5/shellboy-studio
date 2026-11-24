@@ -2976,8 +2976,8 @@ dependencies = [
 
 [[package]]
 name = "shellboy"
-version = "0.15.0"
-source = "git+https://github.com/tya5/shellboy?rev=318abee0609eeb3b15a3a21b74b85f816c7d3ea0#318abee0609eeb3b15a3a21b74b85f816c7d3ea0"
+version = "0.16.0-dev"
+source = "git+https://github.com/tya5/shellboy?rev=f02ddaebd6dc7ab72c061af95cb567a4ad125955#f02ddaebd6dc7ab72c061af95cb567a4ad125955"
 dependencies = [
  "arboard",
  "base64 0.23.1",
@@ -2995,6 +2995,7 @@ dependencies = [
  "ratatui",
  "reqwest",
  "rusqlite",
+ "rustls",
  "schemars",
  "semver",
  "serde",
