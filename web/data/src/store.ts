@@ -179,19 +179,22 @@ function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary
 const isActiveSummary = (row: ThreadSummary): boolean =>
   (row.awaiting_named_count ?? 0) > 0 || isActiveThreadActivity(row.activity);
 
-/** Bounded at MAX_LIST_ROWS; the oldest rows go first, but never an open Thread's (at most MAX_WATCHED_THREADS). */
-function trimRows(rows: Map<string, ThreadSummary>, open: ReadonlyMap<string, unknown>): Map<string, ThreadSummary> {
+/**
+ * Bounded at MAX_LIST_ROWS; the oldest rows go first, but never one in `held`: an open Thread's
+ * (at most MAX_WATCHED_THREADS) or one the list, Archive or pinned state still lists (each at most MAX_LIST_ROWS).
+ */
+function trimRows(rows: Map<string, ThreadSummary>, held: ReadonlySet<string>): Map<string, ThreadSummary> {
   for (const id of rows.keys()) {
     if (rows.size <= MAX_LIST_ROWS) break;
-    if (!open.has(id)) rows.delete(id);
+    if (!held.has(id)) rows.delete(id);
   }
   return rows;
 }
 
-function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[], open: ReadonlyMap<string, unknown>): Map<string, ThreadSummary> {
+function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[], held: ReadonlySet<string>): Map<string, ThreadSummary> {
   const next = new Map(previous);
   for (const row of rows) { next.delete(row.thread_id); next.set(row.thread_id, row); }
-  return trimRows(next, open);
+  return trimRows(next, held);
 }
 
 export class ShellboyData {
@@ -400,7 +403,7 @@ export class ShellboyData {
       ? { ...now, items: [...new Set([...now.items, ...out.value.items.map(row => row.thread_id)])].slice(0, MAX_LIST_ROWS), nextCursor: out.value.next_cursor, loadingMore: false, error: undefined }
       : { ...now, loadingMore: false, error: out.error };
     if (out.ok) {
-      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), out.value.items, this.entries);
+      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), out.value.items, this.heldRows());
     }
   }
 
@@ -642,6 +645,11 @@ export class ShellboyData {
     }
   }
 
+  /** Rows the cache must keep: open Threads and every ID a list, Archive or pinned state holds (each already bounded). */
+  private heldRows(): Set<string> {
+    return new Set([...this.entries.keys(), ...this.listSig.peek().items, ...this.archivePages.state.peek().items, ...this.pinnedThreadIdsSig.peek()]);
+  }
+
   private markListsStale(): void {
     for (const { state } of [this.listPages, this.archivePages]) if (state.value.loaded) state.value = { ...state.value, stale: true };
   }
@@ -805,7 +813,7 @@ export class ShellboyData {
       this.pinnedThreadIdsSig.value = rows.map(row => row.thread_id);
       this.pinnedErrorSig.value = undefined;
       this.pinnedMoreSig.value = cursor !== undefined;
-      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), rows, this.entries);
+      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), rows, this.heldRows());
     });
   }
 
@@ -838,7 +846,7 @@ export class ShellboyData {
     }
     const published = shapeOnly && previous.filter === filter ? mergeRows(items, previous.items.flatMap(id => { const row = this.threadRowsSig.peek().get(id); return row ? [row] : []; })) : items;
     target.state.value = { filter, items: published.map(row => row.thread_id), nextCursor: shapeOnly ? previous.nextCursor : cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
-    this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), items, this.entries);
+    this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), items, this.heldRows());
   }
 
   private async readDetail(entry: ThreadEntry, onSent: () => void): Promise<void> {
@@ -891,7 +899,7 @@ export class ShellboyData {
     const next = new Map(this.threadRowsSig.peek());
     for (const row of out.value.items) { next.delete(row.thread_id); next.set(row.thread_id, row); }
     for (const id of ids) if (!returned.has(id)) next.delete(id);
-    trimRows(next, this.entries);
+    trimRows(next, this.heldRows());
     batch(() => {
       this.threadRowsSig.value = next;
       this.activeThreadIdsSig.value = [...activeStatus];

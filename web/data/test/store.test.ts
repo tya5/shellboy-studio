@@ -315,6 +315,37 @@ describe("the sidebar Archive band (#126)", () => {
     expect(t.calls("thread.list").slice(reads).map(call => call.args)).not.toContainEqual(expect.objectContaining({ archived: "only" }));
   });
 
+  it("keeps every All row in the one row cache when All is at the bound and Archive adds a page", async () => {
+    const { t, data, db } = await setup();
+    const listed: ThreadSummary[] = Array.from({ length: MAX_LIST_ROWS + PAGE_LIMIT }, (_, i) => summary(`t${i}`));
+    const archived: ThreadSummary[] = Array.from({ length: PAGE_LIMIT * 2 }, (_, i) => summary(`z${i}`, archivedAt));
+    const answer = db.answer.bind(db);
+    db.answer = (c) => {
+      const a = (c.args ?? {}) as { archived?: string; cursor?: string; thread_ids?: string[]; state?: string };
+      if (c.command !== "thread.list" || a.thread_ids || a.state) return answer(c);
+      const rows = a.archived === "only" ? archived : listed;
+      const start = a.cursor ? Number(a.cursor) : 0, end = start + PAGE_LIMIT;
+      return { ok: true, result: { items: rows.slice(start, end), ...(end < rows.length ? { next_cursor: String(end) } : {}) } };
+    };
+    data.trackThreadList();
+    await settle(t, db);
+    while (data.canLoadMoreThreads()) {
+      const more = data.loadMoreThreads();
+      await settle(t, db);
+      await more;
+    }
+    expect(data.listThreadIds.value).toHaveLength(MAX_LIST_ROWS);
+    expect(data.archivedList.value.items).toHaveLength(PAGE_LIMIT);
+    expect(data.threadList.value.items).toHaveLength(MAX_LIST_ROWS);
+    // Archive's next page arrives last in the cache, past the 1000-row bound: no listed row may give way.
+    const more = data.loadMoreArchived();
+    await settle(t, db);
+    await more;
+    expect(data.archivedList.value.items).toHaveLength(PAGE_LIMIT * 2);
+    expect(data.threadList.value.items.map(row => row.thread_id)).toEqual(data.listThreadIds.value);
+    expect(data.threadList.value.items).toHaveLength(MAX_LIST_ROWS);
+  });
+
   it("pages archived Threads like the list and re-reads the loaded pages when one is archived", async () => {
     const { t, data, db } = await setup();
     const archived: ThreadSummary[] = Array.from({ length: 120 }, (_, i) => summary(`z${i}`, archivedAt));
@@ -634,7 +665,9 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     // A list hint re-reads the 1000 loaded rows, which are then newer than the open Thread's row.
     x.t.push({ t: "resync" });
     await settle(x.t, x.db);
-    expect(x.data.threadRows.value.size).toBe(MAX_LIST_ROWS);
+    // Every listed row is held, and so is the open Thread's: nothing listed gives way to it.
+    expect(x.data.threadRows.value.size).toBe(MAX_LIST_ROWS + 1);
+    expect(x.data.threadList.value.items).toHaveLength(MAX_LIST_ROWS);
     expect(x.data.threadRows.value.get("old")?.activity).toBe("recovery");
     x.all[x.all.length - 1] = summary("old", { activity: "tools" });
     x.t.push({ t: "changed", config_changed: false, thread_ids: ["old"], list: false });

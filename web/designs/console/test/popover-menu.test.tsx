@@ -125,7 +125,7 @@ it("reserves one icon column for every item and marks toggle items as checked me
     { key: "rename", label: "Rename", icon: "thread.rename" },
     { key: "plain", label: "No icon" },
     { key: "awaiting", label: "Awaiting you", checked: true },
-    { key: "archived", label: "Include archived", checked: false },
+    { key: "unread", label: "Unread only", checked: false },
   ]} />, host));
   await act(async () => { await Promise.resolve(); });
   const items = [...document.body.querySelectorAll<HTMLElement>("#column-menu .menu-item")];
