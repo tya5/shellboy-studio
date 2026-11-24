@@ -108,7 +108,7 @@ describe("Open Thread facts (#103)", () => {
     const observer = new MutationObserver(records => { announcements.push(...records); });
     try {
       const el = draw(model);
-      const region = el.querySelector<HTMLElement>('[role="status"][aria-live="polite"][aria-atomic="true"]')!;
+      const region = el.querySelector<HTMLElement>('[data-conversation-announcement]')!;
       expect(region.textContent).toBeTruthy();
       expect(region.getAttribute("role")).toBe("status");
       expect(region.getAttribute("aria-live")).toBe("polite");

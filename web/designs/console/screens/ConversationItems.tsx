@@ -211,7 +211,11 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     if (focused !== undefined && focused < first) shown.unshift(focused);
     if (focused !== undefined && focused >= end) shown.push(focused);
     const spacer = (from: number, to: number) => from < to ? <div key={`viewport:${from}:${to}`} aria-hidden="true"
-      style={{ height: geometry.offset(to) - geometry.offset(from) }} ref={node => { if (node) spacers.push({ from, to, node }); }} /> : null;
+      ref={node => {
+        if (!node) return;
+        node.style.height = `${geometry.offset(to) - geometry.offset(from)}px`;
+        spacers.push({ from, to, node });
+      }} /> : null;
     const renderSlice = (from: number, to: number): ComponentChildren[] => {
       const slice: ComponentChildren[] = [];
       for (let i = from; i < to;) {
