@@ -2038,6 +2038,7 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
 async fn intervention_provider(
     gate: Arc<tokio::sync::Notify>,
     continued_requests: tokio::sync::mpsc::UnboundedSender<String>,
+    stdin_fixture: bool,
 ) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -2051,6 +2052,7 @@ async fn intervention_provider(
             let gate = gate.clone();
             let requests = requests.clone();
             let continued_requests = continued_requests.clone();
+            let stdin_fixture = stdin_fixture;
             tokio::spawn(async move {
                 let mut seen = Vec::new();
                 let mut chunk = [0u8; 8192];
@@ -2085,7 +2087,18 @@ async fn intervention_provider(
                             .to_owned(),
                     )
                 } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-                    let args = json!({"command":if cfg!(windows){"[Console]::Out.Write('READY'); $inputText=[Console]::In.ReadToEnd(); [Console]::Out.Write('READ:' + $inputText); Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
+                    let command = if stdin_fixture {
+                        if cfg!(windows) {
+                            "[Console]::Out.Write('READY'); $inputText=[Console]::In.ReadToEnd(); [Console]::Out.Write('READ:' + $inputText); Start-Sleep -Seconds 300"
+                        } else {
+                            r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#
+                        }
+                    } else if cfg!(windows) {
+                        "Start-Sleep -Seconds 300"
+                    } else {
+                        "sleep 300"
+                    };
+                    let args = json!({"command":command,"description":"intervention fixture","stdin_open":stdin_fixture});
                     let call = json!({"type":"function_call","id":"intervention-shell","call_id":"intervention-shell","name":"shell","arguments":args.to_string()});
                     let reply = json!({"id":"intervention-tool","status":"completed","output":[call],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
                     ("application/json".to_owned(), reply.to_string())
@@ -2110,13 +2123,160 @@ async fn intervention_provider(
 }
 
 #[tokio::test]
-#[allow(unreachable_code)]
-async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
-    #[cfg(windows)]
-    {
-        println!("SKIP: Windows intervention witness not verified; see Core Issue #415");
-        return;
+#[cfg_attr(
+    windows,
+    ignore = "Core #415: first output of a stdin_open shell started through the tool call path is not visible on Windows; restore when #415 is closed"
+)]
+async fn intervention_stdin_delivery_reaches_the_child() {
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
+    let root = temp_root();
+    let data = root.join("data");
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let (continued_tx, _continued_rx) = tokio::sync::mpsc::unbounded_channel();
+    let url = intervention_provider(gate.clone(), continued_tx, true).await;
+    let serve = start_owner_with(&bin, &root, &data, &url);
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner.clone(), true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut client = Client { ws, next: 0 };
+    next_t(&mut client.ws, "hello").await;
+    let thread = client
+        .ok(
+            "thread.create",
+            json!({"cwd":root.to_str().unwrap()}),
+            Some(format!("{}:stdin-thread", serve.instance)),
+        )
+        .await["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    client
+        .ok(
+            "message.send",
+            json!({"thread_id":thread,"text":"start stdin witness"}),
+            Some(format!("{}:stdin-send", serve.instance)),
+        )
+        .await;
+    let started = client.wait_running_shell(owner.as_ref(), &thread).await;
+    let execution = started["execution_id"].as_str().unwrap().to_owned();
+    let mut shell_cursor = Client::event_cursor(owner.as_ref()).await;
+    if cfg!(windows) {
+        let mut ready_output = Value::Null;
+        let result = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let read = client
+                    .ok(
+                        "shell.read",
+                        json!({"execution_id":execution,"encoding":"UTF-8","limit_bytes":4096}),
+                        None,
+                    )
+                    .await;
+                ready_output = read["text"].clone();
+                if ready_output
+                    .as_str()
+                    .is_some_and(|text| text.contains("READY"))
+                {
+                    break;
+                }
+                Client::wait_owner_change(owner.as_ref(), &thread, &mut shell_cursor).await;
+            }
+        })
+        .await;
+        assert!(
+            result.is_ok(),
+            "stage 1 child READY marker not seen; output={ready_output}"
+        );
     }
+    let wrote = client
+        .ok(
+            "shell.write",
+            json!({"execution_id":execution,"text":"studio-input\n","encoding":"UTF-8"}),
+            None,
+        )
+        .await;
+    assert_eq!(wrote["status"], "complete", "stage 2 shell.write: {wrote}");
+    assert!(
+        wrote["bytes_written"].as_u64().unwrap() > 0,
+        "stage 2 shell.write: {wrote}"
+    );
+    if cfg!(windows) {
+        let eof = client
+            .ok("shell.eof", json!({"execution_id":execution}), None)
+            .await;
+        assert_eq!(eof["accepted"], true, "stage 3 shell.eof: {eof}");
+    }
+    let mut last_output = Value::Null;
+    let output = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let read = client
+                .ok(
+                    "shell.read",
+                    json!({"execution_id":execution,"encoding":"UTF-8","limit_bytes":4096}),
+                    None,
+                )
+                .await;
+            last_output = read["text"].clone();
+            if last_output
+                .as_str()
+                .is_some_and(|text| text.contains("READ:studio-input"))
+            {
+                break read;
+            }
+            Client::wait_owner_change(owner.as_ref(), &thread, &mut shell_cursor).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|error| {
+        panic!("stage 4 child READ marker not seen: {error}; output={last_output}")
+    });
+    assert!(
+        output["text"]
+            .as_str()
+            .unwrap()
+            .contains("READ:studio-input")
+    );
+    if !cfg!(windows) {
+        let eof = client
+            .ok("shell.eof", json!({"execution_id":execution}), None)
+            .await;
+        assert_eq!(eof["accepted"], true, "{eof}");
+    }
+    let closed = client
+        .wait_shell_fact(owner.as_ref(), &thread, &execution, |item| {
+            item["stdin_open"] == false
+        })
+        .await;
+    assert_eq!(
+        closed["state"], "running",
+        "EOF leaves process running: {closed}"
+    );
+    let stopped = client
+        .ok("shell.stop", json!({"execution_id":execution}), None)
+        .await;
+    assert_eq!(stopped["accepted"], true, "{stopped}");
+    client
+        .wait_shell_fact(owner.as_ref(), &thread, &execution, |item| {
+            item["state"] != "running"
+        })
+        .await;
+    gate.notify_one();
+    cancel.cancel();
+    drop(serve);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
+async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let bin = PathBuf::from(
         std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
     );
@@ -2124,7 +2284,7 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let data = root.join("data");
     let gate = Arc::new(tokio::sync::Notify::new());
     let (continued_tx, mut continued_rx) = tokio::sync::mpsc::unbounded_channel();
-    let url = intervention_provider(gate.clone(), continued_tx).await;
+    let url = intervention_provider(gate.clone(), continued_tx, false).await;
     let serve = start_owner_with(&bin, &root, &data, &url);
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner.clone(), true).await;
@@ -2158,120 +2318,6 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
         .await;
     let started = client.wait_running_shell(owner.as_ref(), &thread).await;
     let execution = started["execution_id"].as_str().unwrap().to_owned();
-    let mut shell_cursor = Client::event_cursor(owner.as_ref()).await;
-    if cfg!(windows) {
-        let mut ready_output = Value::Null;
-        let ready = tokio::time::timeout(Duration::from_secs(10), async {
-            loop {
-                let read = client
-                    .ok(
-                        "shell.read",
-                        json!({"execution_id":execution,"encoding":"UTF-8","limit_bytes":4096}),
-                        None,
-                    )
-                    .await;
-                ready_output = read["text"].clone();
-                if ready_output
-                    .as_str()
-                    .is_some_and(|text| text.contains("READY"))
-                {
-                    break;
-                }
-                Client::wait_owner_change(owner.as_ref(), &thread, &mut shell_cursor).await;
-            }
-        })
-        .await;
-        assert!(
-            ready.is_ok(),
-            "Windows stage 1 failed: child READY marker not seen; output={ready_output}"
-        );
-    }
-    let wrote = client
-        .ok(
-            "shell.write",
-            json!({"execution_id":execution,"text":"studio-input\n","encoding":"UTF-8"}),
-            None,
-        )
-        .await;
-    assert_eq!(
-        wrote["status"], "complete",
-        "stage 2 shell.write failed: {wrote}"
-    );
-    assert!(
-        wrote["bytes_written"].as_u64().unwrap() > 0,
-        "stage 2 shell.write transferred no bytes: {wrote}"
-    );
-    // The Windows ReadToEnd fixture emits its marker only after EOF; Unix
-    // keeps the stronger open-stdin output-before-EOF witness.
-    if cfg!(windows) {
-        let eof = client
-            .ok("shell.eof", json!({"execution_id":execution}), None)
-            .await;
-        assert_eq!(
-            eof["accepted"], true,
-            "Windows stage 3 shell.eof failed: {eof}"
-        );
-    }
-    let mut last_output = Value::Null;
-    let output = match tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            let read = client
-                .ok(
-                    "shell.read",
-                    json!({"execution_id":execution,"encoding":"UTF-8","limit_bytes":4096}),
-                    None,
-                )
-                .await;
-            last_output = read["text"].clone();
-            if last_output
-                .as_str()
-                .is_some_and(|text| text.contains("READ:studio-input"))
-            {
-                break read;
-            }
-            Client::wait_owner_change(owner.as_ref(), &thread, &mut shell_cursor).await;
-        }
-    })
-    .await
-    {
-        Ok(output) => output,
-        Err(error) => {
-            let listed = client
-                .ok("shell.list", json!({"thread_id":thread,"limit":20}), None)
-                .await;
-            let shell_state = listed["items"]
-                .as_array()
-                .and_then(|items| items.iter().find(|item| item["execution_id"] == execution))
-                .cloned()
-                .unwrap_or(Value::Null);
-            panic!(
-                "{} stage 4 failed: child READ marker not seen: {error}; captured output={last_output}; shell state={shell_state}",
-                if cfg!(windows) { "Windows" } else { "Unix" }
-            );
-        }
-    };
-    assert!(
-        output["text"]
-            .as_str()
-            .unwrap()
-            .contains("READ:studio-input"),
-        "{output}"
-    );
-    if !cfg!(windows) {
-        let eof = client
-            .ok("shell.eof", json!({"execution_id":execution}), None)
-            .await;
-        assert_eq!(eof["accepted"], true, "{eof}");
-    }
-    let closed = client
-        .wait_shell_fact(owner.as_ref(), &thread, &execution, |item| {
-            item["stdin_open"] == false
-        })
-        .await;
-    assert_eq!(
-        closed["state"], "running",
-        "EOF must close input without stopping the sleeper: {closed}"
-    );
     let live = client
         .ok("thread.get", json!({"thread_id":thread}), None)
         .await;
