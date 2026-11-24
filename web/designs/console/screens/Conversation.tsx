@@ -462,7 +462,7 @@ function PanelPossessions({ model }: { model: AppModel }) {
         selected={model.panelOpener.value.possessions?.id === row.attachment_id}
         onSelect={opener => model.openInPanel({ kind: section.kind, id: row.attachment_id }, panelFocusReturn(opener), true)} />)}
     </section>) : null}
-    {state.loading ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
+    {state.loading && !state.loaded || state.loadingMore ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
     {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
     {!state.items.length && !state.loading && !state.error ? <EmptyState compact role="empty.panelAttachments" title={t("panel.empty.attachments")} body={t("panel.empty.attachmentsBody")} /> : null}
     {state.cursor !== undefined ? <Button disabled={state.loading} onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
@@ -556,6 +556,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
         subtitle={panelElapsed(model.now.value, reply.created_at)} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
         menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener), true)} />;
     })}
+    {page.loading && !page.loaded || page.loadingMore ? <p role="status">{t("common.loading")}</p> : null}
     {page.error ? <p role="alert">{errorMessage(page.error)}</p> : null}
     {!page.items.length && !page.loading && !page.error ? <EmptyState compact role={side === "owed_by" ? "empty.panelReplies" : "empty.panelAwaiting"} title={t(side === "owed_by" ? "panel.empty.owed" : "panel.empty.asked")} body={t(side === "owed_by" ? "panel.empty.owedBody" : "panel.empty.askedBody")} /> : null}
     {page.cursor ? <Button disabled={page.loading} onClick={() => model.replyPages.more(side)}>{t("panel.attachmentsMore")}</Button> : null}
