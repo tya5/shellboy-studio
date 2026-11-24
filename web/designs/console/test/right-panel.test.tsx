@@ -279,9 +279,17 @@ describe('right panel purpose',()=>{
     const request = fetchArtifact.mock.calls.find(([path, init]) => path === '/artifact-reveal' && init?.method === 'POST');
     expect(JSON.parse(String(request?.[1]?.body))).toEqual({thread_id:'lead',artifact_id:'z',version:2});
     expect(page.querySelector('[data-panel-detail]')).toBeNull();
+    const selector = '[data-panel-row-id="z"] [data-artifact-reveal-status][role="status"]';
+    const region = page.querySelector(selector);
+    expect(region?.textContent).toBe('');
+    expect(region?.hasAttribute('hidden')).toBe(false);
+    expect(region?.hasAttribute('aria-hidden')).toBe(false);
+    expect(region?.classList.contains('artifact-reveal-toast')).toBe(false);
     succeeds = true;
     await pump(() => revealRow.click());
-    const toast = page.querySelector('[data-panel-row-id="z"] .artifact-reveal-toast[role="status"]:not([hidden])');
+    const toast = page.querySelector(selector);
+    expect(toast).toBe(region);
+    expect(toast?.classList.contains('artifact-reveal-toast')).toBe(true);
     expect(toast?.textContent).toBe(f.model.t.peek()('artifact.reveal.revealed'));
     expect(page.querySelector('[data-panel-row-id="z"] [role="alert"]')).toBeNull();
    }
