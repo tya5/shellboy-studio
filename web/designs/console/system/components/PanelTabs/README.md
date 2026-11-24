@@ -23,3 +23,5 @@ The expanded tabs and collapsed icon rail use the same amber `panel-tab-count` b
 When the owning right panel is collapsed, the icon rail and counts remain interactive while all tabpanel content is hidden and unfocusable; the footer stays anchored in the flex middle. Do not keep active content visible in the collapsed rail.
 
 Use an owner-provided count for each reply direction. A `+` suffix marks a lower bound in the existing badge.
+
+Phone variant: at the app's narrow container width, use the visibly labeled native section picker; do not use it for route navigation or on wide layouts. The horizontal tabs and collapsed icon rail remain the desktop variants.

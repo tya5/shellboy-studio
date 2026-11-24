@@ -10,3 +10,5 @@ One saved message: who, when, and the text rendered from Markdown. Raw HTML in t
 Styles are colocated in `system/components/Message/style.css`.
 
 Styles: style.css in this directory
+
+Earlier-history variant: when the virtual history window begins after ordinal zero, expose Load earlier messages at its upper edge; it invokes the existing anchored older-window read. Do not show the control when the owner has no older history.

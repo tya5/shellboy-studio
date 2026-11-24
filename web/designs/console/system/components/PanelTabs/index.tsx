@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Icon, type IconRole } from "../Icon";
+import { Field } from "../Field";
 
 export interface PanelTabItem {
   readonly id: string;
@@ -21,7 +22,9 @@ export function PanelTabs(props: {
     if (props.rail) return;
     tablist.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [props.selected, props.rail]);
-  return <div ref={tablist} class={`panel-tabs${props.rail ? " panel-tabs-rail" : ""}`} role="tablist" aria-label={props.label} aria-orientation={props.rail ? "vertical" : "horizontal"} onKeyDown={event => {
+  return <div class="panel-tabs-control">
+    {!props.rail ? <div class="panel-tabs-phone-picker"><Field as="select" label={props.label} value={props.selected} options={props.items.map(item => ({ value: item.id, label: item.count ? `${item.label} (${item.count})` : item.label }))} onSelectChange={props.onSelect} /></div> : null}
+    <div ref={tablist} class={`panel-tabs${props.rail ? " panel-tabs-rail" : ""}`} role="tablist" aria-label={props.label} aria-orientation={props.rail ? "vertical" : "horizontal"} onKeyDown={event => {
     const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")];
     const index = tabs.indexOf(event.target as HTMLButtonElement);
     if (index < 0 || tabs.length === 0) return;
@@ -34,5 +37,6 @@ export function PanelTabs(props: {
       <Icon role={item.icon} size="small" /><span class="panel-tab-label">{item.label}{!props.rail && item.count ? <span class="panel-tab-count">{item.count}</span> : null}</span>{props.rail && item.count ? <span class="panel-tab-count">{item.count}</span> : null}
       {props.rail && <span id={`panel-tip-${item.id}`} class="panel-tab-tip" role="tooltip">{item.label}</span>}
     </button>)}
+    </div>
   </div>;
 }

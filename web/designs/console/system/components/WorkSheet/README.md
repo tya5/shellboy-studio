@@ -24,3 +24,5 @@ excluding right-click), `dialog:257` (scroll lock), shadcn/ui Sheet, and WAI-ARI
 APG Dialog (Modal) focus return.
 
 Styles: style.css in this directory
+
+Long-content variant: keep the title and Close control in the fixed header and constrain scrolling to the single body. Do not put a second independently scrolling list inside the dialog body.

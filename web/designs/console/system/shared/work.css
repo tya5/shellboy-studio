@@ -26,3 +26,7 @@
 .steps{display:flex;flex-direction:column;gap:var(--space-6)}
 .work-inner-line{display:flex;align-items:center;gap:var(--space-8);width:100%;min-width:0;box-sizing:border-box;padding:var(--space-4) var(--space-12)}
 .work-inner-line>.work-inner-content{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+.output-actions{display:flex;flex-wrap:wrap;gap:var(--space-8);align-items:center}
+.output-wrapped .log{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
+@container app (max-width:899px){.panel-detail[data-panel-detail]{position:fixed;inset:0;z-index:var(--z-popover);display:flex;flex-direction:column;overflow:auto;background:var(--panel);padding:var(--space-12)}}

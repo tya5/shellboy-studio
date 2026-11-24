@@ -100,6 +100,12 @@ it('#13 real FakeTransport held shell.read keeps successful empty Output cache/D
   expect(r.model.outputs.value.get('transport-empty')?.text).toBe('SYNTHETIC_CHANGED_OUTPUT');
   await act(async()=>{await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));});
   expect(host.textContent).toContain('SYNTHETIC_CHANGED_OUTPUT');
+  const wrap = host.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')!;
+  expect(wrap.textContent).toContain('Wrap lines');
+  expect(host.querySelector('.output-actions')?.className).toContain('output-wrapped');
+  await act(async () => { wrap.click(); });
+  expect(host.querySelector<HTMLButtonElement>('button[aria-pressed="false"]')).toBeTruthy();
+  expect(host.querySelector('.output-actions')?.className).not.toContain('output-wrapped');
   const copied = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copied } });
   host.querySelector<HTMLButtonElement>('button')!.click();
   expect(copied).toHaveBeenCalledWith('SYNTHETIC_CHANGED_OUTPUT');

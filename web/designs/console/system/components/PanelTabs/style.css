@@ -22,3 +22,9 @@
 }
 
 .panel-tabs-rail .panel-tab-count { position:absolute; inset-block-start:var(--space-2); inset-inline-end:var(--space-2); }
+
+.panel-tabs-phone-picker { display:none; }
+@container app (max-width:899px){
+  .panel-tabs-phone-picker { display:block; padding:var(--space-8) var(--space-12); }
+  .panel-tabs-control > .panel-tabs:not(.panel-tabs-rail) { display:none; }
+}

@@ -275,7 +275,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
         </Notice>
       ) : null}
       {win.total > 0 ? <div class="muted caption">{t("convo.total", { n: win.total })}</div> : null}
-      {range && range.first > 0 ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
+      {range && range.first > 0 ? <div class="history-older"><Button variant="ghost" onClick={() => win.requestOlder()}>{t("convo.loadEarlier")}</Button><LoadingRows label={t("convo.loading")} rows={1} /></div> : null}
       <div class="vspace">{renderAcceptedView ? <conversationViewport.Provider value={viewport}>{renderAcceptedView(accepted!)}</conversationViewport.Provider> : parts}</div>
       {renderAcceptedView ? <div ref={fallbackProbe} class="conversation-height-token" aria-hidden="true" /> : null}
       {range && range.last + 1 < win.total ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}

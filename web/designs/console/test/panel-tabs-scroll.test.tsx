@@ -32,5 +32,16 @@ it("reveals on selection and expansion, not on a count update or collapse", asyn
     await act(async () => render(<PanelTabs label="Panel" items={counted} selected="info" onSelect={() => {}} />, host));
     expect(host.querySelector("#panel-tab-info")?.getAttribute("aria-label")).toBe("情報 2");
     expect(scroll).not.toHaveBeenCalled();
+    const select = host.querySelector<HTMLSelectElement>('select')!;
+    expect(select).toBeTruthy();
+    expect(host.querySelector(".form-field-label")?.textContent).toBe("Panel");
+    expect(select.options[1]?.textContent).toBe("要返信 (2)");
+    const onSelect = vi.fn(() => {});
+    await act(async () => render(<PanelTabs label="Panel" items={items} selected="work" onSelect={onSelect} />, host));
+    const picker = host.querySelector<HTMLSelectElement>('select')!;
+    picker.value = "reply";
+    await act(async () => { picker.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(onSelect).toHaveBeenCalledWith("reply");
+    expect(host.querySelector('[role="tablist"] [role="tab"]')).toBeTruthy();
   } finally { render(null, host); spy.mockRestore(); }
 });
