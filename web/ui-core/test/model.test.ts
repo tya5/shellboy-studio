@@ -448,7 +448,8 @@ describe("AppModel over the fake transport", () => {
     model.monitorFilter.value = ["error"];
     expect(ids()).toContain("lead");
     model.monitorFilter.value = [];
-    expect(t.calls("thread.list").length).toBe(reads + 2);
+    // The new row by ID, the list and the sidebar's Archive band.
+    expect(t.calls("thread.list").length).toBe(reads + 3);
     model.monitorSort.value = "recent";
     expect(ids()[0]).toBe("aaa-new");
     model.monitorSort.value = "stable";

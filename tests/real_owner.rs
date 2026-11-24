@@ -199,6 +199,40 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
             limit: 50,
             ..Default::default()
         },
+        // The pinned read keeps archived pins (#126), with the selected query or directory.
+        ThreadListArgs {
+            query: Some("never-match".into()),
+            tags: vec!["pin".into()],
+            archived: shellboy::protocol::ArchivedFilter::Include,
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            cwd: Some(root.to_string_lossy().into_owned()),
+            tags: vec!["pin".into()],
+            archived: shellboy::protocol::ArchivedFilter::Include,
+            limit: 50,
+            ..Default::default()
+        },
+        // The Archive band applies the list's filter to archived-only (#126).
+        ThreadListArgs {
+            query: Some("never-match".into()),
+            archived: shellboy::protocol::ArchivedFilter::Only,
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            cwd: Some(root.to_string_lossy().into_owned()),
+            archived: shellboy::protocol::ArchivedFilter::Only,
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            tags: vec!["project".into()],
+            archived: shellboy::protocol::ArchivedFilter::Only,
+            limit: 50,
+            ..Default::default()
+        },
         ThreadListArgs {
             cwd: Some(root.to_string_lossy().into_owned()),
             limit: 50,
@@ -243,6 +277,21 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
         )
         .await
         .expect("the exact pinned Core accepts created order with archived-only");
+
+    // The unfiltered Archive band read (#126).
+    owner
+        .call(
+            shellboy::protocol::Command::ThreadList(ThreadListArgs {
+                order: ThreadListOrder::Created,
+                archived: shellboy::protocol::ArchivedFilter::Only,
+                limit: 50,
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("the exact pinned Core accepts created order with archived only");
 
     let refused = owner
         .call(

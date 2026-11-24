@@ -3,10 +3,10 @@ import { threadTree, type ThreadRow } from "./threads";
 
 export const SIDEBAR_PIN_TAG = "pin";
 export interface SidebarRow extends ThreadRow { key: string; descendants: number; awaiting: number; running: number; reveal: boolean; }
-/** `count` is the band's Threads: pinned roots for Pins, listed rows for All. */
-export interface SidebarGroup { key: "pins" | "all"; rows: SidebarRow[]; count: number; }
+/** `count` is the band's Threads: pinned roots for Pins, listed rows for All and Archive. */
+export interface SidebarGroup { key: "pins" | "all" | "archive"; rows: SidebarRow[]; count: number; }
 
-function groupsFor(items: readonly ThreadSummary[], pinIds: ReadonlySet<string>, selected?: string, flat = false, allItems: readonly ThreadSummary[] = items): SidebarGroup[] {
+function groupsFor(items: readonly ThreadSummary[], pinIds: ReadonlySet<string>, selected?: string, flat = false, allItems: readonly ThreadSummary[] = items, listKey: "all" | "archive" = "all"): SidebarGroup[] {
   const tree = threadTree([...items]);
   const byId = new Map(tree.map((row, index) => [row.summary.thread_id, index]));
   const ends: number[] = [];
@@ -51,16 +51,17 @@ function groupsFor(items: readonly ThreadSummary[], pinIds: ReadonlySet<string>,
   const pins = roots.flatMap(index => project("pins", index, flat ? index + 1 : ends[index]!, tree[index]!.depth));
   const allIds = new Set(allItems.map(item => item.thread_id));
   const all = flat
-    ? allItems.flatMap(item => { const index = byId.get(item.thread_id); return index === undefined ? [] : project("all", index, index + 1, 0); })
-    : project("all", 0, tree.length, 0).filter(row => allIds.has(row.summary.thread_id));
-  return [...(pins.length ? [{ key: "pins" as const, rows: pins, count: roots.length }] : []), { key: "all", rows: all, count: all.length }];
+    ? allItems.flatMap(item => { const index = byId.get(item.thread_id); return index === undefined ? [] : project(listKey, index, index + 1, 0); })
+    : project(listKey, 0, tree.length, 0).filter(row => allIds.has(row.summary.thread_id));
+  return [...(pins.length ? [{ key: "pins" as const, rows: pins, count: roots.length }] : []), { key: listKey, rows: all, count: all.length }];
 }
 
 /**
- * `items` holds every row a band may show (listed rows and the owner's pinned rows); `pinIds` is
+ * `items` holds every row a band may show (listed, archived and the owner's pinned rows); `pinIds` is
  * the owner's pinned set (`thread.list` with the `pin` tag), the only source of Pins membership.
+ * `allItems` and `archivedItems` are the owner's All and Archive reads, each its own tree, in Core order.
  */
-export function sidebarGroups(items: readonly ThreadSummary[], pinIds: readonly string[], selected?: string, flat = false, allItems: readonly ThreadSummary[] = items): SidebarGroup[] {
+export function sidebarGroups(items: readonly ThreadSummary[], pinIds: readonly string[], selected?: string, flat = false, allItems: readonly ThreadSummary[] = items, archivedItems: readonly ThreadSummary[] = []): SidebarGroup[] {
   const pinSet = new Set(pinIds);
   // Newest first, like Core's created order; a missing or unparseable time sorts last.
   const created = (item: ThreadSummary) => {
@@ -74,5 +75,7 @@ export function sidebarGroups(items: readonly ThreadSummary[], pinIds: readonly 
   const pinned = groupsFor(pinnedItems, pinSet, selected, flat, []).find(group => group.key === "pins");
   // Build the All tree from its own membership so hidden pin-only parents cannot affect depth or totals.
   const all = groupsFor(allItems, new Set(), selected, flat, allItems).find(group => group.key === "all")!;
-  return [...(pinned?.rows.length ? [pinned] : []), all];
+  // Archive is built the same way: archived children under their archived parent; an archived child of a listed parent is a root.
+  const archive = groupsFor(archivedItems, new Set(), selected, flat, archivedItems, "archive").find(group => group.key === "archive")!;
+  return [...(pinned?.rows.length ? [pinned] : []), all, ...(archive.rows.length ? [archive] : [])];
 }

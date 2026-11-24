@@ -2,7 +2,7 @@ import type { HistoryWindowInput } from './history-input';
 import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
 // Hints (`changed`, `resync`, `owner`) are triggers only; their payloads carry no data.
-import { batch, computed, signal, type ReadonlySignal } from "@preact/signals-core";
+import { batch, computed, signal, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import type { OpError, Outcome } from "./errors";
 import { Link, type ConnectionState, type LinkEvent } from "./link";
 import { microtaskSchedule, type Preview, type PreviewDiscardReason, type Schedule } from "./live";
@@ -71,6 +71,14 @@ export function normalizeFilter(previous: ListFilter, next: ListFilter): ListFil
 interface ThreadListState extends PagedState<string> {
   /** Filter that produced the published rows and cursor, not the pending request. */
   filter?: Readonly<ListFilter>;
+}
+
+/** One paged `thread.list` read into the row cache: the sidebar's All list or its Archive band. */
+interface ListPages {
+  readonly state: Signal<ThreadListState>;
+  gen: number;
+  cancel: Cancel | undefined;
+  readonly args: (filter: ListFilter) => ThreadListArgs;
 }
 
 export type OwnerView = { state: "unknown" } | OwnerState;
@@ -205,6 +213,9 @@ export class ShellboyData {
   private readonly invalidSig = signal<{ count: number; last: string | undefined }>({ count: 0, last: undefined });
   private readonly bridgeErrorSig = signal<{ code: string; message: string } | undefined>(undefined);
   private readonly listSig = signal<ThreadListState>(emptyPaged());
+  private readonly listPages: ListPages = { state: this.listSig, gen: 0, cancel: undefined, args: listArgs };
+  /** The Archive band: the same filter with `archived: "only"`, in pages like the list. */
+  private readonly archivePages: ListPages = { state: signal<ThreadListState>(emptyPaged()), gen: 0, cancel: undefined, args: filter => listArgs({ ...filter, archived: "only" }) };
   private readonly threadRowsSig = signal<ReadonlyMap<string, ThreadSummary>>(new Map());
   private readonly pinnedThreadIdsSig = signal<readonly string[]>([]);
   private readonly pinnedMoreSig = signal(false);
@@ -213,7 +224,6 @@ export class ShellboyData {
   private readonly inboxThreadIdsSig = signal<readonly string[]>([]);
   private readonly filterSig = signal<ListFilter>({});
   private listRefs = 0;
-  private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
   private watchQueued = false;
   private readonly deletionHint = signal<{ ids?: readonly string[] }>({});
@@ -248,6 +258,9 @@ export class ShellboyData {
   /** The pinned read stopped at MAX_LIST_ROWS with a continuation left: the pinned set is a lower bound. */
   readonly pinnedMore: ReadonlySignal<boolean>;
   readonly pinnedError: ReadonlySignal<OpError | undefined>;
+  /** Archived Threads for the sidebar's Archive band (`thread.list` with `archived: "only"`); not read while Needs-you is on. */
+  readonly archivedList: ReadonlySignal<PagedState<ThreadSummary> & { filter?: Readonly<ListFilter> }>;
+  readonly archivedThreadIds: ReadonlySignal<readonly string[]>;
   readonly activeThreadIds: ReadonlySignal<readonly string[]>;
   readonly inboxThreadIds: ReadonlySignal<readonly string[]>;
   readonly listFilter: ReadonlySignal<ListFilter>;
@@ -271,7 +284,10 @@ export class ShellboyData {
     this.appsDir = this.appsDirSig;
     this.invalidFrames = this.invalidSig;
     this.bridgeError = this.bridgeErrorSig;
-    this.threadList = computed(() => ({ ...this.listSig.value, items: this.listSig.value.items.flatMap(id => { const row = this.threadRowsSig.value.get(id); return row ? [row] : []; }) }));
+    const rowsOf = (state: ThreadListState) => ({ ...state, items: state.items.flatMap(id => { const row = this.threadRowsSig.value.get(id); return row ? [row] : []; }) });
+    this.threadList = computed(() => rowsOf(this.listSig.value));
+    this.archivedList = computed(() => rowsOf(this.archivePages.state.value));
+    this.archivedThreadIds = computed(() => this.archivePages.state.value.items);
     this.threadRows = this.threadRowsSig;
     this.pinnedThreads = computed(() => this.pinnedThreadIdsSig.value.flatMap(id => { const row = this.threadRowsSig.value.get(id); return row ? [row] : []; }));
     this.listThreadIds = computed(() => this.listSig.value.items);
@@ -324,10 +340,11 @@ export class ShellboyData {
       this.scheduleWatch();
       if (this.canRead()) {
         void this.refresher.request("list");
+        void this.refresher.request("archive");
         void this.refresher.request("active");
         if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) void this.refresher.request("pinned");
       }
-      else this.listSig.value = { ...this.listSig.value, stale: this.listSig.value.loaded };
+      else this.markListsStale();
     }
     let closed = false;
     return {
@@ -343,8 +360,9 @@ export class ShellboyData {
   setListFilter(filter: ListFilter): void {
     const next = normalizeFilter(this.filterSig.peek(), filter);
     this.filterSig.value = { ...next };
-    this.listCancel?.cancel();
-    if (this.listRefs > 0 && this.canRead()) void this.refresher.requestFresh("list");
+    this.listPages.cancel?.cancel();
+    this.archivePages.cancel?.cancel();
+    if (this.listRefs > 0 && this.canRead()) { void this.refresher.requestFresh("list"); void this.refresher.requestFresh("archive"); }
     if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) void this.refresher.requestFresh("pinned");
   }
 
@@ -354,20 +372,31 @@ export class ShellboyData {
 
   /** Whether "show more" can do anything: more exist, and the bound isn't reached. */
   canLoadMoreThreads(): boolean {
-    const cur = this.listSig.value;
-    return cur.nextCursor !== undefined && cur.items.length < MAX_LIST_ROWS;
+    return canLoadMore(this.listPages);
   }
 
-  async loadMoreThreads(): Promise<void> {
-    const cur = this.listSig.value;
+  loadMoreThreads(): Promise<void> {
+    return this.loadMore(this.listPages);
+  }
+
+  canLoadMoreArchived(): boolean {
+    return canLoadMore(this.archivePages);
+  }
+
+  loadMoreArchived(): Promise<void> {
+    return this.loadMore(this.archivePages);
+  }
+
+  private async loadMore(pages: ListPages): Promise<void> {
+    const cur = pages.state.value;
     const filter = cur.filter;
     if (!filter || !cur.nextCursor || cur.loadingMore || cur.loading || cur.items.length >= MAX_LIST_ROWS) return;
-    const gen = this.listGen;
-    this.listSig.value = { ...cur, loadingMore: true };
-    const out = await this.operations.threadList({ ...listArgs(filter), cursor: cur.nextCursor });
-    if (gen !== this.listGen) return; // a refresh replaced the pages meanwhile
-    const now = this.listSig.value;
-    this.listSig.value = out.ok
+    const gen = pages.gen;
+    pages.state.value = { ...cur, loadingMore: true };
+    const out = await this.operations.threadList({ ...pages.args(filter), cursor: cur.nextCursor });
+    if (gen !== pages.gen) return; // a refresh replaced the pages meanwhile
+    const now = pages.state.value;
+    pages.state.value = out.ok
       ? { ...now, items: [...new Set([...now.items, ...out.value.items.map(row => row.thread_id)])].slice(0, MAX_LIST_ROWS), nextCursor: out.value.next_cursor, loadingMore: false, error: undefined }
       : { ...now, loadingMore: false, error: out.error };
     if (out.ok) {
@@ -486,6 +515,7 @@ export class ShellboyData {
     const jobs: Promise<void>[] = [];
     if (this.listRefs > 0) {
       jobs.push(this.refresher.request("list"));
+      jobs.push(this.refresher.request("archive"));
       jobs.push(this.refresher.request("active"));
       if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) jobs.push(this.refresher.request("pinned"));
     }
@@ -612,9 +642,12 @@ export class ShellboyData {
     }
   }
 
+  private markListsStale(): void {
+    for (const { state } of [this.listPages, this.archivePages]) if (state.value.loaded) state.value = { ...state.value, stale: true };
+  }
+
   private markAllStale(): void {
-    const l = this.listSig.value;
-    if (l.loaded) this.listSig.value = { ...l, stale: true };
+    this.markListsStale();
     for (const e of this.entries.values()) {
       const d = e.detail.value;
       if (d.value !== undefined) e.detail.value = { ...d, stale: true };
@@ -676,7 +709,8 @@ export class ShellboyData {
     if (key === "open-rows") return this.refreshActiveRows([...this.entries.keys()], this.readQualificationEpoch);
     if (key === "pinned") return this.readPinned(onSent);
     if (key === "active") return this.readActive(onSent);
-    if (key.startsWith("list")) return this.readList(onSent, key === "list-shape");
+    if (key === "archive") return this.filterSig.value.awaiting ? undefined : this.readList(this.archivePages, onSent);
+    if (key.startsWith("list")) return this.readList(this.listPages, onSent, key === "list-shape");
     const sep = key.indexOf(":");
     const kind = key.slice(0, sep);
     const entry = this.entries.get(key.slice(sep + 1));
@@ -686,8 +720,6 @@ export class ShellboyData {
     if (kind !== "history" || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return;
     entry.historyTick.value++; // notification only; positional reads own history admission
   }
-
-  private listCancel: Cancel | undefined;
 
   private async readActive(onSent: () => void): Promise<void> {
     if (!this.canRead()) return;
@@ -758,7 +790,8 @@ export class ShellboyData {
     let rows: ThreadSummary[] = [];
     let cursor: string | undefined;
     do {
-      const out = await this.operations.threadList({ ...listArgs({ ...filter, tags: [...(filter.tags ?? []), "pin"] }), ...(cursor ? { cursor } : {}) }, { onSent });
+      // An archived pin stays pinned: the pinned read includes archived Threads.
+      const out = await this.operations.threadList({ ...listArgs({ ...filter, archived: "include", tags: [...(filter.tags ?? []), "pin"] }), ...(cursor ? { cursor } : {}) }, { onSent });
       // A changed filter has already asked for a fresh read; keep the previous set until it lands.
       if (!out.ok) {
         if (epoch === this.readQualificationEpoch && this.listRefs > 0 && filter === this.filterSig.value) this.pinnedErrorSig.value = out.error;
@@ -776,27 +809,27 @@ export class ShellboyData {
     });
   }
 
-  private async readList(onSent: () => void, shapeOnly = false): Promise<void> {
+  private async readList(target: ListPages, onSent: () => void, shapeOnly = false): Promise<void> {
     if (this.listRefs === 0) return;
-    const gen = ++this.listGen;
+    const gen = ++target.gen;
     const filter = this.filterSig.value;
     const epoch = this.readQualificationEpoch;
-    const previous = this.listSig.value;
+    const previous = target.state.value;
     const pages = shapeOnly || previous.filter !== filter ? 1 : Math.max(1, Math.ceil(previous.items.length / PAGE_LIMIT));
-    this.listSig.value = { ...previous, loading: true, loadingMore: false };
-    const cancel = this.listCancel = new Cancel();
+    target.state.value = { ...previous, loading: true, loadingMore: false };
+    const cancel = target.cancel = new Cancel();
     let items: ThreadSummary[] = [];
     let cursor: string | undefined;
     // Rebuild the already loaded prefix from fresh cursors; do not publish an old tail as current.
     for (let page = 0; page < pages; page++) {
-      const out = await this.operations.threadList({ ...listArgs(filter), ...(cursor ? { cursor } : {}) }, { onSent, cancel });
-      if (gen !== this.listGen || filter !== this.filterSig.value || cancel.cancelled) return;
+      const out = await this.operations.threadList({ ...target.args(filter), ...(cursor ? { cursor } : {}) }, { onSent, cancel });
+      if (gen !== target.gen || filter !== this.filterSig.value || cancel.cancelled) return;
       if (epoch !== this.readQualificationEpoch) {
-        this.listSig.value = { ...this.listSig.value, loading: false, stale: previous.loaded };
+        target.state.value = { ...target.state.value, loading: false, stale: previous.loaded };
         return;
       }
       if (!out.ok) {
-        this.listSig.value = { ...previous, loading: false, loadingMore: false, stale: previous.loaded, error: out.error };
+        target.state.value = { ...previous, loading: false, loadingMore: false, stale: previous.loaded, error: out.error };
         return;
       }
       items = mergeRows(items, out.value.items);
@@ -804,7 +837,7 @@ export class ShellboyData {
       if (!cursor || items.length >= MAX_LIST_ROWS) break;
     }
     const published = shapeOnly && previous.filter === filter ? mergeRows(items, previous.items.flatMap(id => { const row = this.threadRowsSig.peek().get(id); return row ? [row] : []; })) : items;
-    this.listSig.value = { filter, items: published.map(row => row.thread_id), nextCursor: shapeOnly ? previous.nextCursor : cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
+    target.state.value = { filter, items: published.map(row => row.thread_id), nextCursor: shapeOnly ? previous.nextCursor : cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
     this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), items, this.entries);
   }
 
@@ -852,6 +885,8 @@ export class ShellboyData {
         || (!!filter.awaiting && old.awaiting_named_count !== current.awaiting_named_count)
         || (!!filter.tags?.length && JSON.stringify(old.tags ?? []) !== JSON.stringify(current.tags ?? []));
     });
+    // Archiving, unarchiving, a new parent or a changed filter field can move a Thread into or out of the Archive band.
+    const archiveMayChange = shapeChanged || filterMembershipMayChange || ids.some(id => before.get(id)?.archived_at !== returned.get(id)?.archived_at);
     // Rows another read stored meanwhile stay: start from the current cache, not from `before`.
     const next = new Map(this.threadRowsSig.peek());
     for (const row of out.value.items) { next.delete(row.thread_id); next.set(row.thread_id, row); }
@@ -860,12 +895,15 @@ export class ShellboyData {
     batch(() => {
       this.threadRowsSig.value = next;
       this.activeThreadIdsSig.value = [...activeStatus];
-      const list = this.listSig.peek();
-      if (list.loaded && list.items.some(id => ids.includes(id))) {
-        this.listSig.value = { ...list, items: list.items.filter(id => !ids.includes(id) || returned.has(id)) };
+      for (const { state } of [this.listPages, this.archivePages]) {
+        const list = state.peek();
+        if (list.loaded && list.items.some(id => ids.includes(id))) {
+          state.value = { ...list, items: list.items.filter(id => !ids.includes(id) || returned.has(id)) };
+        }
       }
     });
     if (listChanged && (shapeChanged || filterMembershipMayChange) && this.listRefs > 0) void this.refresher.requestFresh(shapeChanged ? "list-shape" : "list");
+    if (listChanged && archiveMayChange && this.listRefs > 0) void this.refresher.requestFresh("archive");
   }
 
   /** ADR-C1: one resolver, at most eight starts until explicit retry/open. Hints never refill. */
@@ -909,6 +947,11 @@ export class ShellboyData {
   }
 
 
+}
+
+function canLoadMore(pages: ListPages): boolean {
+  const cur = pages.state.value;
+  return cur.nextCursor !== undefined && cur.items.length < MAX_LIST_ROWS;
 }
 
 function listArgs(filter: ListFilter): ThreadListArgs {

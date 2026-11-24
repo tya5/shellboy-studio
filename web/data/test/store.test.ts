@@ -131,9 +131,10 @@ describe("resync, restart and loss", () => {
     db.reads.length = 0;
     t.push({ t: "resync" });
     await settle(t, db);
-    // The list page, the failed and recovery_wait discovery pages (#102) and the open Threads' rows by ID (#103).
-    expect(db.reads.sort()).toEqual(["status", "thread.get:a", "thread.get:b", "thread.list", "thread.list", "thread.list", "thread.list"]);
+    // The list page, the Archive band page (#126), the failed and recovery_wait discovery pages (#102) and the open Threads' rows by ID (#103).
+    expect(db.reads.sort()).toEqual(["status", "thread.get:a", "thread.get:b", "thread.list", "thread.list", "thread.list", "thread.list", "thread.list"]);
     expect(t.calls("thread.list").map(call => call.args)).toEqual(expect.arrayContaining([
+      { archived: "only", order: "created", limit: PAGE_LIMIT },
       { state: "failed", archived: "include", limit: PAGE_LIMIT },
       { state: "recovery_wait", archived: "include", limit: PAGE_LIMIT },
       { thread_ids: ["a", "b"] },
@@ -284,6 +285,65 @@ describe("paging", () => {
     data.setListFilter({ query: "x", archived: "only" });
     await settle(t, db);
     expect(t.calls("thread.list").at(-1)!.args).toEqual({ limit: 50, query: "x", archived: "only" });
+  });
+});
+
+describe("the sidebar Archive band (#126)", () => {
+  const archivedAt = { archived_at: "2026-01-01T00:00:00Z" };
+  it("reads archived Threads with the list's filter, keeps them out of the list, and sends nothing for Needs-you", async () => {
+    const { t, data, db } = await setup({ capabilities: ["thread.tags"] });
+    db.threads = { a: summary("a"), z: summary("z", archivedAt), p: summary("p", { ...archivedAt, tags: ["pin"] }) };
+    data.trackThreadList();
+    await settle(t, db);
+    expect(t.calls("thread.list").map(call => call.args)).toEqual(expect.arrayContaining([
+      { order: "created", limit: PAGE_LIMIT },
+      { archived: "only", order: "created", limit: PAGE_LIMIT },
+      // An archived pin stays pinned.
+      { archived: "include", tags: ["pin"], limit: PAGE_LIMIT },
+    ]));
+    expect(data.threadList.value.items.map(row => row.thread_id)).toEqual(["a"]);
+    expect(data.archivedList.value.items.map(row => row.thread_id)).toEqual(["z", "p"]);
+    expect(data.archivedThreadIds.value).toEqual(["z", "p"]);
+    expect(data.pinnedThreadIds.value).toEqual(["p"]);
+    data.setListFilter({ query: "z" });
+    await settle(t, db);
+    // Core refuses created order with a query; the filtered band is in updated order, like All.
+    expect(t.calls("thread.list").map(call => call.args)).toContainEqual({ query: "z", archived: "only", limit: PAGE_LIMIT });
+    const reads = t.calls("thread.list").length;
+    data.setListFilter({ awaiting: "human" });
+    await settle(t, db);
+    expect(t.calls("thread.list").slice(reads).map(call => call.args)).not.toContainEqual(expect.objectContaining({ archived: "only" }));
+  });
+
+  it("pages archived Threads like the list and re-reads the loaded pages when one is archived", async () => {
+    const { t, data, db } = await setup();
+    const archived: ThreadSummary[] = Array.from({ length: 120 }, (_, i) => summary(`z${i}`, archivedAt));
+    const answer = db.answer.bind(db);
+    db.answer = (c) => {
+      const a = (c.args ?? {}) as { archived?: string; cursor?: string; thread_ids?: string[] };
+      if (c.command !== "thread.list" || a.archived !== "only") return answer(c);
+      const start = a.cursor ? Number(a.cursor) : 0, end = start + PAGE_LIMIT;
+      return { ok: true, result: { items: archived.slice(start, end), ...(end < archived.length ? { next_cursor: String(end) } : {}) } };
+    };
+    data.trackThreadList();
+    await settle(t, db);
+    expect(data.archivedList.value.items).toHaveLength(50);
+    expect(data.archivedList.value.nextCursor).toBe("50");
+    expect(data.canLoadMoreArchived()).toBe(true);
+    const more = data.loadMoreArchived();
+    await settle(t, db);
+    await more;
+    expect(data.archivedList.value.items).toHaveLength(100);
+    expect(t.calls("thread.list").at(-1)!.args).toEqual({ archived: "only", order: "created", limit: PAGE_LIMIT, cursor: "50" });
+    const before = t.calls("thread.list").filter(call => (call.args as { archived?: string }).archived === "only").length;
+    db.threads.fresh = summary("fresh", archivedAt);
+    archived.unshift(db.threads.fresh as ThreadSummary);
+    t.push({ t: "changed", config_changed: false, thread_ids: ["fresh"], list: true });
+    await settle(t, db);
+    // Two loaded pages, re-read from fresh cursors.
+    expect(t.calls("thread.list").filter(call => (call.args as { archived?: string }).archived === "only").length).toBe(before + 2);
+    expect(data.archivedList.value.items[0]!.thread_id).toBe("fresh");
+    expect(data.archivedList.value.items).toHaveLength(100);
   });
 });
 
@@ -524,7 +584,8 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     x.all.unshift(summary("fresh"));
     x.t.push({ t: "changed", config_changed: false, thread_ids: ["fresh"], list: true });
     await settle(x.t, x.db);
-    expect(x.t.calls("thread.list").length).toBe(before + 2);
+    // The row by ID, then one list read and one Archive band read for the new shape.
+    expect(x.t.calls("thread.list").length).toBe(before + 3);
     const items = x.data.threadList.value.items;
     expect(items[0]!.thread_id).toBe("fresh");
     expect(items).toHaveLength(151);
