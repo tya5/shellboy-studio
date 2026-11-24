@@ -58,9 +58,10 @@ async function headerMenu(el: HTMLElement): Promise<string[]> {
 
 describe("Open Thread facts (#103)", () => {
   it("announces the state once, without announcing clock ticks", async () => {
+    const startedAt = "2026-11-07T10:19:00Z";
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {
       db.threads.lead = summary("lead", { ...db.threads.lead, activity: "tools" });
-      db.work.lead = [{ kind: "shell", id: "inspect", thread_id: "lead", run_id: "run-1", execution_id: "inspect", state: "running", started_at: new Date(Date.now() - 5000).toISOString() }];
+      db.work.lead = [{ kind: "shell", id: "inspect", thread_id: "lead", run_id: "run-1", execution_id: "inspect", state: "running", started_at: startedAt }];
     } });
     const announcements: MutationRecord[] = [];
     const observer = new MutationObserver(records => { announcements.push(...records); });
@@ -71,7 +72,7 @@ describe("Open Thread facts (#103)", () => {
       expect(region.getAttribute("role")).toBe("status");
       expect(region.getAttribute("aria-live")).toBe("polite");
       expect(region.getAttribute("aria-atomic")).toBe("true");
-      act(() => { model.now.value = Date.parse(db.work.lead![0]!.started_at!) + 5000; });
+      act(() => { model.now.value = Date.parse(startedAt) + 5000; });
       const previous = footer(el).textContent;
       observer.observe(region, { childList: true, characterData: true, subtree: true });
       act(() => { model.now.value += 1000; });
