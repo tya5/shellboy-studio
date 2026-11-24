@@ -18,8 +18,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
   });
   const generation = useRef(0);
   const latestScope = useRef(props.draftScope);
-  const scopeGeneration = useRef(0);
-  if (latestScope.current !== props.draftScope) { latestScope.current = props.draftScope; scopeGeneration.current++; }
+  if (latestScope.current !== props.draftScope) latestScope.current = props.draftScope;
   const draft = drafts.current.get(props.draftScope) ?? { text: "", target: "model" };
   const text = draft.text;
   const updateDraft = (value: string) => {
