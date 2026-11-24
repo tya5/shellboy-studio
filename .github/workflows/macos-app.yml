@@ -57,11 +57,18 @@ jobs:
         with:
           shared-key: packaging-desktop-macos-15-aarch64-apple-darwin-rust1.99.1-macos14-${{ steps.core.outputs.pin }}-${{ hashFiles('Cargo.lock') }}
           cache-workspace-crates: false
-      - name: Build both locked binaries
+      - name: Install desktop frontend dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build desktop frontend for embedding
+        working-directory: web
+        run: npm run build
+      - name: Build locked Studio desktop binary
+        run: cargo +1.99.1 build --locked --release --bin shellboy-studio --target aarch64-apple-darwin
+      - name: Build locked Core binary
+        run: cargo +1.99.1 install --target-dir "$GITHUB_WORKSPACE/target" --locked --path "$RUNNER_TEMP/macos-owner-source" --root "$RUNNER_TEMP/macos-owner" --target aarch64-apple-darwin
+      - name: Verify built Core binary version and pin
         run: |
-          (cd web && npm ci && npm run build)
-          cargo +1.99.1 build --locked --release --bin shellboy-studio --target aarch64-apple-darwin
-          cargo +1.99.1 install --target-dir "$GITHUB_WORKSPACE/target" --locked --path "$RUNNER_TEMP/macos-owner-source" --root "$RUNNER_TEMP/macos-owner" --target aarch64-apple-darwin
           "$RUNNER_TEMP/macos-owner/bin/shellboy" --version > "$RUNNER_TEMP/macos-owner-version.txt"
           python tools/verify-desktop-core.py --owner "$RUNNER_TEMP/macos-owner-source" --binary-version "$RUNNER_TEMP/macos-owner-version.txt"
       - name: Zip and inspect the unpacked app
