@@ -7,6 +7,6 @@
 
 Decorative artwork for the conversation status footer, always paired with state text. Use Message's avatar for message senders instead.
 
-The thinking artwork comes from the tracked SVG. Its three dots remain in separate, overlaid SVGs, each inside a same-size HTML wrapper. Running keeps the 1.2s hop and 150ms stagger while the transform targets the wrapper (Studio #144; compositor-friendly transform pattern from the web.dev Animations guide). `will-change` is applied only to running wrappers under no-preference motion. Waiting and reduced-motion views keep the dots still.
+The thinking artwork comes from the tracked SVG. Its three dots remain in separate, overlaid SVGs, each inside a same-size HTML wrapper. The parent owns the running state and the wrappers animate without duplicate state attributes (Studio #144; compositor-friendly transform pattern from the web.dev Animations guide). Running keeps the 1.2s hop and 150ms stagger; `will-change` is applied only under no-preference motion. Waiting and reduced-motion views keep the dots still.
 
 Styles: style.css in this directory

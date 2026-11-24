@@ -153,13 +153,15 @@ describe("components name roles, never values", () => {
     const animations = [...css.matchAll(/([^{}]+)\{([^{}]*\banimation\s*:\s*([^;}]+)[^{}]*)\}/g)]
       .filter((match) => match[3]!.trim() !== "none")
       .map((match) => match[1]!.trim());
-    expect(animations.sort()).toEqual([".character-thinking[data-running]>.character-dot-motion[data-running]", ".context-ring-motion[data-running]", ".loadcount", ".loadrow", ".status-arc-motion[data-running]"]);
+    expect(animations.sort()).toEqual([".character-thinking[data-running]>.character-dot-motion", ".context-ring-motion[data-running]", ".loadcount", ".loadrow", ".status-shape[data-running-arc]"]);
     expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\.context-ring-motion\[data-running\]\{[^}]*animation:context-ring-spin/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.context-ring-activity\{stroke-dasharray:1 9\}/);
-    expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\.status-arc-motion\[data-running\]\{[^}]*animation:status-arc-spin/);
+    expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\.status-shape\[data-running-arc\]\{[^}]*animation:status-arc-spin/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadrow\{animation:none\}/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadcount\{animation:none\}/);
-    expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\s*\.character-thinking\[data-running\]>\.character-dot-motion\[data-running\]\{[^}]*animation:character-hop/);
+    expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\s*\.character-thinking\[data-running\]>\.character-dot-motion\{[^}]*animation:character-hop/);
+    expect(css).toContain(".character-thinking[data-running]>.character-dot-motion:nth-child(3){animation-delay:.15s}");
+    expect(css).toContain(".character-thinking[data-running]>.character-dot-motion:nth-child(4){animation-delay:.30s}");
   });
   it("phone width is driven by the container, with a tab bar and 44px controls", () => {
     expect(css).toMatch(/container:app \/ inline-size/);

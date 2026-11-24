@@ -18,10 +18,7 @@ export function StatusMark({ status, label, word = true }: Props) {
   return (
     <span class={`st ${tone}`} {...(showWord ? {} : { role: "img", "aria-label": label, title: label })} data-status={status}>
       <span class="mark status-shape" data-running-arc={arc || undefined}>
-        {role ? arc
-          ? <span class="status-arc-motion" data-running=""><Icon role={role} size="small" /></span>
-          : <Icon role={role} size="small" />
-          : <span class="dot" />}
+        {role ? <Icon role={role} size="small" /> : <span class="dot" />}
       </span>
       {showWord ? label : null}
     </span>

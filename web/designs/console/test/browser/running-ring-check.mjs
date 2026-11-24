@@ -29,23 +29,24 @@ try{
   const facts=()=>evaluate(`(()=>{
    const side=document.querySelector('#thread-sidebar');
    const svg=side?.querySelector('[data-status=running] svg');
-   const motion=svg?.closest('.status-arc-motion');
+   const motion=svg?.closest('.status-shape[data-running-arc]');
    if(!svg || !motion || side.getBoundingClientRect().right<=0) return;
    const mark=svg.parentElement.getBoundingClientRect();
    const style=getComputedStyle(motion);
    const arc=svg.querySelector("circle"), arcStyle=getComputedStyle(arc);
    const action=svg.closest("[data-sidebar-row]").querySelector("button[aria-haspopup=menu]");
    return {theme:document.documentElement.dataset.ds,layoutMark:{width:svg.parentElement.offsetWidth,height:svg.parentElement.offsetHeight},animation:style.animationName,dash:arcStyle.strokeDasharray,stroke:arcStyle.strokeWidth,vector:arcStyle.vectorEffect,menu:getComputedStyle(action).visibility,opacity:getComputedStyle(action).opacity,transform:style.transform,mark:{x:mark.x,y:mark.y,width:mark.width,height:mark.height},
-    allRunning:[...document.querySelectorAll('[data-running-arc] .status-arc-motion')].every(el=>getComputedStyle(el).animationName===style.animationName),
+    allRunning:[...document.querySelectorAll('[data-running-arc]')].every(el=>getComputedStyle(el).animationName===style.animationName),
     svgStill:[...document.querySelectorAll('[data-running-arc] svg')].every(el=>getComputedStyle(el).animationName==='none'),
-    character:[...document.querySelectorAll('.character-thinking[data-running] .character-dot-motion')].map(el=>({animation:getComputedStyle(el).animationName,svgAnimation:getComputedStyle(el.querySelector('svg')).animationName})),
+    character:[...document.querySelectorAll('.character-thinking[data-running] .character-dot-motion')].map(el=>({animation:getComputedStyle(el).animationName,delay:getComputedStyle(el).animationDelay,svgAnimation:getComputedStyle(el.querySelector('svg')).animationName,hasRunning:el.hasAttribute('data-running')})),
     others:[...side.querySelectorAll('[data-status]:not([data-status=running]) svg')].every(el=>getComputedStyle(el).animationName==='none')};
   })()`);
   const initial=await until(async()=>{const f=await facts();return f?.mark.x>=0 && f;});
   assert.equal(initial.theme,theme);assert.equal(initial.animation,'status-arc-spin');assert.equal(initial.dash,'78px, 22px');assert.equal(initial.stroke,'2.4px');assert.equal(initial.vector,'none');
   assert.equal(initial.menu,'visible');assert.equal(initial.opacity,'1');
   assert(initial.allRunning && initial.svgStill && initial.others);assert.equal(initial.layoutMark.width,initial.layoutMark.height);
-  assert.equal(initial.character.length,3);assert(initial.character.every(dot=>dot.animation==='character-hop' && dot.svgAnimation==='none'));
+  assert.equal(initial.character.length,3);assert(initial.character.every(dot=>dot.animation==='character-hop' && dot.svgAnimation==='none' && !dot.hasRunning));
+  assert.deepEqual(initial.character.map(dot=>dot.delay),['0s','0.15s','0.3s']);
   const save=async suffix=>{
    const shot=await call('Page.captureScreenshot',{format:'png'});
    await writeFile(`${process.env.SHOTS}/sidebar-${width}-${theme}-${suffix}.png`,Buffer.from(shot.data,'base64'));
