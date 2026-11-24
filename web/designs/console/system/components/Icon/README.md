@@ -16,6 +16,10 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.delete` | Delete a Thread after its exact preview is confirmed; destructive last row-menu item. | `trash` |
 | `action.editTags` | Open the tag editor for a Thread from any shared row menu. | Lucide `tag` |
 | `row.menu` | Open a row’s action menu in the sidebar. | `more` |
+| `output.copy` | Copy a command or output to the clipboard. | `copy` |
+| `output.copied` | Confirm a successful clipboard copy. | `check` |
+| `output.wrap` | Toggle line wrapping in inline shell output. | `wrap` |
+| `output.openDetails` | Open the shell execution in the Activity panel. | `openPanel` |
 | `menu.checked` | Show that a toggle item in a menu (`menuitemcheckbox`) is on. | Lucide `check` |
 | `composer.modelMenu` | Show that the composer model control opens its picker. | `chevronDown` |
 | `composer.removeAttachment` | Remove one attachment token from the composer before sending. | `cross` |

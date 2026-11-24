@@ -366,7 +366,9 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   </>;
 }
 
-export const Output = memo(function Output({ model, id, command, complete, boxed, onDetails }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean; onDetails?: (opener: HTMLButtonElement) => void }) {
+type OutputProps = { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean };
+
+function useOutputBody({ model, id, command, complete, boxed }: OutputProps) {
   const [raw, setRaw] = useState(false);
   const [wrap, setWrap] = useState(() => typeof matchMedia === "function" ? matchMedia("(max-width: 899px)").matches : true);
   useEffect(() => {
@@ -381,24 +383,47 @@ export const Output = memo(function Output({ model, id, command, complete, boxed
   const out = output.value;
   const rendered = useMemo(() => !out || out.error ? undefined : renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff }), [command, out?.text, complete, out?.loading, out?.cutOff, out?.error]);
   const loading = !out || (out.loading && out.text === "");
-  const available = !!out && !!out.text && !out.expired;
-  const count = useMemo(() => available ? (out.text.match(/\n/g)?.length ?? 0) + (out.text.endsWith("\n") ? 0 : 1) : 0, [available, out?.text]);
-  const title = loading || out.expired || (out.error && !available) ? t("details.output")
-    : count === 1 ? t("output.line") : t("output.lines", { n: new Intl.NumberFormat(model.lang.value).format(count) });
+  const available = !!out?.text && !out.expired;
+  const body = loading ? <div class="log muted">{t("details.outputLoading")}</div>
+    : out.expired ? <div class="output-reclaimed muted caption" role="note">{t("output.expired")}</div>
+    : out.error && !available ? <div class="log muted">{t("details.outputError", { message: out.error })}</div>
+    : <>
+      <div class={`output-log${wrap ? " output-wrapped" : ""}`}>{rendered && !raw ? <OutputLines lines={rendered.lines} boxed={boxed ?? false} /> : <LogBlock text={out.text || t("details.outputEmpty")} boxed={boxed ?? false} />}</div>
+      {out.error ? <div class="caption muted">{t("details.outputError", { message: out.error })}</div> : null}
+      {out.cutOff ? <div class="caption muted" role="note">{t("details.outputMore")}</div> : null}
+    </>;
+  return { out, available, body, wrap, setWrap, raw, setRaw, rendered, loading };
+}
+
+export const Output = memo(function Output(props: OutputProps) {
+  const t = props.model.t.value;
+  const { out, body, wrap, setWrap, raw, setRaw, rendered, loading } = useOutputBody(props);
+  if (!out || loading || out.expired || (out.error && !out.text)) return body;
   return <>
+    <div class="output-actions"><Button onClick={() => { void navigator.clipboard.writeText(out.text).catch(() => {}); }}>{t("code.copy")}</Button><Button aria-pressed={wrap} onClick={() => setWrap(!wrap)}>{t("output.wrapLines")}</Button>
+      {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
+    </div>
+    {body}
+  </>;
+});
+
+const InlineShellOutput = memo(function InlineShellOutput({ onDetails, ...props }: OutputProps & { onDetails: (opener: HTMLButtonElement) => void }) {
+  const t = props.model.t.value;
+  const { out, available, body, wrap, setWrap, raw, setRaw, rendered, loading } = useOutputBody(props);
+  const text = available ? out?.text ?? "" : "";
+  const count = useMemo(() => text ? (text.match(/\n/g)?.length ?? 0) + (text.endsWith("\n") ? 0 : 1) : 0, [text]);
+  if (out && !loading && !available && !out.expired && !out.error && !out.cutOff) return null;
+  const title = !available ? t("details.output") : count === 1 ? t("output.line") : t("output.lines", { n: new Intl.NumberFormat(props.model.lang.value).format(count) });
+  return <div class="shell-step-output">
     <div class="output-actions output-header">
       <span class="output-heading">{title}</span>
       <Tooltip label={t("output.wrapLines")}><Button variant="ghost" icon label={t("output.wrapLines")} aria-pressed={wrap} disabled={!available} onClick={() => setWrap(value => !value)}><Icon role="output.wrap" size="small" /></Button></Tooltip>
-      <CopyButton text={available ? out.text : ""} label={t("output.copyOutput")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} />
-      {onDetails ? <Tooltip label={t("output.openDetails")}><Button variant="ghost" icon label={t("output.openDetails")} onClick={event => onDetails(event.currentTarget)}><Icon role="output.openDetails" size="small" /></Button></Tooltip> : null}
+      <CopyButton text={text} label={t("output.copyOutput")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} />
+      <Tooltip label={t("output.openDetails")}><Button variant="ghost" icon label={t("output.openDetails")} onClick={event => onDetails(event.currentTarget)}><Icon role="output.openDetails" size="small" /></Button></Tooltip>
     </div>
-    {loading ? <div class="log muted">{t("details.outputLoading")}</div> : out.expired ? <div class="output-reclaimed muted caption" role="note">{t("output.expired")}</div> : out.error && !available ? <div class="log muted">{t("details.outputError", { message: out.error })}</div> : <>
-      <div class={`output-log${wrap ? " output-wrapped" : ""}`}>{rendered && !raw ? <OutputLines lines={rendered.lines} boxed={boxed ?? false} /> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}</div>
-      {rendered ? <div class="output-format"><Button variant="ghost" onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button></div> : null}
-      {out.error ? <div class="caption muted">{t("details.outputError", { message: out.error })}</div> : null}
-      {out.cutOff ? <div class="caption muted" role="note">{t("details.outputMore")}</div> : null}
-    </>}
-  </>;
+    {body}
+    {available && rendered ? <div class="output-format"><Button variant="ghost" onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button></div> : null}
+  </div>;
 });
 
 const OUTPUT_OVERSCAN = 24;
@@ -433,11 +458,11 @@ export function OutputLines({ lines, boxed }: { lines: readonly { text: string; 
   }}>{first > 0 ? "\n".repeat(first) : null}{lines.slice(first, last).map((line, index) => <span key={first + index} class={`output-${line.kind}`}>{line.text}{first + index < lines.length - 1 ? "\n" : ""}</span>)}{last < lines.length ? "\n".repeat(lines.length - last) : null}</pre>;
 }
 
-const OpenPhoneExecution = createContext<(() => void) | undefined>(undefined);
+const OpenPhonePanelIfHidden = createContext<(() => void) | undefined>(undefined);
 
 export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.toolCall.openPolicy }: { model: AppModel; step: Step; display: WorkElementDisplay; openPolicy?: CanonicalCase["openPolicy"] }) {
   const t = model.t.value;
-  const openPhoneExecution = useContext(OpenPhoneExecution);
+  const openPhonePanelIfHidden = useContext(OpenPhonePanelIfHidden);
   const [full, setFull] = useState<{ id: string; command: string }>();
   const choice = model.toolStepChoices.value.get(step.executionId);
   const open = choice ?? (openPolicy !== "closed");
@@ -477,10 +502,10 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
         {duration ? <span class="mono" aria-label={`${t("details.duration")}: ${duration}`}>{duration}</span> : null}
         {step.cwd ? <span class="mono" aria-label={`${t("details.directory")}: ${step.cwd}`}>{step.cwd}</span> : null}
       </div>
-      <div class="shell-step-output"><Output model={model} id={step.executionId} command={command} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"} boxed onDetails={opener => {
+      <InlineShellOutput model={model} id={step.executionId} command={command} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"} boxed onDetails={opener => {
         model.openInPanel({ kind: "step", id: step.executionId }, panelFocusReturn(opener), true);
-        openPhoneExecution?.();
-      }} /></div>
+        openPhonePanelIfHidden?.();
+      }} />
     </div> : <span hidden />}
   </WorkElementRow>;
 }
@@ -939,15 +964,18 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
     if (settingsDestination && (settingsDestination.thread !== handle?.threadId || tab !== "settings")) clearDestination();
   }, [settingsDestination, handle, tab]);
   const destination = settingsDestination?.thread === handle?.threadId ? settingsDestination : undefined;
+  const openPhonePanelIfHidden = () => {
+    const pane = root.current?.parentElement?.querySelector<HTMLElement>("[data-panel-root]");
+    if (pane && getComputedStyle(pane).display === "none") onOpenPhonePanel?.();
+  };
   const openThreadPanel = (tab: "info" | "settings", field: SettingsDestination["field"] = "connection") => {
     if (tab === "settings" && handle) {
       const request: SettingsDestination = { thread: handle.threadId, field,
         consume: () => setSettingsDestination(current => current === request ? undefined : current) };
       setSettingsDestination(request);
     } else clearDestination();
-    const pane = root.current?.parentElement?.querySelector<HTMLElement>("[data-panel-root]");
     model.setPanelTab(tab);
-    if (pane && getComputedStyle(pane).display === "none") onOpenPhonePanel?.();
+    openPhonePanelIfHidden();
   };
   const send = model.sendState.value;
   const pendingOwn = model.pendingOwnMessage.value;
@@ -961,10 +989,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
         {diagnostic ? <output hidden data-window-diagnostic="true"
           data-reason={diagnostic.reason} data-generation={diagnostic.generation}
           data-revision={diagnostic.revision ?? ""} data-owner-epoch={diagnostic.ownerEpoch} /> : null}
-        {handle ? <OpenPhoneExecution.Provider value={() => {
-          const pane = root.current?.parentElement?.querySelector<HTMLElement>("[data-panel-root]");
-          if (pane && getComputedStyle(pane).display === "none") onOpenPhonePanel?.();
-        }}><OrderedHistory model={model} handle={handle} win={win} t={t} openThreadSettings={field => openThreadPanel("settings", field)} /></OpenPhoneExecution.Provider> :
+        {handle ? <OpenPhonePanelIfHidden.Provider value={openPhonePanelIfHidden}><OrderedHistory model={model} handle={handle} win={win} t={t} openThreadSettings={field => openThreadPanel("settings", field)} /></OpenPhonePanelIfHidden.Provider> :
           <EmptyState role="empty.noThread" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
             <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>
           </EmptyState>}

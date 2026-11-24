@@ -1,12 +1,15 @@
 // @vitest-environment happy-dom
 import "@preact/signals";
-import { effect } from "@preact/signals-core";
+import { effect, signal } from "@preact/signals-core";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, expect, it, vi } from "vitest";
 import * as outputRenderers from "../../../ui-core/src/output-renderers";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { flush, settle } from "../../../data/test/harness";
+import { loadPrefs, type DesignContext } from "../../../ui-core/src";
+import { DESIGNS } from "../../registry";
+import { App } from "../screens/App";
 import { Conversation } from "../screens/Conversation";
 for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved === "" ? "empty" : "body"} output across held refresh frames and unchanged results`, async () => {
   const { model, t, db } = await fixtureModel({ configure(db) { db.outputs["exec-1"] = saved; db.history.lead=[{node_id:"actual-tool",kind:"assistant_response",items:[{kind:"tool_call",item_identity:"call",execution_ids:["exec-1"]}],executions:[{execution_id:"exec-1",kind:"shell",state:"running",started_at:"2026-01-01T00:00:00Z"}]}]; db.shells.lead = [{ execution_id: "exec-1", state: "running", started_at: "2026-01-01T00:00:00Z" }]; } });
@@ -19,7 +22,6 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
   await act(async()=>{await settle(t,db);});
   const snapshot = model.outputs.peek().get("exec-1"); expect(snapshot?.loading).toBe(false);
   let changes = 0;
-  const expected = saved || model.t.peek()("details.outputEmpty");
   const format = vi.spyOn(outputRenderers, "renderOutput");
   try {
     const renderedLog = host.querySelector(".log");
@@ -36,7 +38,9 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
       for (let frame = 0; frame < 3; frame++) {
         act(() => { model.now.value += 1000; });
         await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
-        expect(host.textContent).toContain(expected); expect(host.textContent).not.toContain(model.t.peek()("details.outputLoading"));
+        if (saved) expect(host.textContent).toContain(saved);
+        else expect(host.querySelector('[data-execution="exec-1"] .shell-step-output')).toBeNull();
+        expect(host.textContent).not.toContain(model.t.peek()("details.outputLoading"));
         expect(model.outputs.peek().get("exec-1")).toBe(snapshot);
       }
       act(() => t.ok(held.id, { execution_id: "exec-1", text: saved })); await act(async () => { await flush(); });
@@ -48,7 +52,7 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
 
 let cleanup: (() => void) | undefined;
 afterEach(() => { cleanup?.(); cleanup = undefined; });
-async function toolFixture(state?: string, abbreviated = false) {
+async function toolFixture(state?: string, abbreviated = false, phone = false) {
   const r = await fixtureModel({ configure(db) {
     db.shells.lead = state ? [{ execution_id: 'exec-1', state, started_at: '2026-01-01T00:00:00Z', ...(state === 'exited' ? { ended_at: '2026-01-01T00:00:02Z', exit_code: 7 } : {}) }] : [];
     db.outputs['exec-1'] = 'Retained fixture log';
@@ -58,7 +62,10 @@ async function toolFixture(state?: string, abbreviated = false) {
   } });
   const host = document.createElement('div'); document.body.append(host);
   cleanup = () => { render(null, host); host.remove(); r.model.dispose(); r.data.stop(); };
-  await act(async () => { render(<Conversation model={r.model} />, host); await settle(r.t, r.db); });
+  const prefs = signal(loadPrefs({ read: () => null, write: () => {} }, DESIGNS));
+  const context: DesignContext = { model: r.model, prefs, setPrefs: update => { prefs.value = { ...prefs.value, ...update }; }, designs: DESIGNS, submitToken: async () => false };
+  await act(async () => { render(phone ? <App context={context} /> : <Conversation model={r.model} />, host); await settle(r.t, r.db); });
+  if (phone) host.querySelector<HTMLElement>('[data-panel-root]')!.style.display = 'none';
   const group = host.querySelector<HTMLDetailsElement>('[data-work-group]')!;
   const expand = async () => {
     await act(async () => { group.open = true; group.dispatchEvent(new Event('toggle')); await settle(r.t, r.db); });
@@ -144,4 +151,22 @@ it('counts the retained lines and labels cut-off output without tagging unknown 
   expect(row.querySelector('[role="note"]')?.textContent).toContain('cut off');
   expect(row.querySelector('.output-log')?.textContent).toBe('one\n\ntwo\n');
   expect(row.querySelector('[data-stream]')).toBeNull();
+});
+
+
+it('opens the visible phone sheet from the inline action without changing panel output controls', async () => {
+  const r = await toolFixture('exited', false, true);
+  const row = await r.expand();
+  await act(async () => { r.model.closePanelDetail(); });
+  expect(getComputedStyle(r.host.querySelector('[data-panel-root]')!).display).toBe('none');
+  expect(r.host.querySelector('dialog[open]')).toBeNull();
+  await act(async () => {
+    row.querySelector<HTMLButtonElement>('button[aria-label="Open execution details"]')!.click();
+    await settle(r.t, r.db);
+  });
+  const detail = r.host.querySelector('dialog[open] [data-phone-panel] [data-panel-detail]')!;
+  expect(detail).not.toBeNull();
+  expect(detail.textContent).toContain('Retained fixture log');
+  expect(detail.querySelector('.output-header, .output-format')).toBeNull();
+  expect([...detail.querySelectorAll('.output-actions button')].map(button => button.textContent)).toEqual(['Copy', 'Wrap lines']);
 });
