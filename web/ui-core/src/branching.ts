@@ -242,7 +242,7 @@ export class Branches {
           if (out.ok) this.lanes.familyChanged(out.family);
           if (target && target === this.target.peek() && point) {
             const floor = Math.max(this.targetRevision.peek() ?? 0, this.lanes.revision(target.threadId) ?? 0,
-              ...disclosed.filter(d => d.threadId === target.threadId).map(d => d.window.revision));
+              ...disclosed.filter(d => d.threadId === target.threadId).map(d => d.snapshot.revision));
             if (point.ok && point.value.thread_id === target.threadId && point.value.revision >= floor
               && point.value.items.length === 1 && point.value.items[0]?.node_id === target.nodeId) {
               if (this.targetRevision.peek() !== point.value.revision) {
@@ -254,7 +254,7 @@ export class Branches {
               this.choose(undefined);
             }
           }
-          for (const { threadId, window } of disclosed) this.lanes.refreshPoint(threadId, window);
+          for (const { threadId, snapshot } of disclosed) this.lanes.refreshPoint(threadId, snapshot);
           if (target && point?.ok && point.value.thread_id === target.threadId) this.lanes.refreshPoint(target.threadId, point.value);
           if (target && point && !point.ok && point.error.kind === "owner" && ["cursor_expired", "thread_not_found"].includes(point.error.code)) {
             const details = point.error.details;

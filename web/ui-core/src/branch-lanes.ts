@@ -205,8 +205,8 @@ export class LaneReader {
   }
 
   /** Refresh disclosed coordinates only; callers publish them together with the family. */
-  async readDisclosed(family: BranchFamily, targetThread: string | undefined, cancel: Cancel): Promise<{ threadId: string; window: HistoryWindowResult }[]> {
-    const results: { threadId: string; window: HistoryWindowResult }[] = [];
+  async readDisclosed(family: BranchFamily, targetThread: string | undefined, cancel: Cancel): Promise<{ threadId: string; snapshot: HistoryWindowResult }[]> {
+    const results: { threadId: string; snapshot: HistoryWindowResult }[] = [];
     if (!this.supported()) return results;
     for (const item of family.items) {
       const { threadId, tipNodeId, pathNodes } = item;
@@ -219,7 +219,7 @@ export class LaneReader {
         while (ordinals[i] === to + 1 && to - from + 1 < LANE_PAGE) to = ordinals[i++]!;
         const out = await this.ops.historyWindow({ thread_id: threadId, ordinal: from, before: 0, after: to - from,
           excerpt_chars: LANE_EXCERPT_CHARS }, { cancel });
-        if (out.ok && out.value.thread_id === threadId) results.push({ threadId, window: out.value });
+        if (out.ok && out.value.thread_id === threadId) results.push({ threadId, snapshot: out.value });
       }
     }
     return results;
@@ -318,8 +318,8 @@ export class LaneReader {
   }
 
   /** Admit the open point from its targeted refresh, not from cached membership. */
-  refreshPoint(threadId: string, window: HistoryWindowResult): void {
-    if (this.remember(threadId, window)) this.version.value = this.version.peek() + 1;
+  refreshPoint(threadId: string, snapshot: HistoryWindowResult): void {
+    if (this.remember(threadId, snapshot)) this.version.value = this.version.peek() + 1;
   }
 
   /** A targeted owner read disproved a cached position, even if the lane grew. */

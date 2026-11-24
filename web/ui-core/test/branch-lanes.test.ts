@@ -173,7 +173,7 @@ describe("lane reads", () => {
     const windows = await revalidate;
     reader.familyChanged(grown);
     expect([...reader.opened("fork-a")]).toEqual([]);
-    for (const { threadId, window } of windows) reader.refreshPoint(threadId, window);
+    for (const { threadId, snapshot } of windows) reader.refreshPoint(threadId, snapshot);
     expect([...reader.opened("fork-a")]).toHaveLength(10);
     const rewound = family();
     rewound.items[1]!.pathNodes = 105; rewound.items[1]!.tipNodeId = "f104";
