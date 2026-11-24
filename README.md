@@ -1,151 +1,71 @@
-# shellboy-studio
+# Shellboy Studio
 
-Shellboy Studio is a browser UI for [Shellboy](https://github.com/tya5/shellboy),
-the terminal coding agent. Read and send messages, inspect live work and tool
-output, and organize Threads. Studio talks to the Shellboy owner over local IPC;
-only the owner accesses the conversation database and runs the agent.
+Keep working with [Shellboy](https://github.com/tya5/shellboy), the terminal coding agent, from a browser. Send messages, see what the agent is doing, inspect tool output, and pick up a conversation from a paired phone. Shellboy Core still runs the agent and owns its data; Studio is the interface.
 
-**Start here:** [User guide](docs/guides/user-guide.md) · [日本語](docs/guides/user-guide.md#日本語)
+**Published pairing:** [Studio v0.4.1](https://github.com/tya5/shellboy-studio/releases/tag/v0.4.1) + [Core v0.15.0](https://github.com/tya5/shellboy/releases/tag/v0.15.0), protocol 18 ([exact revision](docs/release-v0.4.1.md)).
 
-## Current release pairing
+[Start](#start) · [What you can do](#what-you-can-do) · [User guide](docs/guides/user-guide.md) · [日本語](docs/guides/user-guide.md#日本語)
 
-[Studio v0.4.1](https://github.com/tya5/shellboy-studio/releases/tag/v0.4.1)
-uses Core v0.15.0 at the exact revision and protocol 18 recorded in the
-[release notes](docs/release-v0.4.1.md). Upgrade them together. Before starting
-the new Core, quit both programs and back up the entire Core data directory and
-any config outside it. Core applies migrations on startup, through schema 62
-when upgrading from v0.3.0's supported Core pairing. There is no automatic downgrade.
+![Studio Conversation with a Thread sidebar, running shell commands in Activity, and a message composer](docs/images/studio-conversation.png)
+
+*Development build with synthetic data. See the [phone view](docs/images/studio-phone.png).*
 
 ## Start
 
-### Install
+Download the matching archive from [Releases](https://github.com/tya5/shellboy-studio/releases) and verify it against `SHA256SUMS`. If upgrading, [back up before starting the new Core](#upgrading-and-limits).
 
-Download from [Releases](https://github.com/tya5/shellboy-studio/releases).
-Verify the chosen archive against the published `SHA256SUMS`. Desktop ZIPs
-bundle Core for [Apple silicon](#macos-desktop-zip) and [Windows x64](#windows-desktop-zip).
-Separate CLI archives for macOS arm64, Windows x64, and Linux x64 embed the web UI;
-install the matching Core separately for the CLI path.
+### Terminal (macOS arm64, Windows x64, Linux x64)
 
-### Start from a terminal
+1. Install the Studio CLI and the matching Core separately.
+2. Run `shellboy serve`, or use a running Shellboy TUI that already owns the same data directory.
+3. Run `shellboy-studio` in another terminal and open the printed URL. Keep its token private.
 
-Run `shellboy serve` in one terminal (or use a running Shellboy TUI that owns the
-same data directory), then run `shellboy-studio` in another. Open the printed URL
-once. Its token is exchanged for a session cookie and removed from the address.
-Keep the token private. The ordinary CLI bridge attaches to Core; it does not
-start or supervise it. The desktop launchers handle starting Core when needed.
+### macOS desktop ZIP
 
-Use the same OS account and data directory for both programs. Studio chooses its
-owner's data directory using `--data-dir DIR`, then `SHELLBOY_DATA_DIR`, then the
-Core OS default. Studio's own token is stored separately in its config directory
-(`--config-dir`): `~/.config/shellboy-studio` on Linux,
-`~/Library/Application Support/shellboy-studio` on macOS, and
-`%APPDATA%\shellboy-studio` on Windows by default.
+1. On Apple silicon with macOS 14 or later, download and extract the `aarch64-apple-darwin` desktop ZIP. It includes Core.
+2. Open **Shellboy Studio.app**. The app is unsigned and not notarized; use **Open Anyway** in **System Settings > Privacy & Security** only if you trust the verified download.
+3. Continue in the browser that opens. The launcher attaches to Core or starts the bundled copy.
 
-### First run
+### Windows desktop ZIP
 
-If a model connection is missing, choose **Connect a model service**, or use
-**Import settings** if you have a portable TOML file. An API key, when required,
-is separate from a Claude or ChatGPT subscription. See the
-[setup instructions](docs/guides/user-guide.md#connect-a-model).
+1. On Windows x64, download and extract the full `x86_64-pc-windows-msvc` desktop ZIP. Keep `Shellboy Studio.exe` and `shellboy.exe` together.
+2. Open `Shellboy Studio.exe`. On a company PC, ask IT if either executable is blocked; do not bypass SmartScreen, Defender, or application-control policy.
+3. Continue in your default browser. If it does not open, see the [Windows desktop guide](docs/guides/windows-desktop.txt) for startup logs and company-PC checks.
 
-## macOS desktop ZIP
+On first run, choose **Connect a model service**, or **Import settings** if you have a portable TOML file. An API key, when required, is separate from a Claude or ChatGPT subscription. See [Connect a model](docs/guides/user-guide.md#connect-a-model).
 
-On Apple silicon with macOS 14 or later, extract
-`shellboy-studio-desktop-vX.Y.Z-aarch64-apple-darwin.zip` and open **Shellboy Studio.app**.
-The app is unsigned and not notarized. Review any Gatekeeper warning and use
-**Open Anyway** in System Settings > Privacy & Security only if you trust the download.
+## What you can do
 
-## Windows desktop ZIP
+- **Follow work and reply.** Open a Thread in **Conversation**, expand tool output, or use **Awaiting you** to find requests directed to you. The sidebar has **Pinned** and **All**. On current `main`, **Archived** sits below **All**, and Thread management is in the sidebar instead of separate **Monitor** and **Threads** screens.
+- **Use a phone.** Pair over private HTTPS using **Settings > Studio > Open on a phone > Create QR code**. See [Open on another device](docs/guides/user-guide.md#open-on-another-device).
+- **Understand usage.** In **Analytics > By Thread**, compare recorded token usage over a selected period. Effective tokens are weighted counts, not prices or a provider bill. Incomplete data is not zero.
+- **Manage Core on current `main`.** **Settings > Core** shows its state and **Running now**; the desktop launcher can start, stop, or restart the Core it manages. Studio does not restart an independently started Core.
+- **Schedules and services are in development.** [Activity controls for existing definitions](https://github.com/tya5/shellboy-studio/issues/131) are not part of the published v0.4.1 pairing. Creating or editing definitions is outside that work.
 
-On Windows x64, extract the full
-`shellboy-studio-desktop-vX.Y.Z-x86_64-pc-windows-msvc.zip`, keep
-`Shellboy Studio.exe` and `shellboy.exe` together, and open `Shellboy Studio.exe`.
-The unsigned launcher opens your default browser without a console. See the
-[Windows desktop guide](docs/guides/windows-desktop.txt) for SmartScreen and startup diagnostics.
+## Upgrading and limits
 
-To use a TUI's existing config and data directory, give the desktop launcher Core's `--config PATH` and `--data-dir PATH` (same meaning and precedence as Core; relative paths start from the launch folder). On Windows, put them in a shortcut's Target, for example:
+- Quit both programs and back up the entire Core data directory and any config outside it before starting a newer Core. Core applies migrations on startup; Studio does not downgrade the protocol or undo migrations. Use the exact release pairing. Development builds may use a different Core pin; the [next release notes](docs/release-v0.4.2.md) are a draft, not install instructions.
+- Use the same OS account and Core data directory. With a custom directory, pass `--data-dir DIR` to Studio or set `SHELLBOY_DATA_DIR`. The CLI attaches to Core and does not supervise it. For desktop launch arguments, see the [user guide](docs/guides/user-guide.md#install-and-open-studio) and [Windows shortcut examples](docs/guides/windows-desktop.txt).
+- Closing the browser does not stop the desktop launcher. Use **Quit Studio**; an independently started owner is left running. See [Stop or restart the desktop app](docs/guides/user-guide.md#stop-or-restart-the-desktop-app).
+- A downloadable archive is not proof of physical-device or company sign-in testing. See the [release notes](docs/release-v0.4.1.md) and [historical verification](docs/first-release-verification.md).
 
-```text
-"C:\Tools\Shellboy Studio\Shellboy Studio.exe" --config "D:\work\shellboy\config.toml" --data-dir "D:\work\shellboy\data"
-```
+## Security and guides
 
-Both desktop launchers attach to an already running owner for the selected data
-folder or start the bundled Core. Open the app again to reopen Studio. Closing
-the browser is not quitting: use **Quit Studio**. An independent owner is left
-running. See [shutdown and restart](docs/guides/user-guide.md#stop-or-restart-the-desktop-app)
-for the bundled owner's one automatic crash retry, manual **Restart owner**, and logs.
+Studio binds to loopback (`127.0.0.1:8751`) by default and requires authentication. Keep the printed token URL and pairing QR code private. For phone access, keep the bridge on loopback behind a trusted private HTTPS endpoint, allow its exact hostname with `--allow-host HOSTNAME`, and never use Tailscale Funnel. A non-loopback HTTP bind is not TLS. Use `--no-auth` only in [explicitly trusted development](docs/guides/user-guide.md#explicit-development-authentication-opt-out); anyone who reaches that bridge can operate it.
 
-## Find your way around
-
-- The v2 interface shares headings, buttons, links, and loading and empty
-  states across views. Set Studio's display language in **Settings > Appearance > Language**.
-- **Pinned** lists pinned Threads even outside the loaded **All** list.
-  **Awaiting you** hides **Pinned** and is exclusive with search, tag, and directory filters.
-- In **Conversation**, the right panel contains **Activity**, **Reply needed**,
-  **Awaiting reply**, **Possessions** (including **Artifacts** and **Attachments**
-  when supported), **Analytics**, and per-Thread **Settings**.
-- Use **Select Threads**, then **Delete**, to review a permanent bulk deletion.
-  Only the confirmed selection is deleted; unselected descendants remain.
-- Use global **Settings > Connections > Share settings** for portable TOML
-  export/import without credential values. Use global **Analytics > By Thread**
-  and **Show models** for model usage in the selected period. **Effective tokens**
-  are browser-weighted counts, not prices.
-
-## Security
-
-Studio listens on loopback (`127.0.0.1:8751`) by default and requires a token;
-keep it out of screenshots and Git. Host and Origin checks are independent of
-user authentication. A non-loopback HTTP bind is not TLS.
-
-For another device, keep Studio on loopback behind a trusted private HTTPS
-endpoint, allow its exact hostname with `--allow-host`, and pair using
-**Settings > Studio > Open on a phone > Create QR code**. See
-[Open on another device](docs/guides/user-guide.md#open-on-another-device).
-Never share the printed local token URL or expose Studio through Tailscale Funnel.
-
-Use `--no-auth` only for [explicitly trusted development](docs/guides/user-guide.md#explicit-development-authentication-opt-out).
-Anyone who can reach that bridge can operate it. Pairing is disabled and an
-explicitly enabled `/debug` page also lacks token/session protection in this mode.
-
-## Studio guides
-
-Run `shellboy-studio guide user` or `shellboy-studio guide agent` without
-starting the bridge. Startup rewrites `$SHELLBOY_DATA_DIR/studio/agent-guide.md`
-and the managed Apps README. **Apps** can run actions on the Studio host;
-review app code and permissions before use.
-
-## Verification and limitations
-
-Release assets are not proof of physical-device testing. See the
-[current pairing notes](docs/release-v0.4.1.md) and
-[historical first-release verification](docs/first-release-verification.md).
-Use the exact owner named in the current pairing; Studio does not provide a
-protocol downgrade. For Branches comparison limits, see the
-[design documentation](docs/design/branches-threads.md).
+- [User guide](docs/guides/user-guide.md) and [日本語](docs/guides/user-guide.md#日本語): setup, keyboard use, phone pairing, and troubleshooting.
+- [Windows desktop guide](docs/guides/windows-desktop.txt): unsigned ZIPs, company-PC policy, and startup diagnostics.
+- `shellboy-studio guide user` and `shellboy-studio guide agent` print the guides without starting the bridge. Startup rewrites `$SHELLBOY_DATA_DIR/studio/agent-guide.md` and the managed Apps README. **Apps** can run actions on the Studio host; review their code and permissions first.
 
 ## Development
 
-From source, install Node and the pinned Rust toolchain, then run:
+Install Node and the pinned Rust toolchain. Build the frontend before running Studio with an [isolated owner](docs/development/isolated-owner.md), not your everyday data directory:
 
 ```sh
 (cd web && npm ci && npm run build)
 cargo run --release -- --data-dir DIR
 ```
 
-The frontend build is embedded in the bridge. Plain Vite is frontend-only.
-For local development use an [isolated owner](docs/development/isolated-owner.md),
-not your everyday Core data directory.
-
-See [AGENTS.md](AGENTS.md) and [docs/design/architecture.md](docs/design/architecture.md).
-Owner-free checks exclude the explicit `real-owner-tests` suite. Exact-pair CI
-and the release gate build Core from its verified public-tag source, then run
-the suite with that binary and `SHELLBOY_BIN` in temporary test data. This is
-separate from local acceptance with the downloaded public Core release binary;
-omitting the suite is not owner-integration success.
-
-Checks: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`,
-and in `web/`: `npm run check`.
-
-## License
+The bridge embeds the built frontend; plain Vite runs only the frontend. See [AGENTS.md](AGENTS.md) and the [architecture](docs/design/architecture.md). Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` from the root, and `npm run check` from `web/`. The explicit `real-owner-tests` suite uses the exact paired Core and temporary data in CI; owner-free checks are not integration evidence.
 
 MIT. See [LICENSE](LICENSE).
