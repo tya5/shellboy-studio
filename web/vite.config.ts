@@ -40,5 +40,6 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1", // Frontend only. Never proxy to an installed Studio.
+    fs: { allow: [fileURLToPath(new URL("./app/", import.meta.url)), fileURLToPath(new URL("./designs/console/", import.meta.url))] },
   },
 });
