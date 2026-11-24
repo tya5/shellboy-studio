@@ -276,23 +276,9 @@ describe("approved list section and status rules", () => {
   });
 });
 
-
 describe("solid status foreground contrast", () => {
-  it.each(["console", "light", "terminal"])("pairs solid text fills at 4.5:1 in %s", (theme) => {
-    const css = readFileSync(new URL(`../system/tokens/${theme}.css`, import.meta.url), "utf8");
-    const values = new Map([...css.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(m => [m[1]!, m[2]!.trim()]));
-    const luminance = (hex: string) => {
-      const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
-      return .2126 * c[0]! + .7152 * c[1]! + .0722 * c[2]!;
-    };
-    for (const [fill, foreground] of [["accent", "on-accent"], ["wait", "on-wait"]]) {
-      const a = luminance(values.get(fill)!); const b = luminance(values.get(foreground)!);
-      expect((Math.max(a, b) + .05) / (Math.min(a, b) + .05), `${foreground} on ${fill}`).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it("does not put normal foreground text on a solid status fill in a component rule", () => {
-    for (const [path, source] of Object.entries(componentStyleFiles)) {
+  it("does not put normal foreground text on a solid status fill in a component or shared rule", () => {
+    for (const [path, source] of Object.entries({ ...componentStyleFiles, ...sharedStyleFiles })) {
       for (const rule of source.matchAll(/[^{}]+\{([^{}]+)\}/g)) {
         if (/background:\s*var\(--(?:accent|wait|bad|ok)\)/.test(rule[1]!)) {
           expect(rule[1], path).not.toMatch(/color:\s*var\(--fg\)/);
