@@ -117,6 +117,11 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
             post(crate::artifact_content::content::<O>),
         )
         .route(
+            "/artifact-reveal",
+            get(crate::artifact_content::reveal_capability::<O>)
+                .post(crate::artifact_content::reveal::<O>),
+        )
+        .route(
             "/login-startup",
             get(login_startup_get::<O>).post(login_startup_set::<O>),
         )
@@ -501,9 +506,12 @@ pub async fn serve<O: Owner>(
         )),
     ));
     let shutdown = cancel.clone();
-    let result = axum::serve(listener, router(state))
-        .with_graceful_shutdown(async move { shutdown.cancelled().await })
-        .await;
+    let result = axum::serve(
+        listener,
+        router(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move { shutdown.cancelled().await })
+    .await;
     cancel.cancel();
     let _ = poller.await;
     if let Some(apps) = apps {

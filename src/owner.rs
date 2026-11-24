@@ -8,6 +8,10 @@ use shellboy::{
 use std::{future::Future, path::PathBuf};
 
 pub trait Owner: Send + Sync + 'static {
+    fn is_local_ipc(&self) -> bool {
+        false
+    }
+
     /// One request on one owner connection. Dropping the future closes the connection,
     /// which cancels a read on the owner side.
     fn call(
@@ -30,6 +34,10 @@ impl IpcOwner {
 }
 
 impl Owner for IpcOwner {
+    fn is_local_ipc(&self) -> bool {
+        true
+    }
+
     async fn call(
         &self,
         command: Command,

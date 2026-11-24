@@ -263,6 +263,8 @@ person behind the authenticated browser session typed it.
 
 ## 5. Security model
 
+Artifact folder reveal is a separate authenticated HTTP action. It is available only with the local IPC owner, a direct loopback peer and authority, and an exact same-origin POST; proxy/extra-host configurations and `--no-auth` do not qualify. The browser submits only Thread, artifact, and version IDs. The bridge re-resolves that exact artifact with Core, accepts only an existing canonical local regular-file path, and uses fixed file-manager arguments without a shell. It never opens the file as a program or grants access to an arbitrary browser path.
+
 Threat model: the bridge exposes control of a coding agent that can run shell
 commands as the user. Anyone who can drive the bridge can run commands. The
 defaults must be safe on a shared machine and in a browser that visits other

@@ -45,6 +45,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `artifact.pdf` | Identify an artifact with a stored PDF MIME. | PDF |
 | `artifact.unknown` | Identify an artifact without a recognized stored MIME. | File |
 | `artifact.detail` | Open artifact details in the current panel. | Chevron right |
+| `artifact.reveal` | Reveal the artifact in its local parent folder. | `folderOpen` |
 | `settings.appearance` | Identify Appearance settings. | `palette` |
 | `settings.general` | Identify the General settings section. | `gear` |
 | `settings.connections` | Identify the Connections settings section. | `plug` |

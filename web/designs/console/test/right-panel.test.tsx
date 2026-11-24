@@ -312,7 +312,12 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
- it('keeps artifact owner order and refreshes both list and detail on the Thread hint', async () => {
+ it.each(['finder', null] as const)('keeps artifact order and handles reveal capability %s', async platform => {
+  const fetchArtifact = vi.fn(async (_path: string, init?: RequestInit) => init?.method === 'POST'
+    ? init.body && JSON.parse(String(init.body)).action === 'preview' ? new Response(null, {status: 204})
+      : Response.json({code: 'file_unavailable'}, {status: 404})
+    : Response.json({platform}));
+  vi.stubGlobal('fetch', fetchArtifact);
   const original = ResizeObserver;
   let reveal: (() => void) | undefined;
   vi.stubGlobal('ResizeObserver', class extends original {
@@ -346,8 +351,19 @@ describe('right panel purpose',()=>{
    expect([...page.querySelectorAll('[data-panel-row-id]')].map(el=>el.getAttribute('data-panel-row-id'))).toEqual(['z','a']);
    expect(page.querySelector('[data-panel-row-id="z"]')?.textContent).toContain('v2');
    expect(page.querySelector('[data-panel-row-id="a"]')?.textContent).not.toContain('v1');
+   const revealRow = page.querySelector<HTMLButtonElement>('[data-panel-row-id="z"] button[aria-label="Finderで表示"]');
+   expect(!!revealRow).toBe(platform === 'finder');
+   if (revealRow) {
+    await pump(() => revealRow.click());
+    expect(page.querySelector('[data-panel-row-id="z"] [role="alert"]')?.textContent).toContain('成果物のファイルが見つからない');
+    const request = fetchArtifact.mock.calls.find(([path, init]) => path === '/artifact-reveal' && init?.method === 'POST');
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({thread_id:'lead',artifact_id:'z',version:2});
+    expect(page.querySelector('[data-panel-detail]')).toBeNull();
+   }
    await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z"] button')!.click());
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-2.md');
+   expect(!!page.querySelector('[data-panel-detail] button[aria-label="Finderで表示"]')).toBe(platform === 'finder');
+   expect(page.querySelector('[data-panel-detail] button[aria-label="成果物の場所をコピー"]')).not.toBeNull();
    await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z:v1"] button')!.click());
    expect(f.t.calls('artifact.get').at(-1)?.args).toEqual({artifact_id:'z',version:1});
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');

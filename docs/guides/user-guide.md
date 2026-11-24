@@ -62,6 +62,8 @@ For v0.4.2, pending landing: higher-contrast counts on tabs such as **Reply need
 | **Analytics** | This Thread's **Conversation tokens** (retained history, including failed and incomplete requests), **Summary tokens**, and **Recent compactions**. |
 | **Settings** | Settings for this Thread, not the global **Settings** screen. |
 
+For a local file in **Possessions > Artifacts**, use **Show in Finder**, **Show in Explorer**, or **Show in File Manager** on the row or in its details. It reveals the folder without opening or running the file. This requires an authenticated, direct connection on the same computer as Studio and Core. On a phone or remote session, open the artifact details to see its location and use **Copy artifact location**. Missing files or paths that resolve somewhere else cannot be revealed.
+
 For model messages, **From Thread** is the recorded sender ID; **Current title** can change or be unavailable. A **Self-asserted label** is supplied by the sender and is not verified. Follow the ID link to inspect the sender.
 
 ### Delete selected Threads
@@ -192,6 +194,8 @@ v0.4.2 向け（反映待ち）：**要返信** や **返信待ち** などの�
 | **持ち物** | 対応する場合に **成果物** と **添付** を表示します。成果物を開くと利用できるプレビューと版を確認できます。版に記録されるのは参照先で、ファイルのコピーではありません。 |
 | **分析** | このスレッドの **会話のトークン**（残っている履歴の完了・失敗・未完了の要求）、**要約のトークン**、**最近の圧縮**。 |
 | **設定** | このスレッドだけの設定。全体の **設定** とは別です。 |
+
+**持ち物 > 成果物** のローカルファイルは、行または詳細の **Finderで表示**、**エクスプローラーで表示**、または **ファイルマネージャーで表示** で親フォルダーを表示できます。ファイル自体は開かず、実行もしません。Studio と Core が動作する同じコンピューターから、認証済みの直接接続が必要です。スマホやリモート接続では、詳細の場所を確認し、**成果物の場所をコピー** を使ってください。存在しないファイルや、解決先が異なるパスは表示できません。
 
 モデルからのメッセージでは **送信元Thread** の ID が送信元です。**現在のタイトル** は変わることがあり、**自己申告ラベル** は送信者が付けた未検証の表示です。送信元を確認するには ID のリンクを開きます。
 

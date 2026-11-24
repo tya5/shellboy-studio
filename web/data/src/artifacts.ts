@@ -41,3 +41,26 @@ export function artifactContent(target: ArtifactContentTarget, action: "preview"
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...target, action }),
   });
 }
+
+export type ArtifactRevealPlatform = "finder" | "explorer" | "folder";
+export type ArtifactRevealError = "not_local" | "unknown_artifact" | "file_unavailable" | "busy" | "reveal_failed";
+
+export async function artifactRevealPlatform(signal: AbortSignal): Promise<ArtifactRevealPlatform | undefined> {
+  const response = await fetch("/artifact-reveal", { credentials: "same-origin", cache: "no-store", signal });
+  if (!response.ok) return;
+  const { platform } = await response.json();
+  if (platform === "finder" || platform === "explorer" || platform === "folder") return platform;
+}
+
+export async function revealArtifact(target: ArtifactContentTarget, signal: AbortSignal): Promise<ArtifactRevealError | undefined> {
+  const response = await fetch("/artifact-reveal", {
+    method: "POST", credentials: "same-origin", cache: "no-store", signal,
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify(target),
+  });
+  if (response.status === 204) return;
+  const { code } = await response.json();
+  switch (code) {
+    case "not_local": case "unknown_artifact": case "file_unavailable": case "busy": return code;
+    default: return "reveal_failed";
+  }
+}

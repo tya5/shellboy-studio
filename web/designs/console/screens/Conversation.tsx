@@ -3,7 +3,8 @@ import { ReplyAnnouncement } from "./ReplyAnnouncement";
 import { PanelPage } from "../system/components/PanelTabs/PanelPage";
 import { External, FIRST_SETUP_GUIDE } from "./SetupParts";
 import { tokenTotal } from "./usage-label";
-import { ArtifactDetail, ArtifactList } from "./ArtifactPanel";
+import type { ArtifactRevealPlatform } from "../../../data/src";
+import { ArtifactDetail, ArtifactList, useArtifactReveal } from "./ArtifactPanel";
 import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
 import { CAPABILITY_ARTIFACTS, CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
 import {messageRelationship} from "../../../ui-core/src/sender-display";
@@ -589,11 +590,11 @@ const possessionsSections = [
   { label: "panel.attachments", kind: "attachment", icon: "panel.attachment" },
 ] as const;
 
-function PanelPossessions({ model }: { model: AppModel }) {
+function PanelPossessions({ model, platform }: { model: AppModel; platform: ArtifactRevealPlatform | undefined }) {
   const t = model.t.value;
   const state = model.attachmentSection.state.value;
   return <div class="panel-list" data-panel-list="possessions">
-    {model.data.capabilities.value.includes(CAPABILITY_ARTIFACTS) ? <ArtifactList model={model} onSelect={(id, opener) => model.openInPanel({ kind: "artifact", id }, panelFocusReturn(opener), true)} /> : null}
+    {model.data.capabilities.value.includes(CAPABILITY_ARTIFACTS) ? <ArtifactList model={model} platform={platform} onSelect={(id, opener) => model.openInPanel({ kind: "artifact", id }, panelFocusReturn(opener), true)} /> : null}
     {state.items.length ? possessionsSections.map(section => <section key={section.kind}>
       <ListDivider label={t(section.label)} count={state.items.length} />
       {state.items.map(row => <ListRow key={row.attachment_id} id={row.attachment_id}
@@ -752,7 +753,7 @@ function deliveryStateLabel(t: AppModel["t"]["value"], state: string): string {
     : state === "applied" ? t("work.applied") : state === "cancelled" ? t("work.cancelled") : state;
 }
 
-function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: string; onBack: () => void }) {
+function PanelDetail({ model, platform, tabLabel, onBack }: { model: AppModel; platform: ArtifactRevealPlatform | undefined; tabLabel: string; onBack: () => void }) {
   const t = model.t.value;
   const detail = model.panelDetail.value;
   const step = model.selectedStep.value;
@@ -798,7 +799,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
       {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
     </section>;
   }
-  if (detail.kind === "artifact") return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}</div><ArtifactDetail model={model} /></section>;
+  if (detail.kind === "artifact") return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}</div><ArtifactDetail model={model} platform={platform} /></section>;
   if (detail.kind === "attachment") {
     const attachments = model.attachmentSection.state.value;
     const row = attachments.items.find(item => item.attachment_id === detail.id);
@@ -876,6 +877,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
   useEffect(() => scheduleShown ? scheduleHandle?.observeDefinitions() : undefined, [scheduleShown, scheduleHandle]);
   const artifactId = detail?.kind === "artifact" ? detail.id : undefined;
   const artifactsShown = supportsArtifacts && (phone || panelVisible) && !panelCollapsed && model.panelTab.value === "possessions";
+  const revealPlatform = useArtifactReveal(!!artifactsShown, owner);
   useEffect(() => artifactsShown && owner.state === "connected" && threadId
     ? model.artifacts.observeList(threadId) : undefined, [model, artifactsShown, owner, threadId]);
   useEffect(() => artifactsShown && owner.state === "connected" && threadId && artifactId
@@ -904,8 +906,8 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
         const active = tab.id === selectedTab;
         const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment" || detail.kind === "artifact");
         return <PanelPage key={tab.id} id={tab.id} hidden={!active || panelCollapsed}>
-          {tab.id === "settings" ? (active && !panelCollapsed && model.details.value ? <ThreadSettingsPanel key={owner.state === "connected" ? owner.info.instance_id ?? "connected" : owner.state} model={model} details={model.details.value} destination={destination} /> : null) : <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? (usageThread ? <ThreadAnalytics key={usageKey} model={model} threadId={usageThread} /> : null) : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>}
-          {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}
+          {tab.id === "settings" ? (active && !panelCollapsed && model.details.value ? <ThreadSettingsPanel key={owner.state === "connected" ? owner.info.instance_id ?? "connected" : owner.state} model={model} details={model.details.value} destination={destination} /> : null) : <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? (usageThread ? <ThreadAnalytics key={usageKey} model={model} threadId={usageThread} /> : null) : tab.id === "possessions" ? <PanelPossessions model={model} platform={revealPlatform} /> : <PanelReplies model={model} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>}
+          {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} platform={revealPlatform} tabLabel={tab.label} onBack={closeDetail} /> : null}
         </PanelPage>;
       })}
     </div>
