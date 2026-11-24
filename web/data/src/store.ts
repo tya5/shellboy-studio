@@ -327,7 +327,16 @@ export class ShellboyData {
 
   /** A read for the old filter is no use: it's cancelled, and one for the new filter follows. */
   setListFilter(filter: ListFilter): void {
-    this.filterSig.value = { ...filter };
+    const previous = this.filterSig.peek();
+    const awaitingChanged = previous.awaiting !== filter.awaiting;
+    const otherFilterChanged = previous.query !== filter.query || previous.cwd !== filter.cwd
+      || JSON.stringify(previous.tags) !== JSON.stringify(filter.tags);
+    const next = filter.awaiting && otherFilterChanged && !awaitingChanged
+      ? { ...filter, awaiting: undefined }
+      : filter.awaiting && awaitingChanged
+        ? { ...filter, query: undefined, tags: undefined, cwd: undefined }
+        : filter;
+    this.filterSig.value = { ...next };
     this.listCancel?.cancel();
     if (this.listRefs > 0 && this.canRead()) void this.refresher.requestFresh("list");
     if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) void this.refresher.requestFresh("pinned");
@@ -736,6 +745,7 @@ export class ShellboyData {
     if (this.listRefs === 0 || !this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) return;
     const epoch = this.readQualificationEpoch;
     const filter = this.filterSig.value;
+    if (filter.awaiting) return;
     let rows: ThreadSummary[] = [];
     let cursor: string | undefined;
     do {
@@ -894,7 +904,15 @@ export class ShellboyData {
 
 function listArgs(filter: ListFilter): ThreadListArgs {
   const constrained = filter.query !== undefined || !!filter.tags?.length || filter.cwd !== undefined || filter.awaiting !== undefined;
-  return { ...filter, ...(!constrained ? { order: "created" as const } : {}), limit: PAGE_LIMIT };
+  return {
+    ...(filter.query !== undefined ? { query: filter.query } : {}),
+    ...(filter.archived !== undefined ? { archived: filter.archived } : {}),
+    ...(filter.awaiting !== undefined ? { awaiting: filter.awaiting } : {}),
+    ...(filter.tags !== undefined ? { tags: filter.tags } : {}),
+    ...(filter.cwd !== undefined ? { cwd: filter.cwd } : {}),
+    ...(!constrained ? { order: "created" as const } : {}),
+    limit: PAGE_LIMIT,
+  };
 }
 
 /**

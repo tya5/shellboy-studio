@@ -189,6 +189,18 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
         },
         ThreadListArgs {
             cwd: Some(root.to_string_lossy().into_owned()),
+            tags: vec!["pin".into()],
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            tags: vec!["pin".into()],
+            archived: shellboy::protocol::ArchivedFilter::Include,
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            cwd: Some(root.to_string_lossy().into_owned()),
             limit: 50,
             ..Default::default()
         },
