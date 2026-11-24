@@ -1,0 +1,57 @@
+/* Mock-only layout for #141. The view reuses SubView, PageHeader, Section, FactList, Notice, ListRow and the
+   status bar; only the summary card, the status entry and the confirmation body are new. */
+
+/* One row per state: desktop frame, then the phone frame of the same state. */
+.mock-frames:has(> .cm-row) { flex-direction:column; flex-wrap:nowrap; }
+.cm-row { display:flex; flex-wrap:wrap; align-items:flex-start; gap:var(--space-16); min-width:0; }
+/* Window-sized frames (a 736 px desktop window, an 832 px phone screen); the first row grows to the whole page. */
+.mock-frame-desktop:has(> .cm-app) { inline-size:58rem; block-size:46rem; }
+.mock-frame-phone:has(> .cm-app) { block-size:52rem; }
+.mock-frame-desktop:has(> .cm-app[data-full]), .mock-frame-phone:has(> .cm-app[data-full]) { block-size:auto; }
+.cm-app { display:flex; flex:1; flex-direction:column; min-width:0; min-height:0; background:var(--bg); }
+.cm-app > .subview { flex:1; }
+.cm-app > .convo { flex:1; min-block-size:24rem; }
+
+/* Settings › Core */
+.cm-actions { display:flex; flex-wrap:wrap; gap:var(--space-8); }
+.cm-actions .btn, .cm-sheet-copy > .btn, .cm-pending-restart { display:inline-flex; align-items:center; gap:var(--space-6); }
+/* Mock-only play glyph, drawn at the small icon size with the Icon stroke. */
+.cm-glyph { flex:none; width:var(--size-icon-small); height:var(--size-icon-small); fill:none; stroke:currentColor; stroke-width:1.7; stroke-linejoin:round; }
+.cm-summary { flex-direction:row; align-items:flex-start; gap:var(--space-12); }
+.cm-summary-mark { display:flex; flex:none; padding-top:var(--space-2); }
+.cm-summary-text { display:flex; flex-direction:column; gap:var(--space-4); min-width:0; }
+.cm-summary-text strong { font:var(--type-heading); }
+.cm-stage-id { margin-inline-start:var(--space-8); font-size:var(--size-caption); }
+.cm-plain { margin:0; }
+.cm-bullets, .cm-steps { margin:var(--space-4) 0; padding-inline-start:var(--space-16); }
+.cm-bullets li + li, .cm-steps li + li { margin-top:var(--space-4); }
+.cm-log { margin-top:var(--space-8); }
+.cm-log summary { cursor:pointer; color:var(--accent); }
+.cm-log .log { margin-top:var(--space-8); }
+
+/* Live work: the panel list rows, laid out in a page section. */
+.cm-work { display:flex; flex-direction:column; gap:var(--space-8); }
+.cm-work section { min-width:0; }
+/* `.sect h3` sets the heading type; the list dividers keep their own group-label type. */
+.sect .cm-work .panel-list-divider { font:var(--type-caption); font-weight:500; }
+.cm-work[data-compact] { padding:var(--space-8) 0; border-block:1px solid var(--line); }
+
+/* Desktop status bar: the first item is the Core status entry. It is a plain link, always visible. */
+.cm-status-entry { display:inline-flex; flex:none; align-items:center; gap:var(--space-6); min-height:var(--size-control); margin-inline-start:calc(-1 * var(--space-8)); padding:0 var(--space-8); border-radius:var(--radius-s); color:var(--fg); text-decoration:none; }
+.cm-status-entry:hover, .cm-status-entry:focus-visible { background:var(--hover); }
+.cm-status-pending { color:var(--wait); }
+
+/* Confirmations: the same alert-dialog sheet as Thread delete (Cancel in the head, the action last). */
+.cm-sheet-copy { display:flex; flex-direction:column; gap:var(--space-12); }
+.cm-sheet-copy > .btn { align-self:flex-start; }
+.cm-stops { display:flex; flex-direction:column; gap:var(--space-8); }
+.mock-frame-desktop .mock-static-sheet { inline-size:min(calc(100% - 2 * var(--space-16)), var(--size-work-sheet-width)); margin-inline:auto; }
+
+@container app (max-width:899px) {
+  .cm-actions { inline-size:100%; }
+  .cm-actions .btn { min-block-size:var(--size-touch); }
+  .cm-sheet-copy > .btn { align-self:stretch; justify-content:center; min-block-size:var(--size-touch); }
+}
+@media (max-width:700px) {
+  .cm-row { display:grid; grid-template-columns:minmax(0,1fr); }
+}

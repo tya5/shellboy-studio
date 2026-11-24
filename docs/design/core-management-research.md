@@ -1,0 +1,63 @@
+# Core management in Studio: research and placement (#141)
+
+Status: design study for user approval. The static mock is `web/app/core-management-mock.html`, built from `web/designs/console/mocks/core-management.tsx`. It has no product code.
+
+## What the Issue asks
+
+The Issue asks for one Core view showing the version, instance, uptime, startup stage (Core #398), and the live Run and shell counts. Restart uses owner.shutdown and then the existing desktop launcher. Stop asks first and lists the work that will stop. An explicit stop or restart never triggers the automatic restart (#115). A browser attached to a Core started some other way gets the status and Stop only, plus the CLI command to start Core again. No new Core command is added.
+
+## Facts the design relies on
+
+- **Supervision:** `src/launcher/supervisor.rs` (`RestartState`) gives one automatic restart after an unexpected exit following readiness. A manual Start or Restart makes it available again; readiness and time do not (#115 decision, 2026-11-24). `desktop.rs` handles a manual restart (`manual_restart`) outside `RestartState::exited`, so the Studio-initiated stop never counts as a crash.
+- **Startup stage:** Core #398 writes `startup-stage.json`. `shellboy status` reports it as `error.details.last_startup_stage` (for example `database_migration`) while the owner is unreachable. It is the last observed stage, with no estimate and no percentage. The English labels come from `src/ui/startup.rs` (for example "Checking and updating the database").
+- **Stop semantics:** owner.shutdown is accepted only by serve owners. Its acceptance "is not completion". The owner stops admission, drains Control and closes (`docs/design/protocol.md`, "Explicit owner shutdown"). Running Runs end as `app_shutdown` ("Interrupted by app exit") and don't resume by themselves (`recovery-and-storage.md`). Enabled services start again with the owner (`thread-owned-shells.md`).
+- **Version and instance:** the IPC welcome carries `instance_id` and `owner_version` (`src/ipc.rs`). Settings › Studio currently shows "Owner version" as not readable; the same value would fill it.
+- **Uptime:** Core reports no start time. A Core that Studio started has a ready time observed by the launcher ("Ready since"). For a Core started elsewhere, Studio knows only when it connected ("Connected since"). The mock labels each one as what it is and never estimates.
+- **Restart pending:** config writes return `restart_required` (`ui-core/src/config.ts`, `setup.ts`, `embedding.ts`). The pending list is the set of this Studio's accepted writes with `restart_required: true` since the current instance started. Changes made elsewhere aren't known, and the notice says so.
+
+## References
+
+| Product / guideline | What it does | What we take |
+| --- | --- | --- |
+| Docker Desktop | Since 4.24 the engine status is shown "at all times, eliminating the need to hover for tooltips". There is an "interactive interface supporting stop, start, and pause" ([4.24 notes](https://www.docker.com/blog/docker-desktop-4-24/)). Restart sits in the Troubleshoot menu, reached from the Dashboard header ([Troubleshoot](https://docs.docker.com/desktop/troubleshoot-and-support/troubleshoot/)). Since 4.90 the Dashboard "displays the specific reason Docker Engine failed to start" ([release notes](https://docs.docker.com/desktop/release-notes/)). The CLI has `start / stop / restart / status` ([Desktop CLI](https://docs.docker.com/desktop/features/desktop-cli/)). | Status that is always visible and never needs hover; Start, Stop and Restart beside the status; the exact failure reason, not "something went wrong". |
+| VS Code Remote | The Status bar item shows the connected host, and "Clicking on the Status bar item will provide a list of remote commands" ([Remote SSH](https://code.visualstudio.com/docs/remote/ssh)). "Kill VS Code Server on Host" is the way to apply a setting change, and the docs say to restart the server after an environment change ([Troubleshooting](https://code.visualstudio.com/docs/remote/troubleshooting)). Status bar guidance: workspace-wide status goes on the left; use short text and clear-metaphor icons only, and use a warning background only "as a last resort" ([Status Bar UX](https://code.visualstudio.com/api/ux-guidelines/status-bar)). | Put the entry on the left of the existing status bar, as short text plus the existing status mark, with no coloured background. A restart is how a setting applies. |
+| Postgres.app | A GUI "to start / stop servers". Quitting the app stops running servers with `pg_ctl stop --mode=fast --wait` ([README](https://github.com/postgresapp/postgresapp)). Editing server settings requires a stop first ([install](https://postgresapp.com/documentation/install.html)). | A plain Start or Stop on the server's own page. The app that owns the server stops it when it quits (Studio's Quit already does this). |
+| TablePlus | The toolbar status bar shows the current connection and its tag. Clicking it opens the connection details, and "If the connection has dropped, clicking the bar reconnects it" ([Toolbar](https://tableplus.com/docs/gui-tools/the-interface/toolbar)). | A compact status entry that opens the details. |
+| Tailscale (macOS) | Menu bar dropdowns "don't allow us to easily convey information through changes in shape or color", so the windowed app gives "a quick glance at your connection status" and a visible red dot for critical errors. Quit asks whether to quit completely or keep running ([windowed UI](https://tailscale.com/blog/windowed-macos-ui-beta)). | Status needs a real surface, not only a menu. Make the effect of quitting or stopping explicit. |
+| Apple HIG: Alerts | "Use alerts sparingly". Show one "when people take an uncommon destructive action that they can't undo". "Always use the title 'Cancel'", and Cancel should not be the default button. Use specific verb titles. A deliberately chosen action does not need the destructive style ([Alerts](https://developer.apple.com/design/human-interface-guidelines/alerts)). | Confirm Stop and Restart because they interrupt running work that can't resume. Cancel comes first and gets focus; the action is "Restart Core" or "Stop Core". |
+| Apple HIG: Progress indicators | Use an indeterminate indicator "for unquantifiable tasks". Describe the task accurately, and "Avoid vague terms like loading" ([Progress indicators](https://developer.apple.com/design/human-interface-guidelines/progress-indicators)). | The starting state names the stage Core reports. No bar, percentage or time. |
+| Material Design | "Dialogs are purposefully interruptive, so they should be used sparingly" ([M3 Dialog, Android](https://github.com/material-components/material-components-android/blob/master/docs/components/Dialog.md)). Confirmation dialogs "provide final confirmation of a choice before committing to it". Use descriptive verbs, not "OK" ([Material dialogs](https://m2.material.io/components/dialogs)). A banner "remain[s] until dismissed by the user, or if the state that caused the banner is resolved" ([Material banners](https://m2.material.io/components/banners)). | A dialog only for Stop and Restart. A persistent banner for a state that lasts (Core stopped or starting) and disappears when it is resolved. |
+
+The m3.material.io and developer.apple.com pages render with script. Apple's text was read through its documentation JSON, and Material's through the Android component docs and the Material 2 text.
+
+## Placement decision: both, with one home
+
+- **Home: Settings › Core**, in the "This app" group beside Studio. It holds the status summary, Running now, Owner facts, supervision, and the Restart, Stop and Start actions in the page header. Settings already owns "Applies after the owner restarts", and the Setup restart notice already lives there, so the action is next to its cause. This matches Docker Desktop (status beside the actions), Postgres.app (the server's own page) and VS Code (restart as the way to apply a setting).
+- **Status entry: the existing desktop status bar.** Its first item, today the plain connection mark, becomes a link with the mark and a short state such as "Core running", "Core starting: checking the database", "Core stopped" or "· restart pending". It only opens Settings › Core. This follows VS Code (left side, workspace-wide, short text) and TablePlus (click opens the details). The entry has no popover and no controls of its own: actions live in one place, so a Restart can't be one stray click away in a dense bar.
+- **Banner: every view, at both widths, while Core is stopped, starting, or gave up after a crash.** The existing `.alerts` region (Notice `banner`, one sentence, one link to Core) carries it. The Material banner rule and Docker's always-visible status support this. Phones have no status bar, so this banner is their entry point; a normally running Core shows nothing on a phone, following Apple's "avoid using an alert merely to provide information".
+- **Not the app bar.** Studio's top bar belongs to each view (Thread header, view title). A Core item there would compete with Thread actions and wouldn't exist in Settings. The status bar is application-wide and already shows the owner.
+
+**When not to use this placement:**
+- Don't add Core actions to the status bar, the gear popover or a Thread header. They stay in Settings › Core.
+- Don't show the banner for a normally running Core or for a pending restart. Those appear in the status entry and in Settings only, because they need no action now.
+- Revisit if Studio gains several owners per window, which would need a picker, or if phone users report not finding Core while it is running normally.
+
+## Interaction rules shown in the mock
+
+- **Restart:** confirm, then owner.shutdown (stop admission, save, stop work), wait for the Core process to close, then start it through the launcher. The confirmation lists the 2 Runs and 3 shells that stop and says that stopped Runs show "Interrupted by app exit" and don't resume. It also says the restart never triggers the automatic start and makes that start available again. The action is primary, not destructive-styled, because it is the person's deliberate choice (HIG). Cancel is first and focused, and outside clicks don't dismiss (the ThreadDeleteDialog convention).
+- **Stop:** the same list. It says Core stays stopped until Start and that the stop never triggers the automatic start. The action is `warn`, because it ends work and nothing comes back by itself.
+- **Confirmation only when work would stop:** with nothing running, Restart and Stop act without a dialog (HIG: no alert for an action people can reverse). This is the only condition.
+- **Starting:** the reported stage label and its typed id (`database_migration`). Stop is available; Restart is disabled until ready. No list of upcoming stages is shown, because that would read as progress.
+- **Crash restarted once:** a `wait` Notice with the exit status, a disclosure with the owner.log tail, and the rule that the next unexpected exit waits for Start. The gave-up state, after a second exit, uses the same notice with `bad` tone and Start. It isn't drawn separately.
+- **External Core:** Stop only, labelled "Started outside Studio" and "Connected since", plus a GuideCopy with `shellboy serve --data-dir "<data dir>"` taken from the bridge's `data_dir`. A pending restart there uses the existing `setup.restartExternal` wording without a Restart button.
+- **No hover:** every action is a labelled button or link that is always visible. Icons are paired with text (Restart uses the retry glyph, Stop the square, Start a mock-only play glyph), following the guidance not to use icon-only buttons for destructive actions.
+
+## Status marks
+
+Only existing marks are used, with their existing meanings: Running uses the feedback `completed` mark (today's "Connected"), Starting the feedback `waiting` mark (today's "Connecting"), and Stopped the shell `stopped` mark. A Core that gave up uses the feedback `recovery` mark (today's "Shellboy not reachable"). No new status mark needs approval.
+
+## Open points for implementation
+
+- **Icon roles:** `settings.core` (the mock uses the cube glyph) and `core.start` with a new `play` glyph.
+- **TUI-hosted owners:** they reject owner.shutdown. Until Core #311 makes the TUI a client, Studio attached to a TUI owner should hide Stop and say to quit it in its terminal. Studio needs a signal for this: a capability, or the typed refusal.
+- **Timing:** no time is promised for a restart or stop. The view shows the current state; it has no countdown and no timeout message.
