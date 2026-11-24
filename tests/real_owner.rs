@@ -1580,7 +1580,7 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
             Command::OwnerShutdown(OwnerShutdownArgs {
                 instance_id: "wrong".into(),
             }),
-            Some("wrong-shutdown".into()),
+            Some(format!("{}:wrong-shutdown", serve.instance)),
             None,
         )
         .await;
@@ -1594,12 +1594,16 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
             Command::OwnerShutdown(OwnerShutdownArgs {
                 instance_id: serve.instance.clone().into(),
             }),
-            Some("correct-shutdown".into()),
+            Some(format!("{}:correct-shutdown", serve.instance)),
             None,
         )
         .await
         .unwrap();
-    assert!(accepted.ok);
+    assert!(
+        accepted.ok,
+        "owner.shutdown was rejected: {:?}",
+        accepted.error
+    );
     assert_eq!(
         accepted.result.unwrap(),
         json!({"state":"accepted", "instance_id": serve.instance, "shutdown_complete":false})
