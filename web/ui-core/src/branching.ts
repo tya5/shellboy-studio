@@ -204,10 +204,25 @@ export class Branches {
     this.seen.set(id, Math.max(this.seen.get(id) ?? 0, revision));
   }
 
-  // Lazy windows may extend an accepted revision, never replace it.
-  private extend(s: HistoryWindowResult, family: BranchFamily): void {
+  private tipCheck(threadId: string, pathNodes: number, tipNodeId: string, cancel: Cancel) {
+    return this.history({ thread_id: threadId, ordinal: pathNodes - 1, expect_node_id: tipNodeId, excerpt_chars: 0 }, cancel);
+  }
+
+  // An agreeing revision and the family tip/size checks do not prove the interior of the path.
+  private async extend(s: HistoryWindowResult, family: BranchFamily, cancel: Cancel): Promise<void> {
     const rev = this.revisions.get(s.thread_id);
-    if ((rev ?? s.revision) === s.revision && this.seen.get(s.thread_id) === s.revision && this.fits(family, s)) {
+    const lane = family.items.find(i => i.threadId === s.thread_id);
+    if (!lane || cancel.cancelled) return;
+    let agrees = rev === s.revision;
+    if (rev === undefined && lane.tipNodeId !== undefined && lane.pathNodes && this.fits(family, s)) {
+      if (s.items.some(i => i.selection?.ordinal === s.total - 1 && i.node_id === lane.tipNodeId)) agrees = true;
+      else {
+        const tip = await this.tipCheck(s.thread_id, lane.pathNodes, lane.tipNodeId, cancel);
+        agrees = tip.ok && tip.value.thread_id === s.thread_id && tip.value.revision === s.revision && this.fits(family, tip.value);
+      }
+    }
+    if (cancel.cancelled || this.running || this.state.peek().family !== family) return;
+    if (agrees && (this.revisions.get(s.thread_id) ?? s.revision) === s.revision && this.seen.get(s.thread_id) === s.revision && this.fits(family, s)) {
       this.revisions.set(s.thread_id, s.revision);
       this.lanes.project([s]);
     } else if (rev === undefined || s.revision > rev) void this.read(this.state.peek().threadId!);
@@ -230,15 +245,14 @@ export class Branches {
       this.queued.delete(key); this.pending.add(key);
       const cancel = this.laneCancel;
       const args = need.kind === "node" ? { node_id: need.nodeId } : need.split !== undefined ? { node_id: need.split, after: 1 } : { ordinal: need.start };
-      void this.history({ thread_id: need.threadId, ...args }, cancel).then(out => {
+      void this.history({ thread_id: need.threadId, ...args }, cancel).then(async out => {
         if (cancel.cancelled) return;
-        this.pending.delete(key);
         if (out.ok && out.value.thread_id === need.threadId) {
           this.observe(out.value);
           if (this.running || this.state.peek().family !== family) this.lanes.cache(out.value.items);
-          else this.extend(out.value, family);
+          else await this.extend(out.value, family, cancel);
         } else { this.failed.add(key); this.lanes.touch(); }
-        this.drain();
+        if (!cancel.cancelled) { this.pending.delete(key); this.drain(); }
       });
     }
   }
@@ -260,25 +274,31 @@ export class Branches {
       for (let o = from; o < from + count; o++) shown.add(o);
       this.observe(out.value);
       if (this.running) this.again = true;
-      else this.extend(out.value, this.state.peek().family ?? family);
+      else void this.extend(out.value, this.state.peek().family ?? family, cancel);
     });
   }
 
   private async readCut(family: BranchFamily, target: BranchTarget | undefined, cancel: Cancel) {
     const paths = new Map<string, number>();
     const snapshots: HistoryWindowResult[] = [];
-    const admit = (s: HistoryWindowResult) => {
+    const admit = (s: HistoryWindowResult, project = true) => {
       this.observe(s);
       if (!this.fits(family, s) || (paths.get(s.thread_id) ?? s.revision) !== s.revision) return false;
       paths.set(s.thread_id, s.revision);
-      snapshots.push(s);
+      if (project) snapshots.push(s);
       return true;
     };
     for (const lane of laneGraph(family, () => undefined, () => []).lanes) {
-      const { threadId, pathNodes } = lane.item;
+      const { threadId, pathNodes, tipNodeId } = lane.item;
       const ordinals = new Set(this.disclosed.get(threadId));
       if (this.lanes.nodeAt(threadId, lane.start) !== undefined) ordinals.add(lane.start);
       const positions = [...ordinals].filter(o => pathNodes === undefined || o < pathNodes).sort((a, b) => a - b);
+      // One guarded tip read for a participating lane, not a bracket around the family read.
+      if ((positions.length || target?.threadId === threadId) && pathNodes && tipNodeId) {
+        const out = await this.tipCheck(threadId, pathNodes, tipNodeId, cancel);
+        if (!out.ok) return out.error.kind === "owner" && out.error.code === "cursor_expired" ? undefined : { error: out.error };
+        if (out.value.thread_id !== threadId || !admit(out.value, false)) return;
+      }
       for (let i = 0; i < positions.length;) {
         const from = positions[i++]!;
         let to = from;

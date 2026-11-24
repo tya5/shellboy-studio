@@ -113,7 +113,7 @@ export function branchesFamily(db: FakeOwnerDb, options: { running?: boolean } =
       const at = typeof a.node_id === "string" ? path.findIndex((n) => n.node_id === a.node_id) : typeof a.ordinal === "number" ? a.ordinal : path.length - 1;
       const revision = fixture.revisions[id] ?? path.length;
       if (at < 0 || at >= path.length) return { ok: false, code: "cursor_expired", details: { revision, total: path.length } };
-      if (typeof a.expect_node_id === "string" && path[at]?.node_id !== a.expect_node_id) return { ok: false, code: "cursor_expired" };
+      if (typeof a.expect_node_id === "string" && path[at]?.node_id !== a.expect_node_id) return { ok: false, code: "cursor_expired", details: { revision, total: path.length } };
       const first = Math.max(0, at - Number(a.before ?? 20));
       const last = Math.min(path.length - 1, at + Number(a.after ?? 20));
       return { ok: true, result: { thread_id: id, revision, total: path.length, items: path.slice(first, last + 1).map((n, k) => ({ ...n, execution_count: 0, selection: { ordinal: first + k } })) } };

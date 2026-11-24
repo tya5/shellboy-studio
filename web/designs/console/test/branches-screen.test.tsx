@@ -290,6 +290,47 @@ describe("Branches screen", () => {
     expect(text(row("rel|tip"))).toContain("Mid-round append");
   });
 
+  it("discards the old family when the tip changes at the same path length before the first window", async () => {
+    const { el, row, point, flush, refresh, model, db, family, t } = await open();
+    await act(async () => { row("rel|run|6")!.querySelector<HTMLButtonElement>(".lanes-run")!.click(); });
+    await flush();
+    await act(async () => { point("Compare provider behavior")!.click(); });
+    const retained = row("rel|n|r9");
+    const previous = model.branches.state.peek().family;
+    const previousAction = el.querySelector(".lanes-actions input");
+    const path = family.paths.rel!;
+    const length = path.length;
+    const oldTip = path.at(-1)!.node_id;
+    const reads = t.calls("thread.branches").length;
+    const windows = t.calls("history.window").length;
+    const answer = db.answer.bind(db);
+    let replaced = false;
+    db.answer = call => {
+      const args = call.args as { thread_id?: string; expect_node_id?: string };
+      if (call.command === "history.window" && args.thread_id === "rel" && args.expect_node_id === oldTip && !replaced) {
+        expect(t.calls("history.window").length - windows).toBe(1);
+        family.revisions.rel = (family.revisions.rel ?? length) + 1;
+        path.pop();
+        family.append("rel", { node_id: "same-length-tip", kind: "user", excerpt: "Same-length replacement" });
+        expect(path).toHaveLength(length);
+        replaced = true;
+      }
+      if (call.command === "thread.branches" && replaced) {
+        expect(model.branches.state.peek().family).toBe(previous);
+        expect(row("rel|n|r9")).toBe(retained);
+        expect(el.querySelector(".lanes-actions input")).toBe(previousAction);
+      }
+      return answer(call);
+    };
+    await refresh();
+    expect(replaced).toBe(true);
+    expect(t.calls("thread.branches").length - reads).toBe(2);
+    expect(row("rel|n|r9")).toBe(retained);
+    expect(text(row("rel|tip"))).toContain("Same-length replacement");
+    expect(el.querySelector(".lanes-actions input")).not.toBeNull();
+    expect(el.querySelector(".lanes-actions input")).not.toBe(previousAction);
+  });
+
   it("Show opens a run with one guarded read; loading shows only on that run", async () => {
     const { el, row, point, flush, t } = await open();
     const run = row("rel|run|6")!;

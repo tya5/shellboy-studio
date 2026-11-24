@@ -1129,11 +1129,14 @@ describe("Branches", () => {
   const seedBranchPoint = (db: Awaited<ReturnType<typeof open>>["db"]) => {
     const answer = db.answer.bind(db);
     // The surviving split is still on the selected path after either action.
-    db.answer = call => call.command === "history.window" && (call.args as { thread_id?: string; node_id?: string }).thread_id === "lead"
-      && (call.args as { node_id?: string }).node_id === "n100"
-      ? { ok: true, result: { thread_id: "lead", revision: 1, total: 226,
-          items: [{ node_id: "n100", kind: "user", excerpt: "step 21", selection: { ordinal: 100 } }] } }
-      : answer(call);
+    db.answer = call => {
+      const args = call.args as { node_id?: string; expect_node_id?: string };
+      const node = args.node_id === "n100" ? { node_id: "n100", kind: "user", excerpt: "step 21", selection: { ordinal: 100 } }
+        : args.expect_node_id === "n225" ? { node_id: "n225", kind: "user", selection: { ordinal: 225 } } : undefined;
+      return call.command === "history.window" && node
+        ? { ok: true, result: { thread_id: "lead", revision: 1, total: 226, items: [node] } }
+        : answer(call);
+    };
   };
   it("a rewind shows its preview first, what isn't undone and the undo path, then asks", async () => {
     const { el, model, t, db } = await open();
