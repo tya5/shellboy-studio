@@ -1,7 +1,7 @@
 //! Authenticated content for the exact owner-selected artifact version.
 use crate::{owner::Owner, server::AppState};
 use axum::{
-    Json,
+    Extension, Json,
     body::Body,
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode, header},
@@ -258,10 +258,23 @@ fn reveal_error(status: StatusCode, code: &str) -> Response {
     (status, Json(serde_json::json!({ "code": code }))).into_response()
 }
 
-pub(crate) async fn reveal<O: Owner>(
+pub(crate) fn reveal_route<O: Owner>() -> axum::routing::MethodRouter<AppState<O>> {
+    reveal_route_with::<O, _>(SystemRunner)
+}
+
+fn reveal_route_with<O: Owner, R: RevealRunner>(
+    runner: R,
+) -> axum::routing::MethodRouter<AppState<O>> {
+    axum::routing::get(reveal_capability::<O>)
+        .post(reveal::<O, R>)
+        .layer(Extension(runner))
+}
+
+async fn reveal<O: Owner, R: RevealRunner>(
     State(state): State<AppState<O>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
+    Extension(runner): Extension<R>,
     Json(target): Json<RevealTarget>,
 ) -> Response {
     let Some(platform) = reveal_platform(&state, peer, &headers, true) else {
@@ -286,7 +299,7 @@ pub(crate) async fn reveal<O: Owner>(
     let Some(path) = reveal_path(&selected.version.uri).await else {
         return reveal_error(StatusCode::NOT_FOUND, "file_unavailable");
     };
-    match run_reveal(&SystemRunner, platform, &path).await {
+    match run_reveal(&runner, platform, &path).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(()) => reveal_error(StatusCode::BAD_GATEWAY, "reveal_failed"),
     }
@@ -304,13 +317,36 @@ async fn reveal_path(uri: &str) -> Option<PathBuf> {
     Some(canonical)
 }
 
-trait RevealRunner {
-    async fn run(&self, program: &str, args: &[std::ffi::OsString]) -> Result<(), ()>;
+trait RevealRunner: Clone + Send + Sync + 'static {
+    fn explorer_path(&self) -> Option<PathBuf> {
+        None
+    }
+    fn run(
+        &self,
+        program: &Path,
+        args: &[std::ffi::OsString],
+    ) -> impl std::future::Future<Output = Result<(), ()>> + Send;
 }
 
+#[derive(Clone, Copy)]
 struct SystemRunner;
 impl RevealRunner for SystemRunner {
-    async fn run(&self, program: &str, args: &[std::ffi::OsString]) -> Result<(), ()> {
+    #[cfg(windows)]
+    fn explorer_path(&self) -> Option<PathBuf> {
+        use std::{ffi::OsString, os::windows::ffi::OsStringExt};
+        use windows_sys::Win32::System::SystemInformation::GetSystemWindowsDirectoryW;
+        let mut buffer = [0u16; 260];
+        // Query the OS, not the inherited environment or executable search path.
+        let len = unsafe { GetSystemWindowsDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) }
+            as usize;
+        if len == 0 || len >= buffer.len() {
+            return None;
+        }
+        let dir = PathBuf::from(OsString::from_wide(&buffer[..len]));
+        dir.is_absolute().then(|| dir.join("explorer.exe"))
+    }
+
+    async fn run(&self, program: &Path, args: &[std::ffi::OsString]) -> Result<(), ()> {
         use std::process::Stdio;
         tokio::process::Command::new(program)
             .args(args)
@@ -329,17 +365,29 @@ impl RevealRunner for SystemRunner {
 
 async fn run_reveal(runner: &impl RevealRunner, platform: Platform, path: &Path) -> Result<(), ()> {
     let (program, args) = match platform {
-        Platform::Mac => ("/usr/bin/open", vec!["-R".into(), path.into()]),
+        Platform::Mac => (
+            PathBuf::from("/usr/bin/open"),
+            vec!["-R".into(), path.into()],
+        ),
         Platform::Windows => {
             let mut selection = std::ffi::OsString::from("/select,");
             selection.push(path);
-            ("explorer.exe", vec![selection])
+            (
+                runner
+                    .explorer_path()
+                    .filter(|path| path.is_absolute())
+                    .ok_or(())?,
+                vec![selection],
+            )
         }
-        Platform::Linux => ("/usr/bin/xdg-open", vec![path.parent().ok_or(())?.into()]),
+        Platform::Linux => (
+            PathBuf::from("/usr/bin/xdg-open"),
+            vec![path.parent().ok_or(())?.into()],
+        ),
     };
     tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        runner.run(program, &args),
+        runner.run(&program, &args),
     )
     .await
     .map_err(|_| ())?
@@ -459,10 +507,167 @@ mod reveal_tests {
         assert!(serde_json::from_value::<RevealTarget>(json).is_err());
     }
 
+    #[tokio::test]
+    async fn reveal_post_refuses_nonlocal_owner_and_mismatched_results() {
+        use crate::{
+            auth::Auth,
+            hub::Hub,
+            server::{ServerConfig, Shared},
+        };
+        use axum::{Router, body::to_bytes, http::Request};
+        use serde_json::{Value, json};
+        use shellboy::protocol::{ApiError, Origin, Response as OwnerResponse};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use tower::ServiceExt;
+
+        struct FakeOwner {
+            local: bool,
+            result: Value,
+            reads: AtomicUsize,
+        }
+        impl Owner for FakeOwner {
+            fn is_local_ipc(&self) -> bool {
+                self.local
+            }
+            async fn call(
+                &self,
+                cmd: Command,
+                operation: Option<String>,
+                origin: Option<Origin>,
+            ) -> Result<OwnerResponse<Value>, ApiError> {
+                let Command::ArtifactGet(args) = cmd else {
+                    panic!("expected artifact.get")
+                };
+                assert_eq!(args.artifact_id, "report");
+                assert_eq!(args.version, Some(2));
+                assert!(operation.is_none() && origin.is_none());
+                self.reads.fetch_add(1, Ordering::Relaxed);
+                Ok(OwnerResponse::success("fixture", self.result.clone()))
+            }
+        }
+        #[derive(Clone)]
+        struct NeverRunner;
+        impl RevealRunner for NeverRunner {
+            fn explorer_path(&self) -> Option<PathBuf> {
+                panic!("refusal reached runner")
+            }
+            async fn run(&self, _: &Path, _: &[OsString]) -> Result<(), ()> {
+                panic!("refusal reached runner")
+            }
+        }
+        for (local, thread, artifact, version, status, code) in [
+            (
+                false,
+                "lead",
+                "report",
+                2,
+                StatusCode::FORBIDDEN,
+                "not_local",
+            ),
+            (
+                true,
+                "other",
+                "report",
+                2,
+                StatusCode::NOT_FOUND,
+                "unknown_artifact",
+            ),
+            (
+                true,
+                "lead",
+                "other",
+                2,
+                StatusCode::NOT_FOUND,
+                "unknown_artifact",
+            ),
+            (
+                true,
+                "lead",
+                "report",
+                3,
+                StatusCode::NOT_FOUND,
+                "unknown_artifact",
+            ),
+            (
+                true,
+                "lead",
+                "report",
+                2,
+                StatusCode::NOT_FOUND,
+                "file_unavailable",
+            ),
+        ] {
+            let owner = Arc::new(FakeOwner {
+                local,
+                reads: AtomicUsize::new(0),
+                result: json!({
+                    "thread_id": thread, "artifact_id": artifact, "created_at": "fixture", "updated_at": "fixture",
+                    "version": {"version": version, "uri": "https://example.invalid/report", "title": "Report", "mime": null, "created_at": "fixture"},
+                }),
+            });
+            let auth = Auth::new("fixture".into());
+            let cookie = format!(
+                "{}={}",
+                crate::auth::cookie_name(8751),
+                auth.issue_session().unwrap()
+            );
+            let state = Shared::new(
+                owner.clone(),
+                Hub::new(),
+                auth,
+                ServerConfig {
+                    listen: "127.0.0.1:8751".parse().unwrap(),
+                    extra_hosts: vec![],
+                    debug: false,
+                    data_dir: PathBuf::new(),
+                    config_dir: PathBuf::new(),
+                },
+            );
+            let mut req = Request::post("/artifact-reveal")
+                .header(header::HOST, "127.0.0.1:8751")
+                .header(header::ORIGIN, "http://127.0.0.1:8751")
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"thread_id":"lead","artifact_id":"report","version":2}"#,
+                ))
+                .unwrap();
+            req.extensions_mut().insert(ConnectInfo(
+                "127.0.0.1:50000".parse::<SocketAddr>().unwrap(),
+            ));
+            let response = Router::new()
+                .route("/artifact-reveal", reveal_route_with(NeverRunner))
+                .with_state(state)
+                .oneshot(req)
+                .await
+                .unwrap();
+            assert_eq!(response.status(), status);
+            let body = to_bytes(response.into_body(), 512).await.unwrap();
+            assert_eq!(
+                serde_json::from_slice::<Value>(&body).unwrap(),
+                json!({"code":code})
+            );
+            assert_eq!(owner.reads.load(Ordering::Relaxed), usize::from(local));
+        }
+    }
+
+    #[derive(Clone)]
     struct RecordingRunner(&'static str, Vec<OsString>);
     impl RevealRunner for RecordingRunner {
-        async fn run(&self, program: &str, args: &[OsString]) -> Result<(), ()> {
-            assert_eq!(program, self.0);
+        fn explorer_path(&self) -> Option<PathBuf> {
+            Some(std::env::temp_dir().join("Windows").join("explorer.exe"))
+        }
+
+        async fn run(&self, program: &Path, args: &[OsString]) -> Result<(), ()> {
+            let expected = if self.0 == "explorer" {
+                self.explorer_path().unwrap()
+            } else {
+                PathBuf::from(self.0)
+            };
+            assert_eq!(program, expected);
             assert_eq!(args, self.1);
             Ok(())
         }
@@ -489,7 +694,7 @@ mod reveal_tests {
         }
         run_reveal(
             &RecordingRunner(
-                "explorer.exe",
+                "explorer",
                 vec![r"/select,C:\my reports\example.txt".into()],
             ),
             Platform::Windows,
