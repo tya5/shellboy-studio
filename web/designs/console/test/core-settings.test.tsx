@@ -103,3 +103,26 @@ it("does not prompt for a managed Restart with no live work and shows pending ke
   await step(() => f.t.push({ t: "owner", event: "restarted", owner: connected("i2") }));
   expect(host.textContent).not.toContain("ui.language");
 }));
+
+it("keeps actions and confirmation enabled on unchanged hints, but rejects changed work", () => {
+  const items = [...work];
+  return mount(async (f, host, step) => {
+    const hint = () => f.t.push({ t: "changed", thread_ids: ["lead"], list: true, config_changed: false });
+    await step(() => f.t.push({ t: "launcher_state", state: launcher("running", { instance_id: "i1" }) }));
+    const stop = button(host, "Stop Core")!;
+    await act(async () => { hint(); });
+    expect(stop.disabled).toBe(false);
+    await step(() => stop.click());
+    const dialog = host.querySelector("dialog[open]")!;
+    const confirm = button(dialog, "Stop Core")!;
+    items.reverse();
+    await step(hint);
+    expect(confirm.disabled).toBe(false);
+    expect(dialog.textContent).not.toContain("Running work changed");
+    items.pop();
+    await step(hint);
+    expect(confirm.disabled).toBe(true);
+    expect(dialog.textContent).toContain("Running work changed");
+    expect(f.t.sent.some(frame => frame.t === "launcher")).toBe(false);
+  }, items);
+});

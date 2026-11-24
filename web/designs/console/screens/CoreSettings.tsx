@@ -34,7 +34,14 @@ export function CoreBanner({ model }: { model: AppModel }) {
   return <Notice banner tone={phase === "failed" ? "bad" : "wait"} actions={<a class="nav-link" href={coreHref}>{model.t.value("core.open")}</a>}>{label}{stageLabel ? `: ${stageLabel}` : ""}</Notice>;
 }
 
-type Snapshot = { instance: string; hint: number; rows: readonly WorkItem[]; complete: boolean; error?: string };
+type Snapshot = { instance: string; rows: readonly WorkItem[]; complete: boolean; error?: string };
+const workKey = (row: WorkItem) => `${row.kind}:${row.id}`;
+function sameWork(confirmed: Snapshot, current: Snapshot | undefined): boolean {
+  if (!current || current.instance !== confirmed.instance || current.error || current.complete !== confirmed.complete || current.rows.length !== confirmed.rows.length) return false;
+  const keys = new Set(current.rows.map(workKey));
+  return confirmed.rows.every(row => keys.has(workKey(row)));
+}
+
 type Manual = "restart" | "stop";
 
 export function CoreSettings({ model }: { model: AppModel }) {
@@ -50,9 +57,10 @@ export function CoreSettings({ model }: { model: AppModel }) {
   const hint = model.data.coreStatusHint.value;
   const refused = instance && instance === model.coreShutdownRefusal.value?.instance ? model.coreShutdownRefusal.value : undefined;
   const pending = model.config.pendingRestart.value;
-  const current = snapshot?.instance === instance && snapshot?.hint === hint ? snapshot : undefined;
-  const rows = snapshot?.instance === instance ? snapshot?.rows ?? [] : [];
+  const current = snapshot && snapshot.instance === instance ? snapshot : undefined;
+  const rows = current?.rows ?? [];
   const available = current !== undefined && (current.complete || current.rows.length > 0);
+  const confirmationChanged = !!confirm && !sameWork(confirm.snapshot, current);
   const canStart = allowed && model.data.owner.value.state === "unreachable" && !!lifecycle && ["stopped", "exited", "failed", "external"].includes(lifecycle.phase);
   const canStop = allowed && !refused && (phase === "starting" ? lifecycle?.phase === "starting" && !instance : phase === "running" && !!instance && (!lifecycle || managed || ["external", "exited", "stopped", "failed"].includes(lifecycle.phase)));
 
@@ -72,19 +80,19 @@ export function CoreSettings({ model }: { model: AppModel }) {
         const out = await model.ops.coreStatus(instance, cursor, { cancel });
         if (cancel.cancelled) return;
         if (!out.ok) {
-          setSnapshot({ instance, hint, rows, complete: false, error: out.error.message });
+          setSnapshot({ instance, rows, complete: false, error: out.error.message });
           return;
         }
         for (const row of out.value.items) {
-          const key = `${row.kind}:${row.id}`;
+          const key = workKey(row);
           if ((row.kind === "run" || row.kind === "shell") && !seen.has(key)) { rows.push(row); seen.add(key); }
         }
         const next = out.value.next_cursor;
-        if (!next) { setSnapshot({ instance, hint, rows, complete: true }); return; }
+        if (!next) { setSnapshot({ instance, rows, complete: true }); return; }
         if (next === cursor) break;
         cursor = next;
       }
-      setSnapshot({ instance, hint, rows, complete: false });
+      setSnapshot({ instance, rows, complete: false });
     };
     void load();
     return () => cancel.cancel();
@@ -115,10 +123,10 @@ export function CoreSettings({ model }: { model: AppModel }) {
   const buttons = <>{canStart ? <Button variant="primary" onClick={() => { if (!model.data.link.launcherAction("start")) setFeedback(t("core.notSent")); }}><Icon role="core.start" size="small" /> {t("core.start")}</Button> : null}
     {managed ? <Button variant="primary" disabled={!available || busy} onClick={event => request("restart", event.currentTarget)}><Icon role="action.retry" size="small" /> {title("restart")}</Button> : null}
     {canStop ? <Button variant="warn" disabled={busy || (phase !== "starting" && !available)} onClick={event => request("stop", event.currentTarget)}>{title("stop")}</Button> : null}</>;
-  const work = (items: readonly WorkItem[], links: boolean) => <ul>{items.map(row => {
+  const work = (items: readonly WorkItem[], links: boolean) => <ul class="steps-list">{items.map(row => {
     const href = formatRoute({ view: "conversation", threadId: row.thread_id });
     const text = `${row.thread_title || row.thread_id} · ${t(row.kind === "shell" ? "core.shell" : "core.run")}`;
-    return <li key={`${row.kind}:${row.id}`}>{links ? <a class="nav-link" href={href} onClick={event => {
+    return <li key={workKey(row)}>{links ? <a class="nav-link" href={href} onClick={event => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       if (row.kind === "shell") model.coreActivityThread.value = row.thread_id;
@@ -135,20 +143,20 @@ export function CoreSettings({ model }: { model: AppModel }) {
       {lifecycle?.failure ? <Notice tone="bad">{lifecycle.failure}</Notice> : lifecycle?.restarted_after ? <Notice tone="wait">{t("core.restarted", { reason: lifecycle.restarted_after })}</Notice> : null}
       {refused ? <Notice tone="wait" title={t("core.refused")}>{refused.message}</Notice> : null}
       {feedback ? <Notice tone="bad">{feedback}</Notice> : null}
-      <p>{t("core.rule")}</p>
+      <div>{t("core.rule")}</div>
       {allowed && !managed && (!lifecycle || lifecycle.phase === "external" || !!instance) && command ? <GuideCopy title={t("core.manualStart")} line={command} note={t("core.external")} copy={t("code.copy")} copied={t("code.copied")} failed={t("guide.copyFailed")} /> : null}
     </Section>
-    {pending.length ? <Section title={t("core.pendingShort")} sub={t("core.pendingScope")}><ul>{pending.map(field => <li key={field}><code>{field}</code></li>)}</ul>{!managed ? <p>{t("setup.restartExternal")}</p> : null}</Section> : null}
+    {pending.length ? <Section title={t("core.pendingShort")} sub={t("core.pendingScope")}><ul class="steps-list">{pending.map(field => <li key={field}><code>{field}</code></li>)}</ul>{!managed ? <div>{t("setup.restartExternal")}</div> : null}</Section> : null}
     {allowed && instance ? <Section title={t("core.work")}>
       {current?.error ? <Notice tone="bad" actions={<Button onClick={() => { setSnapshot(undefined); setRetry(value => value + 1); }}>{t("common.refresh")}</Button>}>{current.error}</Notice> : null}
-      {rows.length ? work(rows, true) : current?.complete ? <p>{t("core.empty")}</p> : !current ? <p>{t("core.reading")}</p> : null}
-      {current && !current.complete && !current.error ? <p>{t("core.partial")}</p> : null}
+      {rows.length ? work(rows, true) : current?.complete ? <div>{t("core.empty")}</div> : !current ? <div>{t("core.reading")}</div> : null}
+      {current && !current.complete && !current.error ? <div>{t("core.partial")}</div> : null}
     </Section> : null}
     {confirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={title(confirm.action)} closeLabel={t("core.cancel")} onClose={() => setConfirm(undefined)} getReturnFocusTarget={() => opener.current}>
-      <p>{t("core.interrupted")}</p><p>{t("core.rule")}</p>{work(confirm.snapshot.rows, false)}
-      {!confirm.snapshot.complete ? <p>{t("core.partial")}</p> : null}
-      {confirm.snapshot !== current ? <p>{t("core.changed")}</p> : null}
-      <Button variant={confirm.action === "stop" ? "warn" : "primary"} disabled={confirm.snapshot !== current || !canStop} onClick={() => { const action = confirm.action; setConfirm(undefined); void execute(action); }}>{title(confirm.action)}</Button>
+      <div>{t("core.interrupted")}</div><div>{t("core.rule")}</div>{work(confirm.snapshot.rows, false)}
+      {!confirm.snapshot.complete ? <div>{t("core.partial")}</div> : null}
+      {confirmationChanged ? <div>{t("core.changed")}</div> : null}
+      <Button variant={confirm.action === "stop" ? "warn" : "primary"} disabled={confirmationChanged || !canStop || busy || (confirm.action === "restart" && !managed)} onClick={() => { const action = confirm.action; setConfirm(undefined); void execute(action); }}>{title(confirm.action)}</Button>
     </WorkSheet> : null}
   </>;
 }

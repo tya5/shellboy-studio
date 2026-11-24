@@ -198,7 +198,8 @@ shows "result unconfirmed" and offers `operation.get`, exactly like the CLI's
 `storage.status`, `index.status` (`analytics-settings.md`). Mutations: `thread.create`,
 `message.send`, `run.stop`, `run.retry`, `thread.archive`, `message.cancel`, plus the
 rewind operations of Shellboy #246 once available. `thread.set` is restricted to either parent changes or model/connection/effort changes for one Thread; model catalog reads are explicit and late responses are discarded. `events.wait` is bridge-internal.
-Everything else (`owner.shutdown`, deletion, prune, `storage.collect`, index and
+`owner.shutdown` is restricted to an authenticated, instance-bound Settings › Core request for an external owner, with an operation receipt. Managed Stop and Restart go through the launcher.
+Everything else (deletion, prune, `storage.collect`, index and
 compaction mutations) is rejected with a bridge error until a milestone adds a UI for it. The list
 is the set of operations the UI implements, so the browser cannot be used as a
 generic remote shell into the RPC; it is one exhaustive `match` in the bridge,
@@ -544,7 +545,7 @@ the foundation works end to end (§2.1).
 
 ### Managed Core restart policy (#32)
 
-For the existing macOS/Windows desktop path, each Studio launch or manual Start has a budget of one immediate automatic restart after an unsuccessful exit following the authoritative `ready` event. Readiness and elapsed time never replenish that budget. If the restarted child exits again, whether before or after ready, Studio gives up automatic restarts, keeps the last failure visible, and waits for a manual Start. A clean exit or an initial startup failure is shown without an automatic retry. Readiness itself has no new deadline: slow startup is not killed by this policy. A manual Start resets the budget. This portable supervisor has no Linux end-to-end caller in #32.
+For the existing macOS/Windows desktop path, each Studio launch or manual Start has a budget of one immediate automatic restart after an unsuccessful exit following the authoritative `ready` event. Readiness and elapsed time never replenish that budget. If the restarted child exits again, whether before or after ready, Studio gives up automatic restarts, keeps the last failure visible, and waits for a manual Start. A clean exit or an initial startup failure is shown without an automatic retry. Readiness itself has no new deadline: slow startup is not killed by this policy. A manual Start or Restart resets the budget. An explicit Stop or Restart bypasses automatic exit classification and never spends an automatic retry. The authenticated bridge forwards launcher-owned lifecycle facts as `launcher_state` and the bounded Core startup-stage read as `startup_stage`; neither frame is a progress estimate. This portable supervisor has no Linux end-to-end caller in #32.
 
 ### Conversation work observation decision (2026-11-07)
 

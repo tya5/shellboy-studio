@@ -61,7 +61,7 @@ With the capability, opening a Settings section reads `config.get`, and leaving 
 | Diff first | Nothing is sent until Review, then Write to file. Before and after are from the file, and the result shows what the owner reports changed: effective values, which may differ from the request |
 | Stale file | `expected_hash` is the hash of the last read. `operation_conflict` reads again, keeps the drafts and says so; the next write uses the new hash, so another program's edit isn't overwritten silently |
 | Refusals | The owner's own words, with the field from `change_index`, and `recovery_file` when a replace was interrupted. `warning` on a result is shown |
-| Restart | `restart.all_fields_require_restart` is all there is, so one line says it on every section. `differs` and `differing_fields` show what's waiting, and a row shows the value the running owner still uses. The UI can't restart the owner: `owner.shutdown` stays denied |
+| Restart | `restart.all_fields_require_restart` is all there is, so one line says it on every section. `differs` and `differing_fields` show what's waiting, and a row shows the value the running owner still uses. Settings › Core handles managed restarts via the launcher and allows authenticated, instance-bound shutdown of an external owner |
 | No reply | The file is read again. A visible draft the file now agrees with is dropped. A hidden one can't be compared, so it stays and the notice says so; writing it again is refused if the file changed |
 | Invalid file | Its validation message, and what the owner loaded, read-only |
 
