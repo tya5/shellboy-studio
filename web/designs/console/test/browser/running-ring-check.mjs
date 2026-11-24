@@ -29,19 +29,23 @@ try{
   const facts=()=>evaluate(`(()=>{
    const side=document.querySelector('#thread-sidebar');
    const svg=side?.querySelector('[data-status=running] svg');
-   if(!svg || side.getBoundingClientRect().right<=0) return;
+   const motion=svg?.closest('.status-arc-motion');
+   if(!svg || !motion || side.getBoundingClientRect().right<=0) return;
    const mark=svg.parentElement.getBoundingClientRect();
-   const style=getComputedStyle(svg);
+   const style=getComputedStyle(motion);
    const arc=svg.querySelector("circle"), arcStyle=getComputedStyle(arc);
    const action=svg.closest("[data-sidebar-row]").querySelector("button[aria-haspopup=menu]");
-   return {theme:document.documentElement.dataset.ds,animation:style.animationName,dash:arcStyle.strokeDasharray,stroke:arcStyle.strokeWidth,vector:arcStyle.vectorEffect,menu:getComputedStyle(action).visibility,opacity:getComputedStyle(action).opacity,transform:style.transform,mark:{x:mark.x,y:mark.y,width:mark.width,height:mark.height},
-    allRunning:[...document.querySelectorAll('[data-running-arc] svg')].every(el=>getComputedStyle(el).animationName===style.animationName),
+   return {theme:document.documentElement.dataset.ds,layoutMark:{width:svg.parentElement.offsetWidth,height:svg.parentElement.offsetHeight},animation:style.animationName,dash:arcStyle.strokeDasharray,stroke:arcStyle.strokeWidth,vector:arcStyle.vectorEffect,menu:getComputedStyle(action).visibility,opacity:getComputedStyle(action).opacity,transform:style.transform,mark:{x:mark.x,y:mark.y,width:mark.width,height:mark.height},
+    allRunning:[...document.querySelectorAll('[data-running-arc] .status-arc-motion')].every(el=>getComputedStyle(el).animationName===style.animationName),
+    svgStill:[...document.querySelectorAll('[data-running-arc] svg')].every(el=>getComputedStyle(el).animationName==='none'),
+    character:[...document.querySelectorAll('.character-thinking[data-running] .character-dot-motion')].map(el=>({animation:getComputedStyle(el).animationName,svgAnimation:getComputedStyle(el.querySelector('svg')).animationName})),
     others:[...side.querySelectorAll('[data-status]:not([data-status=running]) svg')].every(el=>getComputedStyle(el).animationName==='none')};
   })()`);
   const initial=await until(async()=>{const f=await facts();return f?.mark.x>=0 && f;});
   assert.equal(initial.theme,theme);assert.equal(initial.animation,'status-arc-spin');assert.equal(initial.dash,'78px, 22px');assert.equal(initial.stroke,'2.4px');assert.equal(initial.vector,'none');
   assert.equal(initial.menu,'visible');assert.equal(initial.opacity,'1');
-  assert(initial.allRunning && initial.others);assert.equal(initial.mark.width,initial.mark.height);
+  assert(initial.allRunning && initial.svgStill && initial.others);assert.equal(initial.layoutMark.width,initial.layoutMark.height);
+  assert.equal(initial.character.length,3);assert(initial.character.every(dot=>dot.animation==='character-hop' && dot.svgAnimation==='none'));
   const save=async suffix=>{
    const shot=await call('Page.captureScreenshot',{format:'png'});
    await writeFile(`${process.env.SHOTS}/sidebar-${width}-${theme}-${suffix}.png`,Buffer.from(shot.data,'base64'));
@@ -59,8 +63,8 @@ try{
   await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
   const reduced=await until(async()=>{const f=await facts();return f?.animation==='none' && f;});
   assert.equal(reduced.dash,initial.dash);assert.equal(reduced.vector,'none');assert.equal(reduced.transform,'none');
-  assert.equal(reduced.mark.width,initial.mark.width);assert.equal(reduced.mark.height,initial.mark.height);
-  assert(reduced.allRunning && reduced.others);
+  assert.deepEqual(reduced.layoutMark,initial.layoutMark);
+  assert(reduced.allRunning && reduced.others);assert(reduced.character.every(dot=>dot.animation==='none' && dot.svgAnimation==='none'));
   await save('reduced');
   console.log(JSON.stringify({width,theme,initial,reduced}));
  }
