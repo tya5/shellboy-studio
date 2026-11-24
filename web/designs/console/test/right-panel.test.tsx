@@ -116,7 +116,7 @@ describe('right panel purpose',()=>{
    expect(f.t.calls('schedule.remove').at(-1)?.args).toEqual({schedule_id:'sched'});
    schedules=[]; await pump(hint);
    expect(list.querySelector(schedule)).toBeNull();
-   expect(f.host.querySelector('[data-panel-detail] .muted.caption')?.textContent).toBe('メッセージ本文を取得できません');
+   expect(f.host.querySelector('[data-panel-detail] .muted.caption')?.textContent).toBe('このスケジュールまたはサービスは現在利用できません。');
    await pump(()=>click('[data-panel-back]'));
    expect(f.host.querySelector('[data-panel-detail]')).toBeNull();
   } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}

@@ -78,7 +78,7 @@ export function SchedulePanel({ model, kind, open, detailId }: {
       ]} />
       {detail.latest?.output ? <><h4>{t("schedule.output")}</h4><LogBlock text={detail.latest.output} boxed /></> : null}
       <ScheduleActions>{controls(detail, false)}</ScheduleActions>
-    </ScheduleDetailLayout> : !load ? <p class="muted caption">{t("work.textUnavailable")}</p> : null}
+    </ScheduleDetailLayout> : !load ? <p class="muted caption">{t("schedule.gone")}</p> : null}
     {open && resource.value?.size === 0 && !load ? <p class="caption muted">{t("schedule.none")}</p> : null}
     {open && kind === "schedule" && resource.value?.size ? <p class="caption muted">{t("schedule.onceNote")}</p> : null}
     {confirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("schedule.confirm")} closeLabel={t("threadSettings.cancel")} getReturnFocusTarget={() => confirm.opener.isConnected ? confirm.opener : null} onClose={() => setConfirm(undefined)}>
