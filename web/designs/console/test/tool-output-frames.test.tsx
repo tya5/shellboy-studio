@@ -3,7 +3,8 @@ import "@preact/signals";
 import { effect } from "@preact/signals-core";
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import * as outputRenderers from "../../../ui-core/src/output-renderers";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { flush, settle } from "../../../data/test/harness";
 import { Conversation } from "../screens/Conversation";
@@ -17,9 +18,16 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
   expect(host.querySelector('[data-execution="exec-1"]')?.closest('[data-work-group]')).not.toBeNull();
   await act(async()=>{await settle(t,db);});
   const snapshot = model.outputs.peek().get("exec-1"); expect(snapshot?.loading).toBe(false);
-  let changes = 0; const unwatch = effect(() => { model.outputs.value; changes++; }); const before = changes;
+  let changes = 0;
   const expected = saved || model.t.peek()("details.outputEmpty");
+  const format = vi.spyOn(outputRenderers, "renderOutput");
   try {
+    const renderedLog = host.querySelector(".log");
+    format.mockClear();
+    act(() => { model.outputs.value = new Map(model.outputs.peek()).set("unrelated-execution", { text: "other", loading: false, cutOff: false, error: undefined }); });
+    expect(format).not.toHaveBeenCalled();
+    expect(host.querySelector(".log")).toBe(renderedLog);
+    const unwatch = effect(() => { model.outputs.value; changes++; }); const before = changes;
     for (let refresh = 0; refresh < 3; refresh++) {
       await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await flush(); });
       const pending = t.calls("shell.list").at(-1)!; db.answered.add(pending.id);
@@ -35,7 +43,7 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
       expect(model.outputs.peek().get("exec-1")).toBe(snapshot);
     }
     expect(changes).toBe(before);
-  } finally { unwatch(); render(null, host); host.remove(); model.dispose(); }
+  } finally { format.mockRestore(); render(null, host); host.remove(); model.dispose(); }
 });
 
 let cleanup: (() => void) | undefined;

@@ -2,6 +2,15 @@ export interface OutputLine { text: string; kind: "key" | "value" | "add" | "rem
 export interface RenderedOutput { kind: "json" | "diff"; lines: OutputLine[] }
 export interface OutputInput { command: string; text: string; complete: boolean }
 const MAX_OUTPUT = 64 * 1024;
+const OUTPUT_TAIL = 8 * 1024;
+
+/** Bound display and formatting work while preserving the beginning and recent tail. */
+export function outputExcerpt(text: string): string {
+  if (text.length <= MAX_OUTPUT) return text;
+  const omitted = text.length - (MAX_OUTPUT - OUTPUT_TAIL);
+  const marker = `\n... ${omitted} characters omitted ...\n`;
+  return text.slice(0, MAX_OUTPUT - OUTPUT_TAIL - marker.length) + marker + text.slice(-OUTPUT_TAIL);
+}
 type Renderer = (input: OutputInput) => RenderedOutput | undefined;
 
 const json: Renderer = ({ command, text }) => {

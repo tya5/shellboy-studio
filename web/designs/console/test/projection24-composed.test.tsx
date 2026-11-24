@@ -94,7 +94,9 @@ it('#13 real FakeTransport held shell.read keeps successful empty Output cache/D
   const held=r.t.calls('shell.read').filter(c=>!r.db.answered.has(c.id));expect(held.length).toBeGreaterThan(0);
   draw();expect(r.model.outputs.value.get('transport-empty')).toBe(first);expect(host.querySelector('.log')).toBe(original);expect(host.textContent).not.toContain('Reading output');
   await settle(r.t,r.db);draw();expect(r.model.outputs.value.get('transport-empty')).toBe(first);expect(host.querySelector('.log')).toBe(original);
-  r.db.outputs['transport-empty']='SYNTHETIC_CHANGED_OUTPUT';r.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(r.t,r.db);draw();
+  r.db.outputs['transport-empty']='SYNTHETIC_CHANGED_OUTPUT';r.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(r.t,r.db);
+  expect(r.model.outputs.value.get('transport-empty')?.text).toBe('SYNTHETIC_CHANGED_OUTPUT');
+  await act(async()=>{await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));});
   expect(host.textContent).toContain('SYNTHETIC_CHANGED_OUTPUT');
  }finally{stop?.();r.model.dispose();r.data.stop();}
 });

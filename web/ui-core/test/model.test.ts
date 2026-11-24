@@ -2,6 +2,7 @@ import { computed } from "@preact/signals-core";
 import { describe, expect, it } from "vitest";
 import { connected, flush, settle, summary } from "../../data/test/harness";
 import { fixtureModel, fixturePendingAdapter } from "./fixture";
+import { MAX_AUTO_BODY_READ_KEYS } from "../src/model";
 import { canonicalAttemptId } from "../../data/test/work-fixture";
 
 describe("AppModel over the fake transport", () => {
@@ -50,6 +51,28 @@ describe("AppModel over the fake transport", () => {
       expect(model.rows.value.map(row => row.summary.thread_id)).toContain("inbox");
     } finally { model.dispose(); }
   });
+  it("bounds tried body keys and clears them when their reader or Thread is released", async () => {
+    const { model } = await fixtureModel();
+    const internals = model as unknown as {
+      autoBodyReads: Map<object, Map<object, Set<string>>>;
+      autoBodyReadKeys(handle: object, reader: object): Set<string>;
+      clearAutoBodyReads(handle: object, reader?: object): void;
+      rememberAutoBodyRead(keys: Set<string>, key: string): boolean;
+    };
+    const handle = {}; const reader = {};
+    const keys = internals.autoBodyReadKeys(handle, reader);
+    for (let i = 0; i < MAX_AUTO_BODY_READ_KEYS * 4; i++)
+      expect(internals.rememberAutoBodyRead(keys, `body-${i}`)).toBe(true);
+    expect(internals.rememberAutoBodyRead(keys, `body-${MAX_AUTO_BODY_READ_KEYS * 4 - 1}`)).toBe(false);
+    expect(keys.size).toBeLessThanOrEqual(MAX_AUTO_BODY_READ_KEYS);
+    internals.clearAutoBodyReads(handle, reader);
+    expect(internals.autoBodyReads.has(handle)).toBe(false);
+    internals.autoBodyReadKeys(handle, reader).add("thread-key");
+    internals.clearAutoBodyReads(handle);
+    expect(internals.autoBodyReads.has(handle)).toBe(false);
+    model.dispose();
+  });
+
   it("opens the newest Thread by default and shows only conversation rows", async () => {
     const { model } = await fixtureModel();
     expect(model.selectedId.value).toBe("lead");

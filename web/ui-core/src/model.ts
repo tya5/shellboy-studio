@@ -137,6 +137,8 @@ export const errorMessage = (e: OpError): string => e.message;
 
 export type ActionNotice = { kind: "error" | "success"; text: string };
 
+export const MAX_AUTO_BODY_READ_KEYS = 256;
+
 export class AppModel {
   readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });
   async loadPairingHosts(): Promise<void> {
@@ -298,6 +300,21 @@ export class AppModel {
 
   readonly shells: Signal<ReadonlyMap<string, ShellEntry>> = signal(new Map());
   readonly outputs: Signal<ReadonlyMap<string, OutputState>> = signal(new Map());
+  private outputSignals = new Map<string, Signal<OutputState | undefined>>();
+  outputState(executionId: string): ReadonlySignal<OutputState | undefined> {
+    let state = this.outputSignals.get(executionId);
+    if (!state) { state = signal(this.outputs.peek().get(executionId)); this.outputSignals.set(executionId, state); }
+    return state;
+  }
+  private publishOutputs(next: ReadonlyMap<string, OutputState>): void {
+    batch(() => {
+      this.outputs.value = next;
+      for (const [id, state] of this.outputSignals) {
+        const value = next.get(id);
+        if (state.peek() !== value) state.value = value;
+      }
+    });
+  }
   readonly bodies: Signal<ReadonlyMap<string, BodyState>> = signal(new Map());
   private bodyReaderKeys = new WeakMap<ConversationWindow, string>();
   private bodyRouteKeys = new WeakMap<Route, string>();
@@ -350,7 +367,7 @@ export class AppModel {
   private threadReads = new Cancel();
   /** A step's output read, cancelled when its row closes. */
   private outputReads = new Map<string, Cancel>();
-  private autoBodyReads = new WeakMap<ThreadHandle, WeakMap<ConversationWindow, Set<string>>>;
+  private autoBodyReads = new Map<ThreadHandle, Map<ConversationWindow, Set<string>>>;
   private bodyReadTokens = new Map<string, BodyReadToken>();
   private bodyOwnerKeys = new WeakMap<ThreadHandle, string>();
   private nextBodyOwnerKey = 0;
@@ -764,6 +781,7 @@ export class AppModel {
     this.disposers = [];
     this.listHandle?.close();
     this.listHandle = undefined;
+    if (this.handle.value) this.clearAutoBodyReads(this.handle.value);
     this.handle.value?.close();
     this.handle.value = undefined;
     this.data.stop();
@@ -838,6 +856,7 @@ export class AppModel {
     const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
     const cur = this.longReader.peek();
     if (cur && (!want || this.readerThread !== h?.threadId || this.handle.peek() !== h || (h !== undefined && !cur.isCurrentThread(h)))) {
+      this.clearAutoBodyReader(cur);
       cur.dispose(); // leaving the view, Thread, or owner lifetime cancels its reads
       this.longReader.value = undefined;
       this.readerThread = undefined;
@@ -894,6 +913,36 @@ export class AppModel {
         && (handle.work.peek().value === input.identity.work.source || handle.work.peek().value === undefined && input.identity.work.facts.length === 0) };
   }
 
+  private autoBodyReadKeys(handle: ThreadHandle, reader: ConversationWindow): Set<string> {
+    let readers = this.autoBodyReads.get(handle);
+    if (!readers) { readers = new Map(); this.autoBodyReads.set(handle, readers); }
+    let keys = readers.get(reader);
+    if (!keys) { keys = new Set(); readers.set(reader, keys); }
+    return keys;
+  }
+
+  private rememberAutoBodyRead(keys: Set<string>, key: string): boolean {
+    if (keys.has(key)) return false;
+    if (keys.size >= MAX_AUTO_BODY_READ_KEYS) keys.delete(keys.values().next().value!);
+    keys.add(key);
+    return true;
+  }
+
+  private clearAutoBodyReader(reader: ConversationWindow): void {
+    for (const [handle, readers] of this.autoBodyReads) {
+      readers.delete(reader);
+      if (readers.size === 0) this.autoBodyReads.delete(handle);
+    }
+  }
+
+  private clearAutoBodyReads(handle: ThreadHandle, reader?: ConversationWindow): void {
+    const readers = this.autoBodyReads.get(handle);
+    if (!readers) return;
+    if (reader) readers.delete(reader);
+    else readers.clear();
+    if (!reader || readers.size === 0) this.autoBodyReads.delete(handle);
+  }
+
   private composeWindowDisplay(reader: ConversationWindow, handle: ThreadHandle): void {
     const snapshot = reader.acceptedView.peek();
     if (!reader.acceptedView.isCurrent(snapshot)) return;
@@ -907,15 +956,10 @@ export class AppModel {
       const allProse = candidate.items !== undefined && candidate.items.length > 0 && candidate.items.every(item => item.kind === "text");
       if (!allProse) return;
       const identity = undefined;
-      let readerKeys = this.autoBodyReads.get(handle);
-      if (!readerKeys) { readerKeys = new WeakMap(); this.autoBodyReads.set(handle, readerKeys); }
-      let keys = readerKeys.get(reader);
-      if (!keys) { keys = new Set(); readerKeys.set(reader, keys); }
+      const keys = this.autoBodyReadKeys(handle, reader);
       const key = `${candidate.node_id}:${kind}:${identity ?? "deferred"}`;
-      if (this.bodyState(candidate.node_id, identity) === undefined && !keys.has(key)) {
-        keys.add(key);
+      if (this.bodyState(candidate.node_id, identity) === undefined && this.rememberAutoBodyRead(keys, key))
         void this.loadBody(candidate.node_id, { handle, reader, kind, identity });
-      }
     }
   }
 
@@ -975,6 +1019,7 @@ export class AppModel {
     }
     this.handlePaused = false;
     this.cancelThreadReads();
+    if (current) this.clearAutoBodyReads(current);
     current?.close();
     this.lastThread.value = id;
     this.shells.value = new Map();
@@ -1033,6 +1078,7 @@ export class AppModel {
       this.watchedOutputs.set(executionId, watch);
       void this.readOutput(executionId);
     }
+    const state = this.outputSignals.get(executionId);
     let released = false;
     return () => {
       if (released || this.watchedOutputs.get(executionId) !== watch) return;
@@ -1042,9 +1088,10 @@ export class AppModel {
       const cancel = this.outputReads.get(executionId);
       this.outputReads.delete(executionId);
       if (this.outputs.peek().get(executionId)?.loading) {
-        const next = new Map(this.outputs.peek()); next.delete(executionId); this.outputs.value = next;
+        const next = new Map(this.outputs.peek()); next.delete(executionId); this.publishOutputs(next);
       }
       cancel?.cancel();
+      if (this.outputSignals.get(executionId) === state) this.outputSignals.delete(executionId);
     };
   }
 
@@ -1066,12 +1113,12 @@ export class AppModel {
   private async readOutputPages(executionId: string, cancel: Cancel): Promise<void> {
     const cur = this.outputs.peek().get(executionId);
     // A validated empty output is still a saved result, not first-load absence.
-    if (!cur || cur.loading || cur.error !== undefined) this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
+    if (!cur || cur.loading || cur.error !== undefined) this.publishOutputs(setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
       text: cur?.text ?? "",
       loading: true,
       cutOff: cur?.cutOff ?? false,
       error: undefined,
-    });
+    }));
     let text = "";
     let cursor: string | undefined;
     let error: string | undefined;
@@ -1089,7 +1136,7 @@ export class AppModel {
           if (cur && !cur.loading && cur.error === undefined) return;
           const next = new Map(this.outputs.peek());
           next.delete(executionId);
-          this.outputs.value = next;
+          this.publishOutputs(next);
           return;
         }
         error = errorMessage(out.error);
@@ -1102,7 +1149,7 @@ export class AppModel {
     const next: OutputState = { text: error !== undefined ? (cur?.text ?? "") : text, loading: false, cutOff, error };
     const current = this.outputs.peek().get(executionId);
     if (current?.text === next.text && current.loading === next.loading && current.cutOff === next.cutOff && current.error === next.error) return;
-    this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, next);
+    this.publishOutputs(setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, next));
   }
 
   /** Read one message beyond its excerpt. On request only. */
