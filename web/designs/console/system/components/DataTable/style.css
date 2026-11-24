@@ -2,6 +2,7 @@
 .tbl{width:100%;border-collapse:collapse;font:var(--type-label)}
 .tbl th{padding:var(--space-4) var(--space-8);border-bottom:1px solid var(--line-strong);color:var(--muted);font:var(--type-caption);text-align:left;white-space:nowrap}
 .tbl td{padding:var(--space-8);border-bottom:1px solid var(--line);vertical-align:top}
+.tbl[data-center-rows="true"] td{vertical-align:middle}
 .tbl tr:last-child td{border-bottom:0}
 .tbl .cell{min-width:0;overflow-wrap:anywhere}
 .tbl .num{text-align:right;font:var(--type-code);font-size:var(--size-label);font-variant-numeric:tabular-nums;white-space:nowrap}

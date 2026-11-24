@@ -67,7 +67,7 @@ function Mock() {
           <ul class="ranking-legend" aria-label="Bar segments">{segments.map(index => <li key={index}>
             <span aria-hidden="true" class={`ranking-segment segment-${index + 1}`} />{labels[index]}</li>)}</ul>
           <p class="caption muted">Bars, values and shares use the selected metric. Open a row for its exact breakdown.</p>
-          <div class="ranking-table"><DataTable flat caption={`Thread ranking by ${metric.name}`} columns={[
+          <div class="ranking-table"><DataTable flat centerRows caption={`Thread ranking by ${metric.name}`} columns={[
             { label: "Rank", numeric: true }, { label: "Thread" }, { label: "Tokens", numeric: true }, { label: "Share", numeric: true },
           ]} rows={ranked.map((item, index) => {
             const tokens = valueOf(item) * scale;
