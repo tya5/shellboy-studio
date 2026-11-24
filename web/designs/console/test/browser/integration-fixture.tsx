@@ -12,7 +12,7 @@ const ownSendFixture = params.get('view') === 'own-send';
 const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
 const sectionGeometryFixture = params.get('view') === 'section-geometry';
-const fixtureOptions = sectionGeometryFixture ? { route: 'threads' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
+const fixtureOptions = sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
   if (params.get('view') === 'sidebar' && params.get('state') === 'running') {
@@ -103,7 +103,7 @@ const resizeStore = params.get('view') === 'splitters' ? {
   read: () => localStorage.getItem('splitter-fixture-prefs'),
   write: (value: string) => localStorage.setItem('splitter-fixture-prefs', value),
 } : undefined;
-const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : params.get('theme') === 'auto' ? 'auto' : 'console', lang: fixtureLang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
+const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : params.get('theme') === 'auto' ? 'auto' : 'console', lang: fixtureLang, weights: { cached: 0.1, output: 5 } });
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; if (resizeStore) savePrefs(resizeStore, prefs.value); }, submitToken: async () => true });
 addEventListener('hashchange', () => model.applyRoute(parseRoute(location.hash)));

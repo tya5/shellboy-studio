@@ -24,5 +24,5 @@ const send = t.send.bind(t);
 t.send = (frame) => { const ok = send(frame); if (frame.t === 'call') queueMicrotask(() => void settle(t, db)); return ok; };
 t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
 await settle(t, db);
-const prefs = signal<Prefs>({ design: 'console', theme: 'console', lang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
+const prefs = signal<Prefs>({ design: 'console', theme: 'console', lang, weights: { cached: 0.1, output: 5 } });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true });

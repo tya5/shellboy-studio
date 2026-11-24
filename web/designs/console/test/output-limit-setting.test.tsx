@@ -18,7 +18,7 @@ afterEach(()=>{dispose?.();document.body.replaceChildren();});
 it.each(['responses','chat_completions','anthropic_messages'])('shows unset and configured existing maximum output tokens for %s',async api=>{
  const values={connections:{blank:{api,base_url:'https://example.invalid/v1'},configured:{api,max_tokens:4096,base_url:'https://example.invalid/v1'}}};
  const m=await fixtureModel({route:'settings',section:'connections',capabilities:['config.edit'],configure(db){const before=db.answer.bind(db);db.answer=c=>c.command==='config.get'?{ok:true,result:{loaded:{values},file:{present:true,valid:true,content_hash:'synthetic',values},differs:false}}:before(c);}});
- const root=document.createElement('div');document.body.append(root);const prefs=signal<Prefs>({design:'console',theme:'console',lang:'en',monitorView:'cards',weights:{cached:0.1,output:5}});
+ const root=document.createElement('div');document.body.append(root);const prefs=signal<Prefs>({design:'console',theme:'console',lang:'en',weights:{cached:0.1,output:5}});
  // Mount the same presentation as the application, with a controlled transport only.
  const unmount=mount(root,{model:m.model,designs:DESIGNS,prefs,setPrefs:()=>{},submitToken:async()=>true});dispose=()=>{unmount();m.model.dispose();};
  await act(async()=>settle(m.t,m.db));
@@ -31,7 +31,7 @@ it.each(['responses','chat_completions','anthropic_messages'])('shows unset and 
 it('focuses a pending connection setting request after SettingsView mounts its target',async()=>{
  const values={connections:{proxy:{api:'responses',base_url:'https://example.invalid/v1',max_tokens:4096}}};
  const m=await fixtureModel({route:'settings',section:'general',capabilities:['config.edit'],configure(db){const before=db.answer.bind(db);db.answer=c=>c.command==='config.get'?{ok:true,result:{loaded:{values},file:{present:true,valid:true,content_hash:'synthetic',values}}}:before(c);}});
- const root=document.createElement('div');document.body.append(root);const prefs=signal<Prefs>({design:'console',theme:'console',lang:'en',monitorView:'cards',weights:{cached:0.1,output:5}});
+ const root=document.createElement('div');document.body.append(root);const prefs=signal<Prefs>({design:'console',theme:'console',lang:'en',weights:{cached:0.1,output:5}});
  const unmount=mount(root,{model:m.model,designs:DESIGNS,prefs,setPrefs:()=>{},submitToken:async()=>true});dispose=()=>{unmount();m.model.dispose();};
  await act(async()=>settle(m.t,m.db));
  await act(async()=>m.model.navigateToSettingFocus({view:'settings',section:'connections'},'connections.proxy.max_tokens'));
@@ -53,7 +53,7 @@ it.each(['responses','chat_completions','anthropic_messages'])('saves only max_t
  void c.saveField(['connections','proxy','max_tokens'],'4096','int');await settle(m.t,m.db);
  void c.configChanged();await settle(m.t,m.db);
  expect(m.t.calls('config.set')).toHaveLength(1);expect(c.read.value.value?.file.values).toEqual(values());
- m.model.navigate({view:'monitor'});m.model.navigate({view:'settings',section:'connections'});await settle(m.t,m.db);
+ m.model.navigate({view:'inbox'});m.model.navigate({view:'settings',section:'connections'});await settle(m.t,m.db);
  expect((c.read.value.value?.file.values?.connections as ReturnType<typeof values>['connections']).proxy.max_tokens).toBe(4096);
  void c.saveField(['connections','proxy','max_tokens'],'','int');await settle(m.t,m.db);
  void c.configChanged();await settle(m.t,m.db);

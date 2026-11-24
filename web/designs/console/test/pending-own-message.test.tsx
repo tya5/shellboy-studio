@@ -208,7 +208,7 @@ it('failed acceptance retries the original operation, while navigation invalidat
   sent=f.model.resend();await flush(8);
   const second=f.t.calls('message.send').at(-1)!;
   expect(f.model.pendingOwnMessage.peek()!.operationId).toBe(operation);expect(second.args).toEqual(first.args);
-  f.model.navigate({view:'threads'});await flush(8);
+  f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);
   f.t.ok(second.id,{message_id:'canonical-late',thread_id:f.model.pendingOwnMessage.peek()?.threadId??'lead'});
   expect(await sent).toBe(false);expect(f.model.pendingOwnMessage.peek()).toBeUndefined();
  }finally{f.model.dispose();f.data.stop();}
@@ -236,7 +236,7 @@ it('reserves eight entries and UTF-8 bytes before dispatch without evicting ackn
   }
   expect(await f.model.send('Ninth draft')).toBe(false);expect(f.t.calls('message.send')).toHaveLength(8);
   expect(f.model.ownSendCapacityReason.peek()).toBe(true);expect(f.model.acceptedOwnMessages.peek()[0]!.text).toBe('Accepted 0');
-  f.model.navigate({view:'threads'});await flush(4);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
+  f.model.navigate({view:'conversation',threadId:'lead'});await flush(4);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
  }finally{f.model.dispose();f.data.stop();}
  const g=await fixtureModel();
  try{
@@ -430,7 +430,7 @@ it('a locally denied draft fires no reservation notification and preserves origi
   const retried=f.model.resend();await flush(8);const second=f.t.calls('message.send').at(-1)!;
   expect(second.operation_id).toBe(first.operation_id);expect(second.args).toEqual(first.args);expect(notified).toBe(0);
   f.t.ownerError(second.id,'temporary_failure');await retried;
-  f.model.navigate({view:'threads'});await flush(8);expect(f.model.canResend()).toBe(false);
+  f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);expect(f.model.canResend()).toBe(false);
   expect(await f.model.resend()).toBe(false);expect(f.t.calls('message.send')).toHaveLength(before+1);
  }finally{f.model.dispose();f.data.stop();}
 });
@@ -445,7 +445,7 @@ it('retry display eligibility rejects owner ABA and route ABA without dispatch s
    if(mode==='owner'&&owner.state==='connected'){
     f.t.push({t:'owner',event:'connected',owner:{...owner,info:{...owner.info,instance_id:'different-owner'}}});await flush(8);
     f.t.push({t:'owner',event:'connected',owner});await flush(8);
-   }else {f.model.navigate({view:'threads'});await flush(8);f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);}
+   }else {f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);}
    const count=f.t.calls('message.send').length;
    expect(f.model.canResend(original)).toBe(false);expect(await f.model.resend(original)).toBe(false);expect(f.t.calls('message.send')).toHaveLength(count);
   }finally{f.model.dispose();f.data.stop();}
@@ -513,7 +513,7 @@ it("auto-loads only the newest typed prose body once", async () => {
 });
 
 it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", async () => {
- const f=await fixtureModel({capabilities:["history.window"],route:"threads",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
+ const f=await fixtureModel({capabilities:["history.window"],route:"inbox",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
  const readWindowCalls:unknown[]=[];let restoreReadWindow:(()=>void)|undefined;let restoreResponder:(()=>void)|undefined;let capturedHandle:ReturnType<typeof f.model.handle.peek>=undefined,capturedReader:ReturnType<typeof f.model.longReader.peek>=undefined,capturedKey:string|undefined;
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}]};
@@ -533,7 +533,7 @@ it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", asyn
 });
 
 it("mounted click joins the held old cursor read", async () => {
- const f=await fixtureModel({capabilities:["history.window"],route:"threads",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
+ const f=await fixtureModel({capabilities:["history.window"],route:"inbox",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}]};
  const newer:HistoryItem={node_id:'new-tail',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'answer',text:'new complete',text_complete:true}]};

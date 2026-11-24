@@ -61,7 +61,7 @@ it("shows all connection summary overrides and removes numeric and spill keys wh
   const context: DesignContext = {
     model: m.model,
     designs: DESIGNS,
-    prefs: signal<Prefs>({ design: "console", theme: "console", lang: "en", monitorView: "cards", weights: { cached: 0.1, output: 5 } }),
+    prefs: signal<Prefs>({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 } }),
     setPrefs: () => {},
     submitToken: async () => true,
   };

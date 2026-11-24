@@ -280,7 +280,7 @@ it("opens all ten cross-directory descendants, gives overlapping pins independen
 });
 
 it('settles the mounted tag session while hidden and ignores late results after retargeting', async () => {
-  const f = await fixtureModel({ route: 'inbox', threadId: 'lead', capabilities: ['thread.tags'], configure(db) {
+  const f = await fixtureModel({ route: 'conversation', threadId: 'lead', capabilities: ['thread.tags'], configure(db) {
     db.threads = { lead: summary('lead', { tags: ['old'] }), other: summary('other') };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
