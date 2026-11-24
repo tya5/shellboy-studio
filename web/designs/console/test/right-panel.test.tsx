@@ -90,6 +90,24 @@ describe('right panel purpose',()=>{
    expect(list.querySelector('[data-panel-row-id="shell-running"]')).not.toBeNull();
    for(const command of ['schedule.list','service.list']) expect(f.t.calls(command).at(-1)?.args).toEqual({thread_id:'lead'});
    const opener=list.querySelector<HTMLButtonElement>(`${schedule} .panel-list-main`)!;
+   const priorRead=f.t.calls('schedule.list').at(-1)?.id;
+   await act(async()=>{
+    hint();
+    for(let i=0;i<10;i++) {
+     await flush(32);
+     for(const call of f.t.calls().filter(call=>call.command!=='schedule.list'&&!f.db.answered.has(call.id))) {
+      f.db.answered.add(call.id);
+      const response=f.db.answer(call);
+      if(response.ok) f.t.ok(call.id,response.result); else f.t.ownerError(call.id,response.code);
+     }
+    }
+   });
+   const held=f.t.calls('schedule.list').at(-1)!;
+   expect(held.id).not.toBe(priorRead);
+   expect(f.db.answered.has(held.id)).toBe(false);
+   expect(list.querySelector(`${schedule} .panel-list-main`)).toBe(opener);
+   expect(list.textContent).not.toContain(f.model.t.value('common.loading'));
+   await pump(()=>{});
    await pump(()=>opener.click());
    const log=f.host.querySelector<HTMLPreElement>('[data-panel-detail] pre.log.boxed');
    expect(log?.textContent).toBe('sample output');

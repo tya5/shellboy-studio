@@ -58,7 +58,7 @@ export function SchedulePanel({ model, kind, open, detailId }: {
   const detail = detailId ? resource.value?.get(detailId) : undefined;
   const target = confirm ? resource.value?.get(confirm.id) : undefined;
   const title = t(kind === "schedule" ? "schedule.heading" : "service.heading");
-  const load = resource.loading ? t("common.loading") : resource.stale ? t("schedule.stale") : undefined;
+  const load = resource.loading && resource.value === undefined ? t("common.loading") : resource.stale ? t("schedule.stale") : undefined;
   return <ScheduleLayout>
     {open ? <ListDivider label={title} count={resource.value?.size} /> : null}
     {load ? <p class="caption muted" role="status">{load}</p> : null}
