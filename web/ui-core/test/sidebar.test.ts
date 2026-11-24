@@ -9,7 +9,7 @@ describe("sidebar parent trees", () => {
   it.each([
     [["A"], [["A", 0], ["B", 1], ["C", 2]]],
     [["B"], [["B", 0], ["C", 1]]],
-    [["A", "B"], [["A", 0], ["B", 1], ["C", 2], ["B", 0], ["C", 1]]],
+    [["A", "B"], [["B", 0], ["C", 1], ["A", 0], ["B", 1], ["C", 2]]],
   ])("shows each pin %j as a root with its whole subtree", (pins, expected) => {
     const tags = (id: string) => pins.includes(id) ? ["pin"] : [];
     const rows = [summary("A", { cwd: "/a", tags: tags("A") }), summary("B", { parent_id: "A", cwd: "/b", tags: tags("B") }), summary("C", { parent_id: "B" })];

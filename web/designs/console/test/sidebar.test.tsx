@@ -18,7 +18,7 @@ it("orders the complete pin band by creation time without changing filtered All 
   const recent = summary("recent", { tags: ["pin"], created_at: "2024-01-01T00:00:00Z" });
   const older = summary("older", { tags: ["pin"], created_at: "2020-01-01T00:00:00Z" });
   const groups = sidebarGroups([recent, older], ["recent", "older"], undefined, true, [recent, older]);
-  expect(groups[0]!.rows.map(row => row.summary.thread_id)).toEqual(["older", "recent"]);
+  expect(groups[0]!.rows.map(row => row.summary.thread_id)).toEqual(["recent", "older"]);
   expect(groups[1]!.rows.map(row => row.summary.thread_id)).toEqual(["recent", "older"]);
 });
 

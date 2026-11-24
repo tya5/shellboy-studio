@@ -1,6 +1,7 @@
 # Sidebar Thread list
 
-The pinned set is read completely; Studio orders its rows by `created_at`.
+The pinned set is read completely; Studio orders its rows newest first by `created_at`,
+as in Core's created order.
 Filtered All results stay in Core's updated order. Ancestry determines
 placement, not client arrival time. Status changes only the mark and child
 summary, never row order. Needs-you excludes query, tags and directory filters;
