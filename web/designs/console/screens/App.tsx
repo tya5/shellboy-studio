@@ -104,7 +104,7 @@ export function App({ context }: { context: DesignContext }) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const next: ListFilter = route.view === "monitor" ? { archived: "include" } : { ...filters, ...(query.trim() ? { query: query.trim() } : {}) };
+      const next: ListFilter = { ...filters, ...(query.trim() ? { query: query.trim() } : {}) };
       const current = model.data.listFilter.peek();
       if (current.query !== next.query || current.archived !== next.archived || current.awaiting !== next.awaiting || current.cwd !== next.cwd
         || JSON.stringify(current.tags) !== JSON.stringify(next.tags)) model.data.setListFilter(next);

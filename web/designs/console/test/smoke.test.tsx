@@ -649,6 +649,22 @@ describe("Conversation", () => {
 });
 
 describe("Monitor", () => {
+  it("keeps archived Threads out of the sidebar All band while Monitor is open", async () => {
+    const { model, t, db, data } = await fixtureModel({ route: "conversation", configure(db) {
+      db.threads.archived = summary("archived", { title: "Archived fixture", activity: "tools", state: "completed", archived_at: "2025-01-01T00:00:00Z" });
+    } });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); await flushPromises(); });
+      const sidebarArchiveFilter = data.threadList.value.filter?.archived;
+      act(() => model.applyRoute({ view: "monitor" }));
+      await act(async () => { await flushPromises(); });
+      expect(data.threadList.value.filter?.archived).toBe(sidebarArchiveFilter);
+      const all = el.querySelector(".side .thread-groups") ?? el.querySelector(".side .threads");
+      expect(all?.textContent ?? "").not.toContain("Archived fixture");
+    } finally { model.dispose(); data.stop(); }
+  });
+
   it("shows the row-cache status mark for a pinned Thread outside the list without opening details", async () => {
     const { model, t, db } = await fixtureModel({ route: "monitor", configure(db) {
       db.threads["outside-pin"] = summary("outside-pin", { title: "Pinned outside list", activity: "tools", state: "running" });
