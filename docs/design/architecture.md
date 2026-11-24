@@ -107,6 +107,10 @@ The bridge is a thin client in the same sense as `shellboy chat`
 with typed `shellboy::protocol::Command` values and no Origin (sender kind
 `external_cli`, or `human` with `human: true`, see §4.4).
 
+### 2.4 Memory bounds
+
+Name the owner and enforce a row, byte, or time bound for every retained structure. Retention must not grow with session age, Thread length, or Threads visited. Keep rendered and parsed conversation content only for visible rows plus bounded overscan; release it on eviction or view disposal. Test the bound and cleanup with a fixture that exceeds the budget.
+
 ## 3. Data flow
 
 ### 3.1 Bridge ↔ owner
