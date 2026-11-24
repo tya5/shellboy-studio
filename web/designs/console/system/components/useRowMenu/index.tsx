@@ -22,7 +22,7 @@ export function useRowMenu(options: RowMenuOptions | undefined): { open: boolean
   };
   const rowHandlers: JSX.HTMLAttributes<HTMLDivElement> = options ? {
     onContextMenu: (event) => { event.preventDefault(); setOpenMethod("pointer"); setPointerPosition({ x: event.clientX, y: event.clientY }); show(event.currentTarget, document.activeElement as HTMLElement | null); },
-    onKeyDown: (event) => { if (event.key === "ArrowDown") { event.preventDefault(); setOpenMethod("keyboard"); setPointerPosition(null); show(event.currentTarget, document.activeElement as HTMLElement | null); } },
+    onKeyDown: (event) => { if (event.key === "ArrowDown" && !(event.target instanceof Element && event.target.matches('[role="treeitem"]'))) { event.preventDefault(); setOpenMethod("keyboard"); setPointerPosition(null); show(event.currentTarget, document.activeElement as HTMLElement | null); } },
   } : {};
   const tabExit = (backward: boolean) => {
     const row = anchor?.closest<HTMLElement>("[data-row-menu-owner]");

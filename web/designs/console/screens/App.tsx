@@ -1,3 +1,4 @@
+import { SidebarTree, siblingPositions } from "./SidebarTree";
 import { normalizeFilter, type ListFilter } from "../../../data/src/store";
 import { sidebarGroups } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
@@ -283,15 +284,19 @@ export function App({ context }: { context: DesignContext }) {
                 const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }),
                   onToggle: () => startsClosed(group.key) ? setFold("sidebarOpenGroups", group.key, !open) : setFold("sidebarClosedGroups", group.key, open) };
                 const pages = group.key === "archive" ? archive : list;
+                const count = pages.loaded ? t("org.bandCount", { n: `${group.count}${lowerBound[group.key] ? "+" : ""}` }) : "";
+                const treeName = count ? `${label}, ${count}` : label;
+                const positions = siblingPositions(group.rows, !!lowerBound[group.key]);
                 let hiddenBelow: number | undefined;
-                return <ThreadGroup key={group.key} label={label} count={pages.loaded ? t("org.bandCount", { n: `${group.count}${lowerBound[group.key] ? "+" : ""}` }) : pages.loading ? <LoadingCount /> : ""} countLoading={!pages.loaded && pages.loading} fold={fold}>
-                  {open ? group.rows.map((r, index) => {
+                return <ThreadGroup key={group.key} label={label} count={count || (pages.loading ? <LoadingCount /> : "")} countLoading={!pages.loaded && pages.loading} fold={fold}>
+                  {open && group.rows.length ? <SidebarTree name={treeName}>
+                  {group.rows.map((r, index) => {
                     if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
                     const id = r.summary.thread_id;
                     const expanded = openParents.includes(r.key);
                     const unread = model.sidebarUnread(r.summary);
                     hiddenBelow = r.childCount && !expanded ? r.depth : undefined;
-                    return <ThreadItem key={r.key} sidebar unread={unread} beforeLink={threadSelection.checkbox(id, r.summary.title)} linkId={sidebarLinkId(r.key)}
+                    return <ThreadItem key={r.key} sidebar treePosition={positions[index]} unread={unread} beforeLink={threadSelection.checkbox(id, r.summary.title)} linkId={sidebarLinkId(r.key)}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
                       depth={r.depth} current={id === sidebarSelected} pending={r.pending} pendingExact={r.pendingExact} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
@@ -309,7 +314,8 @@ export function App({ context }: { context: DesignContext }) {
                       onSelect={() => setDrawer(false)}
                       menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary,
                         target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), canTag ? { onEditTags: () => editThreadTags(id, r.summary.archived_at !== undefined) } : undefined)] }} />;
-                  }) : null}
+                  })}
+                  </SidebarTree> : null}
                   {/* Each paged band ends with its own Show more, so All's does not sit under Archive; `.side-note` gives it the rows' space-8 inset. */}
                   {open && group.key !== "pins" && pages.nextCursor ? <div class="side-note">{(group.key === "archive" ? model.data.canLoadMoreArchived() : model.data.canLoadMoreThreads())
                     ? <Button disabled={pages.loadingMore} onClick={() => void (group.key === "archive" ? model.data.loadMoreArchived() : model.data.loadMoreThreads())}>{t("threads.more")}</Button>

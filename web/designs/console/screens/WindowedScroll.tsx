@@ -43,6 +43,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const readingAnchor = useRef(new ReadingAnchor());
 
   const active = useRef<MountedViewport>();
+  const [focusedKey, setFocusedKey] = useState<string>();
   const lastTop = useRef(0);
   const fallbackProbe = useRef<HTMLDivElement>(null);
   const [viewportState, setViewport] = useState({top: 0, height: 0, following: true, fallback: 0});
@@ -69,7 +70,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     }
   }, []);
   const commit = useCallback((viewport: MountedViewport | undefined) => { active.current = viewport; }, []);
-  const viewport = useMemo(() => ({ ...viewportState, get top() { return lastTop.current; }, mount, commit }), [viewportState]);
+  const viewport = useMemo(() => ({ ...viewportState, focusedKey, get top() { return lastTop.current; }, mount, commit }), [viewportState, focusedKey]);
   const tellWindow = (box: HTMLElement, start: number, following: boolean) => {
     const top = box.scrollTop - start;
     const current = active.current;
@@ -128,9 +129,8 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
               if (key !== undefined) current.geometry.measure(key, node.getBoundingClientRect().height);
             }
             dirty.current.clear();
-            const { geometry, first, end, before, after } = current;
-            if (before) before.style.height = `${geometry.offset(first)}px`;
-            if (after) after.style.height = `${geometry.offset(geometry.keys.length) - geometry.offset(end)}px`;
+            const { geometry, spacers } = current;
+            for (const { node, from, to } of spacers) node.style.height = `${geometry.offset(to) - geometry.offset(from)}px`;
           } else {
             const changes: [number, number][] = [];
             if (!renderAcceptedView) for (const child of box.querySelectorAll<HTMLElement>("[data-o]"))
@@ -252,6 +252,13 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       class="scroll"
       ref={el}
       tabIndex={0}
+      onFocusIn={event => {
+        const row = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-viewport-key]") : null;
+        setFocusedKey(row && event.currentTarget.contains(row) ? row.dataset.viewportKey : undefined);
+      }}
+      onFocusOut={event => {
+        if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setFocusedKey(undefined);
+      }}
       onClickCapture={(e) => {
         const heading = (e.target as Element).closest<HTMLElement>(".step summary");
         if (heading && !intent.current.following) headingAnchor.current.capture(heading);

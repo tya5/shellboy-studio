@@ -56,8 +56,26 @@ it.each([20, 4_000])('mounts and observes only the viewport plus overscan for %i
     expect(observed.size).toBe(rows().length + 1);
     expect(host.querySelector(`[data-node="node-${count - 1}"]`)).not.toBeNull();
     const box = host.querySelector<HTMLElement>('.scroll')!;
-    const newest = rows().at(-1)!;
+    const newest = rows().at(-1)! as HTMLElement;
+    newest.tabIndex = -1;
+    await act(async () => { newest.focus(); });
+    expect(document.activeElement).toBe(newest);
     await act(async () => {
+      box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -160 }));
+      box.scrollTop = 80;
+      box.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect(newest.isConnected).toBe(true);
+    expect(document.activeElement).toBe(newest);
+    expect(rows().length).toBeLessThanOrEqual(14);
+    await act(async () => {
+      box.scrollTop = box.scrollHeight - box.clientHeight;
+      box.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect(rows().at(-1)).toBe(newest);
+    expect(document.activeElement).toBe(newest);
+    await act(async () => {
+      box.focus();
       box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -160 }));
       box.scrollTop = 80;
       box.dispatchEvent(new Event('scroll', { bubbles: true }));

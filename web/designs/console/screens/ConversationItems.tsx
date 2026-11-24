@@ -133,7 +133,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
   const ordinals = useMemo(() => slots.map(slot => ordinalByNode?.get(slot.item?.source.nodeId ?? "")), [slots, ordinalByNode]);
   const mount = viewport?.mount;
   const mountedRefs = useMemo(() => new Map(slots.map(slot => [slot.key, (node: HTMLElement | null) => mount?.(slot.key, node)])), [slots, mount]);
-  const before = useRef<HTMLDivElement>(null), after = useRef<HTMLDivElement>(null);
+  const spacers: { from: number; to: number; node: HTMLDivElement }[] = [];
   let top = viewport?.top ?? 0;
   const old = committedGeometry.current;
   if (geometry && old && old !== geometry && !viewport?.following) {
@@ -142,10 +142,15 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     if (to !== undefined) top += geometry.offset(to) - old.offset(from);
   }
   const [first, end] = geometry && viewport ? geometry.range(top, viewport.height, viewport.following) : [0, indexed?.units.length ?? 0];
+  const activeControl = viewport?.focusedKey && document.activeElement instanceof HTMLElement
+    && document.activeElement.closest<HTMLElement>("[data-viewport-key]")?.dataset.viewportKey === viewport.focusedKey
+    ? document.activeElement : undefined;
   useLayoutEffect(() => {
+    // A keyed DOM move can blur its control in a browser. Never override real focus elsewhere.
+    if (activeControl?.isConnected && document.activeElement === document.body) activeControl.focus({ preventScroll: true });
     committedGeometry.current = geometry;
     if (!geometry || !viewport) return;
-    viewport.commit({ geometry, first, end, ordinals, before: before.current, after: after.current });
+    viewport.commit({ geometry, first, end, ordinals, spacers });
     return () => viewport.commit(undefined);
   });
   if (normalizedSequence) {
@@ -199,12 +204,20 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       const views = [...renderLocalAt(-1), ...units.map(renderUnit), trailing];
       return <div class="conversation-items">{views.flatMap(view => Array.isArray(view) ? view : [view])}</div>;
     }
-    const visible: ComponentChildren[] = [];
     const measure = (key: string) => mountedRefs.get(key);
+    const shown = Array.from({ length: end - first }, (_, offset) => first + offset);
+    // Keep at most one extra slot, in its original keyed wrapper and DOM order.
+    const focused = viewport.focusedKey === undefined ? undefined : geometry.indexOf(viewport.focusedKey);
+    if (focused !== undefined && focused < first) shown.unshift(focused);
+    if (focused !== undefined && focused >= end) shown.push(focused);
+    const spacer = (from: number, to: number) => from < to ? <div key={`viewport:${from}:${to}`} aria-hidden="true"
+      style={{ height: geometry.offset(to) - geometry.offset(from) }} ref={node => { if (node) spacers.push({ from, to, node }); }} /> : null;
     const renderSlice = (from: number, to: number): ComponentChildren[] => {
       const slice: ComponentChildren[] = [];
       for (let i = from; i < to;) {
-        const slot = slots[i++]!;
+        const index = shown[i++]!;
+        if (i - 1 > from) slice.push(spacer(shown[i - 2]! + 1, index));
+        const slot = slots[index]!;
         if (slot.group) {
           const group = slot.group;
           const children: ComponentChildren[] = [];
@@ -213,7 +226,13 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
           };
           groupRow(slot);
           let last = slot.last;
-          while (i < to && slots[i]?.group === group) { const member = slots[i++]!; groupRow(member); last = member.last; }
+          while (i < to && slots[shown[i]!]?.group === group) {
+            const previous = shown[i - 1]!, next = shown[i++]!;
+            const member = slots[next]!;
+            children.push(spacer(previous + 1, next));
+            groupRow(member);
+            last = member.last;
+          }
           slice.push(<div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, children, { headingVisible: !!slot.heading, headingRef: slot.heading ? measure(slot.key) : undefined })}</div>);
           if (last) slice.push(...renderLocalAt(slot.position));
           continue;
@@ -224,19 +243,21 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       }
       return slice;
     };
-    for (let index = first; index < end;) {
-      const container = slots[index]?.container;
-      let next = index + 1;
-      while (next < end && (container ? slots[next]?.container === container : !slots[next]?.container)) next++;
-      const slice = renderSlice(index, next);
-      if (container) visible.push(<div class="conversation-row answer-container" key={`answer:${container}`} data-answer-container={container}>{slice}</div>);
-      else visible.push(...slice);
-      index = next;
+    const views: ComponentChildren[] = [];
+    if (shown[0] === 0) views.push(...renderLocalAt(-1));
+    for (let i = 0; i < shown.length;) {
+      const start = shown[i]!;
+      views.push(spacer(i === 0 ? 0 : shown[i - 1]! + 1, start));
+      const container = slots[start]?.container;
+      let next = i + 1;
+      while (next < shown.length && slots[shown[next]!]?.container === container) next++;
+      const slice = renderSlice(i, next);
+      if (container) views.push(<div class="conversation-row answer-container" key={`answer:${container}`} data-answer-container={container}>{slice}</div>);
+      else views.push(...slice);
+      i = next;
     }
-    const views = [<div key="viewport:before" ref={before} aria-hidden="true" />,
-      ...(first === 0 ? renderLocalAt(-1) : []), ...visible,
-      <div key="viewport:after" ref={after} aria-hidden="true" />,
-      end === slots.length ? trailing : null];
+    const mountedEnd = (shown.at(-1) ?? -1) + 1;
+    views.push(spacer(mountedEnd, slots.length), mountedEnd === slots.length ? trailing : null);
     return <div class="conversation-items">{views}</div>;
 
 

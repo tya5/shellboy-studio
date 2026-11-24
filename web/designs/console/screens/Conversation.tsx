@@ -1,3 +1,4 @@
+import { ReplyAnnouncement } from "./ReplyAnnouncement";
 import { PanelPage } from "../system/components/PanelTabs/PanelPage";
 import { External, FIRST_SETUP_GUIDE } from "./SetupParts";
 import { tokenTotal } from "./usage-label";
@@ -855,9 +856,9 @@ export function OrderedHistory({ model, handle, win, t, openThreadSettings }: { 
   }, [handle, win]);
   if (!model.historySupported) return <Notice tone="bad" title={t("convo.unsupportedOwner")} />;
   if (!win) return <LoadingRows label={t("convo.loading")} rows={5} />;
-  return <WindowedScroll model={model} win={win} live={null} renderRow={() => <></>}
+  return <><ReplyAnnouncement handle={handle} win={win} t={t} /><WindowedScroll model={model} win={win} live={null} renderRow={() => <></>}
     renderAcceptedView={snapshot => <SavedWindowContent model={model} snapshot={snapshot} openThreadSettings={openThreadSettings} />}
-    liveBoundary={boundary?.ordinal} />;
+    liveBoundary={boundary?.ordinal} /></>;
 }
 
 export function Conversation({ model, panelCollapsed = false, rightPanelWidth, onPanelWidth, phonePanel, onTogglePhonePanel, onClosePhonePanel, onOpenPhonePanel }: { model: AppModel; panelCollapsed?: boolean; rightPanelWidth?: number; onPanelWidth?: (width: number) => void; phonePanel?: boolean; onTogglePhonePanel?: () => void; onClosePhonePanel?: () => void; onOpenPhonePanel?: () => void }) {

@@ -6,14 +6,14 @@ export interface MountedViewport {
   first: number;
   end: number;
   ordinals: readonly (number | undefined)[];
-  before: HTMLDivElement | null;
-  after: HTMLDivElement | null;
+  spacers: readonly { from: number; to: number; node: HTMLDivElement }[];
 }
 export interface ConversationViewport {
   top: number;
   height: number;
   following: boolean;
   fallback: number;
+  focusedKey: string | undefined;
   commit: (viewport: MountedViewport | undefined) => void;
   mount: (key: string, element: HTMLElement | null) => void;
 }

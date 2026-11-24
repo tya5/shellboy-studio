@@ -37,3 +37,31 @@ describe('visible conversation ownership across attempts', () => {
     expect([...r.host.querySelectorAll('.msg')].find(e => e.textContent?.includes('FIRST_VISIBLE_BODY'))).toBe(first);
   });
 });
+
+
+it('announces reply arrival once, then save only after accepted matching history', async () => {
+  const r = await setup();
+  const id = '00000000-0000-4000-8000-000000000130';
+  const region = r.host.querySelector('[data-reply-announcement]')!;
+  expect(region.getAttribute('aria-live')).toBe('polite');
+  expect(region.textContent).toBe('');
+  await r.pump(() => r.live(id, 'First'));
+  expect(region.textContent?.trim()).toBe('Reply is arriving.');
+  const announced = region.firstElementChild;
+  await r.pump(() => r.t.push({ t: 'live', thread_id: 'lead', attempt_id: id, gap: false,
+    deltas: [{ offset: 5, reasoning: false, text: ' second' }] }));
+  expect(r.host.textContent).toContain('First second');
+  expect(region.firstElementChild).toBe(announced);
+  await r.pump(() => r.t.push({ t: 'live_end', thread_id: 'lead' }));
+  expect(region.firstElementChild).toBe(announced);
+  const rows = r.db.history.lead ?? [];
+  r.db.history.lead = [...rows, { node_id: 'saved-reply', kind: 'assistant_response', selection: { ordinal: rows.length },
+    provenance: { attempt_id: id, sender: { kind: 'assistant' } },
+    items: [{ kind: 'text', item_identity: 'saved-text', text: 'First second', text_complete: true }] }];
+  await r.pump(() => r.model.longReader.peek()!.changed());
+  expect(region.textContent?.trim()).toBe('Reply saved.');
+  expect(region.firstElementChild).not.toBe(announced);
+  const saved = region.firstElementChild;
+  await r.pump(() => r.model.longReader.peek()!.changed());
+  expect(region.firstElementChild).toBe(saved);
+});
