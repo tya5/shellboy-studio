@@ -706,9 +706,10 @@ describe("Monitor", () => {
     const el = draw(model, { monitorArchive: "include", monitorPins: ["archived-pin"] });
     try {
       await act(async () => { await settle(t, db); await flushPromises(); });
+      const sources = [model.rows.value, model.missingPins.rows.value, model.monitorArchiveRows.rows.value];
+      expect(sources.flat().filter(row => row.summary.thread_id === "archived-pin")).toHaveLength(2);
       expect(model.monitorStableRows.value.filter(row => row.summary.thread_id === "archived-pin")).toHaveLength(1);
       expect(el.querySelectorAll('.mon .card')).toHaveLength(model.monitorStableRows.value.length);
-      expect(model.missingPins.rows.value.filter(row => row.summary.thread_id === "archived-pin")).toHaveLength(0);
     } finally { model.dispose(); data.stop(); }
   });
 
