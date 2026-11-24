@@ -1,3 +1,4 @@
+import { PanelPage } from "../system/components/PanelTabs/PanelPage";
 import { External, FIRST_SETUP_GUIDE } from "./SetupParts";
 import { tokenTotal } from "./usage-label";
 import { ArtifactDetail, ArtifactList } from "./ArtifactPanel";
@@ -831,10 +832,10 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
       {tabs.map(tab => {
         const active = tab.id === selectedTab;
         const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment" || detail.kind === "artifact");
-        return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active || panelCollapsed}>
+        return <PanelPage key={tab.id} id={tab.id} hidden={!active || panelCollapsed}>
           {tab.id === "settings" ? (active && !panelCollapsed && model.details.value ? <ThreadSettingsPanel key={owner.state === "connected" ? owner.info.instance_id ?? "connected" : owner.state} model={model} details={model.details.value} destination={destination} /> : null) : <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? (usageThread ? <ThreadAnalytics key={usageKey} model={model} threadId={usageThread} /> : null) : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>}
           {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}
-        </section>;
+        </PanelPage>;
       })}
     </div>
     {!phone ? <ShellFooter side="right"><ShellToggle panel expanded={!panelCollapsed} label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} onClick={() => model.togglePanel()} /></ShellFooter> : null}
@@ -944,13 +945,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             busy={send.kind === "sending"}
             draftScope={handle.threadId}
             onSend={(text,onReserved) => model.send(text,onReserved)}
-            stop={
-              model.canStop.value ? (
-                <Button icon label={t("composer.stop")} title={t("composer.stop")} variant="stop" onClick={() => void model.stop()}>
-                  <Icon role="action.stop" size="small" />
-                </Button>
-              ) : undefined
-            }
+            stop={model.canStop.value ? { label: t("composer.stop"), run: () => void model.stop() } : undefined}
           />
         </div> : null}
         {handle ? <div class="phone-panel-footer"><ShellFooter side="right"><ShellToggle panel expanded={!!phonePanel} label={t(phonePanel ? "panel.collapse" : "panel.expand")} onClick={() => onTogglePhonePanel?.()} /></ShellFooter></div> : null}

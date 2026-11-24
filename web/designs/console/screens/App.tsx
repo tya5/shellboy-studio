@@ -81,6 +81,11 @@ export function App({ context }: { context: DesignContext }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229
+        || document.querySelector('dialog:modal, dialog[open][aria-modal="true"], [role="dialog"][aria-modal="true"]:not([hidden])')) return;
+      const target = e.target instanceof Element ? e.target : document.activeElement;
+      if (target?.closest('input,textarea,select,[role="textbox"]')
+        || (target instanceof HTMLElement && target.isContentEditable)) return;
       if (navShortcut(e) && (document.querySelector(".app")?.clientWidth ?? 0) >= 900) {
         e.preventDefault();
         context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed });

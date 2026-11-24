@@ -10,7 +10,7 @@ export const isMenuOpenKey = (key: string): boolean => key === "ArrowDown" || ke
 
 function isSeparator(entry: MenuEntry): entry is { key: string; separator: true } { return "separator" in entry; }
 
-export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labelledBy, openMethod = "pointer", pointerPosition }: { open: boolean; anchor: HTMLElement | null; returnFocusTo?: HTMLElement | null; entries: MenuEntry[]; onClose: () => void; id: string; labelledBy: string; openMethod?: "pointer" | "keyboard"; pointerPosition?: { x: number; y: number } | null; children?: ComponentChildren }) {
+export function Menu({ open, anchor, returnFocusTo, entries, onClose, tabExit, id, labelledBy, openMethod = "pointer", pointerPosition }: { open: boolean; anchor: HTMLElement | null; returnFocusTo?: HTMLElement | null; entries: MenuEntry[]; onClose: () => void; tabExit?: (backward: boolean) => HTMLElement | undefined; id: string; labelledBy: string; openMethod?: "pointer" | "keyboard"; pointerPosition?: { x: number; y: number } | null; children?: ComponentChildren }) {
   const menu = useRef<HTMLDivElement>(null);
   const typeahead = useRef("");
   const typeaheadTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -57,7 +57,16 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
       const index = items().indexOf(node);
       focused.current = index < 0 ? undefined : { node, index };
     }} onKeyDown={(event) => {
-      if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
+      if (event.key === "Tab" && tabExit) {
+        const next = tabExit(event.shiftKey);
+        if (next) {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+          next.focus();
+        }
+      }
+      else if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
       else if (event.key === "Home" || event.key === "PageUp") { event.preventDefault(); items()[0]?.focus(); }
       else if (event.key === "End" || event.key === "PageDown") { event.preventDefault(); items().at(-1)?.focus(); }

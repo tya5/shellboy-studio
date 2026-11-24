@@ -545,11 +545,13 @@ describe('right panel purpose',()=>{
     expect(document.activeElement).toBe(opener);
    }
    await act(async()=>{shortcut();});
+   expect(sheet()).not.toBeNull();
+   await act(async()=>sheet()!.querySelector<HTMLButtonElement>('.work-sheet-head button')!.click());
    expect(sheet()).toBeNull();
    expect(document.activeElement).toBe(toggle());
    await act(async()=>toggle().click());
    expect(sheet()).not.toBeNull();
-   await act(async()=>{shortcut();});
+   await act(async()=>sheet()!.querySelector<HTMLButtonElement>('.work-sheet-head button')!.click());
    expect(sheet()).toBeNull();
    expect(f.stored.value).toBe(stored);
    expect(f.prefs.value.panelCollapsed).toBe(true);
@@ -675,4 +677,29 @@ describe('right panel purpose',()=>{
    expect(f.model.panelTab.peek()).toBe('awaiting-reply');
   }finally{f.model.dispose();f.data.stop();}
  });
+});
+
+
+it('does not route global shortcuts from Japanese IME, editors, or handled events', async () => {
+ const f = await setup();
+ const key = (target: EventTarget, options: KeyboardEventInit = {}) => {
+  const event = new KeyboardEvent('keydown', { key: '5', altKey: true, bubbles: true, cancelable: true, ...options });
+  target.dispatchEvent(event);
+  return event;
+ };
+ try {
+  expect(key(window, { isComposing: true }).defaultPrevented).toBe(false);
+  expect(f.model.route.peek().view).toBe('conversation');
+  const editor = f.host.querySelector<HTMLTextAreaElement>('#composer')!;
+  editor.focus();
+  expect(key(editor).defaultPrevented).toBe(false);
+  expect(f.model.route.peek().view).toBe('conversation');
+  editor.blur();
+  const handled = new KeyboardEvent('keydown', { key: '5', altKey: true, cancelable: true });
+  handled.preventDefault();
+  window.dispatchEvent(handled);
+  expect(f.model.route.peek().view).toBe('conversation');
+  await act(async () => { expect(key(window).defaultPrevented).toBe(true); });
+  expect(f.model.route.peek().view).toBe('settings');
+ } finally { f.model.dispose(); f.data.stop(); }
 });

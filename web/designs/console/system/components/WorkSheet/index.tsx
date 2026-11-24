@@ -27,7 +27,7 @@ export function WorkSheet({ open, title, closeLabel, onClose, children, role = "
       returnTarget.current()?.focus();
     }
   }, [open]);
-  return <dialog ref={ref} class="work-sheet" role={role} aria-labelledby={titleId} aria-describedby={describedBy ?? bodyId} onClick={(event) => {
+  return <dialog ref={ref} class="work-sheet" role={role} aria-modal="true" aria-labelledby={titleId} aria-describedby={describedBy ?? bodyId} onClick={(event) => {
     if (dismissOnOutside && event.target === event.currentTarget && event.button === 0 && !event.ctrlKey) {
       const rect = event.currentTarget.getBoundingClientRect();
       if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose();

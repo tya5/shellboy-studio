@@ -1,13 +1,20 @@
 import type { ComponentChildren } from "preact";
-import { useRef, useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { composerAction } from "../../../../../ui-core/src";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
 
-export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; start?: ComponentChildren; context?: ComponentChildren; stop?: ComponentChildren; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
+export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
   const [, renderDraft] = useState(0);
   const drafts = useRef(new Map<string | undefined, string>());
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const stopButton = useRef<HTMLButtonElement>(null);
+  const removingFocusedStop = !props.stop && stopButton.current
+    && stopButton.current.ownerDocument.activeElement === stopButton.current;
+  useLayoutEffect(() => {
+    const field = textarea.current;
+    if (removingFocusedStop && field && field.ownerDocument.activeElement === field.ownerDocument.body) field.focus();
+  });
   const generation = useRef(0);
   const latestScope = useRef(props.draftScope);
   const scopeGeneration = useRef(0);
@@ -71,7 +78,9 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         <span class="composer-hint" role="status">{status?.hint??props.hint}</span>
         <div class="right">
           {props.context}
-          {props.stop}
+          {props.stop ? <Button buttonRef={stopButton} icon label={props.stop.label} title={props.stop.label} variant="stop" onClick={props.stop.run}>
+            <Icon role="action.stop" size="small" />
+          </Button> : null}
           <Button icon label={props.sendLabel} variant="primary" disabled={!props.canSend || status?.blocked || props.busy || text.trim() === ""} onClick={() => void submit()}>
             <Icon role="composer.send" />
           </Button>
