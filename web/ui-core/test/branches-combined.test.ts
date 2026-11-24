@@ -16,7 +16,7 @@ const empty={root_thread_id:"selected",items:[],total:0};
 it("family/batch resets retain a pending immutable mutation and coalesce success refresh",async()=>{
   const f=fixture();f.b.state.value={...f.b.state.value,threadId:"selected",loading:false};
   const rename=f.b.renameBranch("selected","fixed");const sent=f.t.calls("thread.set")[0]!;
-  const reading=f.b.read("selected");f.b.excerptBatch.reset();
+  const reading=f.b.read("selected");f.b.lanes.reset(false);
   f.t.ok(f.t.calls("thread.branches")[0]!.id,empty);await reading;
   f.t.ok(sent.id,{thread_id:"selected",title:"fixed"});await rename;
   expect(f.t.calls("thread.set")).toHaveLength(1);expect(f.t.calls("thread.branches")).toHaveLength(2);
@@ -28,10 +28,10 @@ it("owner roundtrip cancels family/excerpt adoption and late rename has zero rea
   const f=fixture();f.b.state.value={...f.b.state.value,threadId:"selected",loading:false};
   const rename=f.b.renameBranch("selected","fixed");const sent=f.t.calls("thread.set")[0]!;
   const reading=f.b.read("selected");const family=f.t.calls("thread.branches")[0]!;
-  const facts:{answer?:string}[]=[];f.b.excerptBatch.show({threadId:"child",title:"child",tipNodeId:"tip"} as Parameters<typeof f.b.excerpts>[0],x=>facts.push(x));
+  f.b.lanes.want({kind:"node",threadId:"child",nodeId:"tip"});
   const window=f.t.calls("history.window")[0]!;f.change("b");f.change("a");f.b.actionError.value="new epoch";
-  const count=facts.length;f.t.ok(family.id,empty);f.t.ok(window.id,{thread_id:"child",revision:1,total:0,items:[]});f.t.ok(sent.id,{thread_id:"selected",title:"fixed"});
-  await reading;await rename;await flush();expect(f.b.state.value.family).toBeUndefined();expect(facts).toHaveLength(count);
+  f.t.ok(family.id,empty);f.t.ok(window.id,{thread_id:"child",revision:1,total:1,items:[{node_id:"tip",kind:"assistant_response",excerpt:"late",selection:{ordinal:0}}]});f.t.ok(sent.id,{thread_id:"selected",title:"fixed"});
+  await reading;await rename;await flush();expect(f.b.state.value.family).toBeUndefined();expect(f.b.lanes.node("tip")).toBeUndefined();
   expect(f.b.actionError.value).toBe("new epoch");expect(f.t.calls("thread.branches")).toHaveLength(1);f.b.leave();f.link.stop();
 });
 it("partial rewind retains send receipt through family/excerpt resets and leave retains canonical result",async()=>{
@@ -39,7 +39,7 @@ it("partial rewind retains send receipt through family/excerpt resets and leave 
   const preview=f.b.previewRewind(target);f.t.ok(f.t.calls("thread.rewind")[0]!.id,fixtureRewind);await preview;
   const first=f.b.confirmRewind("fixed");f.t.ok(f.t.calls("thread.rewind")[1]!.id,{...fixtureRewind,dry_run:false});await flush();
   const send=f.t.calls("message.send")[0]!;f.t.drop();await first;f.t.open();
-  const reading=f.b.read("selected");f.b.excerptBatch.reset();f.t.ok(f.t.calls("thread.branches").at(-1)!.id,empty);await reading;
+  const reading=f.b.read("selected");f.b.lanes.reset(false);f.t.ok(f.t.calls("thread.branches").at(-1)!.id,empty);await reading;
   f.b.target.value=target;const retry=f.b.confirmRewind("fixed");await flush();const resent=f.t.calls("message.send")[1]!;
   expect(resent.operation_id).toBe(send.operation_id);expect(resent.args).toEqual(send.args);expect(f.t.calls("thread.rewind")).toHaveLength(2);
   f.b.leave();f.t.ok(resent.id,{message_id:"accepted-message",thread_id:(resent.args as {thread_id:string}).thread_id});await retry;const reads=f.t.calls("thread.branches").length;

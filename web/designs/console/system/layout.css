@@ -235,8 +235,6 @@ html:has(dialog:modal){overflow:hidden}
 /* The virtual reader owns anchor correction; do not let browser anchoring compete. */
 .scroll-frame > .scroll{overflow-anchor:none}
 
-.branch-excerpts p{margin:var(--space-4) 0;white-space:pre-wrap;overflow-wrap:anywhere}
-
 .conversation-status{flex-direction:row;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;overflow-wrap:normal;box-sizing:border-box;height:calc(var(--size-conversation-character) + 2 * var(--space-8));min-height:calc(var(--size-conversation-character) + 2 * var(--space-8));max-height:calc(var(--size-conversation-character) + 2 * var(--space-8));min-width:0}
 .conversation-status>span{flex:none}
 .conversation-status>[data-status-description]{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

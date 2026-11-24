@@ -144,7 +144,6 @@ describe("components name roles, never values", () => {
     expect(mobile).toMatch(/\.tcheck\{[^}]*width:var\(--size-control\);height:var\(--size-control\)/);
     expect(mobile).toMatch(/header:has\(> \.tcheck\)\{[^}]*grid-template-columns:var\(--size-control\) minmax\(0,1fr\)/);
     expect(mobile).toMatch(/@container app \(max-width:899px\)\{\s*\.tgroup\[data-group-heading="section"\]>header:has\(> \.tcheck\)\{grid-template-columns:var\(--size-touch\) minmax\(0,1fr\)\}/);
-    expect(mobile).toMatch(/\.brow-text>a\{[^}]*min-height:var\(--size-touch\)/);
     expect(mobile).toMatch(/\.srow-title>a\{[^}]*min-height:var\(--size-touch\)/);
   });
   it("every custom property used exists", () => {

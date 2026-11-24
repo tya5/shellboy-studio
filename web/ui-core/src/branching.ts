@@ -59,60 +59,6 @@ export type ForkState = { kind: "idle" } | { kind: "forking" } | { kind: "done";
 
 const sameTarget = (a: BranchTarget | undefined, b: BranchTarget): boolean => a?.threadId === b.threadId && a?.nodeId === b.nodeId;
 
-export const EXCERPT_ROWS = 8;
-export interface BranchExcerpts { split?: string; request?: string; answer?: string }
-
-/** One displayed batch, at most eight admissions/two RPCs each; no retry queue. */
-export class ExcerptBatch {
-  private epoch = 0;
-  private running = false;
-  private admitted = new Set<string>();
-  private visible = new Map<string, { item: import("./branches").BranchItem; cancel: Cancel; publish: (v: BranchExcerpts, settled: boolean) => void }>();
-  constructor(private readonly read: (item: import("./branches").BranchItem, cancel: Cancel) => Promise<BranchExcerpts>) {}
-  /** Detach before any cross-resource callback; finish touches only this snapshot. */
-  detach(): () => void {
-    ++this.epoch;
-    const previous = [...this.visible.values()];
-    this.visible.clear(); this.admitted.clear();
-    return () => {
-      for (const row of previous) row.cancel.cancel();
-      for (const row of previous) {
-        if (![...this.visible.values()].some(current => current.item.threadId === row.item.threadId || current.publish === row.publish)) row.publish({}, true);
-      }
-    };
-  }
-  reset(): void { this.detach()(); }
-  show(item: import("./branches").BranchItem, publish: (v: BranchExcerpts, settled: boolean) => void): () => void {
-    const epoch = this.epoch;
-    publish({}, false);
-    if (epoch !== this.epoch) return () => {};
-    if (this.admitted.has(item.threadId) || this.admitted.size >= EXCERPT_ROWS) { publish({}, true); return () => {}; }
-    this.admitted.add(item.threadId);
-    const row = { item, publish, cancel: new Cancel() };
-    this.visible.set(item.threadId, row); void this.drain();
-    return () => {
-      if (this.visible.get(item.threadId) === row) this.visible.delete(item.threadId);
-      row.cancel.cancel();
-      if (![...this.visible.values()].some(current => current.item.threadId === item.threadId || current.publish === row.publish)) row.publish({}, true);
-    };
-  }
-  private async drain(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      while (true) {
-        const row = [...this.visible.values()].find(r => !r.cancel.cancelled);
-        if (!row) break;
-        const epoch = this.epoch;
-        let facts: BranchExcerpts = {};
-        try { facts = await this.read(row.item, row.cancel); } catch { /* Failed reads remain unknown. */ }
-        if (epoch === this.epoch && !row.cancel.cancelled) row.publish(facts, true);
-        // Retain the entry for invalidation, but never schedule it twice.
-        row.cancel.cancel();
-      }
-    } finally { this.running = false; }
-  }
-}
 // Four model-owned slots, six receipts maximum. Reads/navigation never evict
 // uncertain outcomes. Immutable keys include the initiating owner and payload.
 interface Invocation {
@@ -154,7 +100,6 @@ const outcomeMessage = (out: Outcome<unknown>): string | undefined => out.ok ? u
   `Not confirmed; may have applied (${out.operationId ?? "receipt unavailable"}): ${out.error.message}`;
 
 export class Branches {
-  readonly excerptBatch = new ExcerptBatch((item, cancel) => this.excerpts(item, cancel));
   readonly state: Signal<FamilyState> = signal({ threadId: undefined, loading: false, family: undefined, error: undefined });
   readonly rewind: Signal<RewindState> = signal({ kind: "idle" });
   readonly selection: Signal<ReadonlySet<string>> = signal(new Set());
@@ -182,14 +127,12 @@ export class Branches {
       const familyCancel = this.cancel;
       const previewCancel = this.previewCancel;
       this.previewCancel = new Cancel();
-      const finishExcerpts = this.excerptBatch.detach();
       this.lanes.reset(true);
       batch(() => {
         // Install invalid projection before callbacks, notify only after old cancellation.
         this.state.value = { threadId: this.state.peek().threadId, loading: false, family: undefined, error: undefined };
         familyCancel.cancel();
         previewCancel.cancel();
-        finishExcerpts();
       });
     }
   }
@@ -262,8 +205,6 @@ export class Branches {
     if (out.ok) { const selected = this.state.peek().threadId; if (selected) void this.read(selected); }
   }
   readonly fork: Signal<ForkState> = signal({ kind: "idle" });
-  /** Graph or list; a phone always gets the list. */
-  readonly layout: Signal<"graph" | "list"> = signal("graph");
   /** The point the panel acts on. A point belongs to the lane it sits on; any other node to the viewed Thread. */
   readonly target: Signal<BranchTarget | undefined> = signal(undefined);
   private familyGeneration = 0;
@@ -279,27 +220,6 @@ export class Branches {
   }
   private currentView(): string | undefined { return this.view ? this.view() : this.state.peek().threadId; }
 
-  async excerpts(item: import("./branches").BranchItem, cancel: Cancel): Promise<{ split?: string; request?: string; answer?: string }> {
-    const result: { split?: string; request?: string; answer?: string } = {};
-    let revision: number | undefined;
-    if (cancel.cancelled) return {};
-    if (item.divergence) {
-      const out = await this.ops.historyWindow({ thread_id: item.threadId, node_id: item.divergence.nodeId, before: 0, after: 24, excerpt_chars: 256 }, { cancel });
-      if (!out.ok || cancel.cancelled) return {};
-      revision = out.value.revision;
-      if (out.ok) {
-        result.split = out.value.items.find(n => n.node_id === item.divergence!.nodeId)?.excerpt;
-        result.request = out.value.items.find(n => (n.selection?.ordinal ?? -1) > item.divergence!.ordinal && n.kind === "user")?.excerpt;
-      }
-    }
-    if (!cancel.cancelled) {
-      const out = await this.ops.historyWindow({ thread_id: item.threadId, before: 48, after: 0, excerpt_chars: 256 }, { cancel });
-      if (!out.ok || cancel.cancelled || (revision !== undefined && revision !== out.value.revision)) return {};
-      if (out.ok) result.answer = out.value.items.filter(n => n.kind === "assistant_response" && n.excerpt && (!item.divergence || (n.selection?.ordinal ?? -1) > item.divergence.ordinal)).at(-1)?.excerpt?.split("\n").slice(0, 2).join("\n");
-    }
-    return result;
-  }
-
   /** Nobody is looking: cancels the read. The family read so far stays. */
   leave(): void {
     ++this.projectionEpoch;
@@ -308,7 +228,6 @@ export class Branches {
     const previous = this.previewCancel;
     const marker = this.previewCancel = new Cancel();
     const familyCancel = this.cancel;
-    this.excerptBatch.reset();
     this.lanes.reset(false);
     familyCancel.cancel();
     previous.cancel();
@@ -322,7 +241,6 @@ export class Branches {
     const generation = ++this.familyGeneration;
     const ownerGeneration = this.ownerGeneration;
     this.cancel.cancel();
-    this.excerptBatch.reset();
     if (generation !== this.familyGeneration) return;
     const had = this.state.peek();
     if (had.threadId !== threadId) {
@@ -396,8 +314,10 @@ export class Branches {
   /** The route chose a node. A preview of another point must not be confirmable, so a change clears it. */
   select(viewed: string | undefined, nodeId: string | undefined): void {
     const family = this.state.peek().family;
-    const points = family ? branchLayout(family).points.filter((p) => p.nodeId === nodeId) : [];
-    const owner = points.find((p) => p.threadId === viewed) ?? points[0];
+    // A node where branches leave belongs to the parent they leave; any other node to the viewed Thread.
+    const ids = new Set(family?.items.map((i) => i.threadId));
+    const owners = (family?.items ?? []).filter((i) => i.divergence?.nodeId === nodeId && i.parentId !== undefined && ids.has(i.parentId)).map((i) => ({ threadId: i.parentId! }));
+    const owner = owners.find((p) => p.threadId === viewed) ?? owners[0];
     const next = nodeId !== undefined && viewed !== undefined ? { threadId: owner?.threadId ?? viewed, nodeId } : undefined;
     const cur = this.target.peek();
     if (next ? sameTarget(cur, next) : cur === undefined) return;

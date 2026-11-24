@@ -630,27 +630,31 @@ their per-Thread surface.
 
 ### Branch Excerpt Admission
 
-Branches compares saved excerpts only within two inspected positional windows,
-not the first request or final conclusion across the full path. An observed
-assistant response may be an intermediate protocol5 attempt. Missing or failed
-reads remain unknown; window revisions must agree before facts are combined.
-Only post-divergence responses qualify for child summaries.
+Branches (#138) shows saved excerpts only for lane rows on screen: a branch's
+first message after its split, split nodes, tips, and positions opened with
+Show. Missing or failed reads remain unknown; nothing is inferred from them.
 
-The existing list displays batches of eight rows. One ExcerptBatch belongs to
-the Branches model, admits each row once per batch epoch, and retains at most
-eight entries; no poller, worker or unbounded queue is introduced. It drains
-one excerpt reader at a time, with no retry: split at most25 nodes and tip at
-most49 nodes, excerpt_chars256, at most two RPCs/row, sixteen RPCs/epoch and
-592 projected node entries. Offscreen, stale owner/list, retarget, family
-reread and leave cancel/invalidate facts; late results never publish. Exhausted
-or revisited rows remain unknown until the next explicit batch/read epoch.
+One LaneReader belongs to the Branches model (`web/ui-core/src/branch-lanes.ts`).
+Rows report visibility through one IntersectionObserver; only visible rows ask
+for reads, at most 48 wait (the oldest waiting one is dropped first) and at most
+two run at once, with no retry until reset. Each read is one bounded
+`history.window`: a branch head is its split node plus one (`after: 1`), a root
+head is position 0, a split or tip is one node, all `excerpt_chars` 160. Show
+reads at most 24 positions after the node before the run (`ordinal` +
+`expect_node_id`), at most 480 opened positions per view. Excerpts are kept by
+node ID (node text is immutable), at most 2048, oldest out first, so a family
+re-read never repeats or clears them. An owner change clears everything and
+cancels reads in flight; leaving the view drops queued reads and positions;
+late results never publish. A shorter path or a non-growing new tip drops that
+lane's positions. The two-line comparison keeps its own bounded reads
+(`branch-compare.ts`: one anchor read and one 50-row page per side, four pages
+held, one page per explicit Show more).
 
 Family reads are separate: at most four pages of200 per attempt and three
 cursor-expired restarts, hence sixteen RPCs per family invocation (stable valid
-families of at most256 normally need two). A family invocation plus one excerpt
-batch therefore issues at most32 RPCs, at most one family and one excerpt RPC
-concurrently. Repeated notifications initiate new bounded epochs, not a global
-lifetime budget. Existing WS4/global8 execution limits do not replace this
+families of at most256 normally need two), with at most one family RPC and two
+lane excerpt RPCs in flight. Repeated notifications re-read the family only;
+lane excerpts already kept are not read again. Existing WS4/global8 execution limits do not replace this
 admission bound. Shutdown cancels both owned reads. Limits describe work, not
 latency. No full-path scan or history-list fallback is used.
 

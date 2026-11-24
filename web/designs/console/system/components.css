@@ -37,8 +37,6 @@
 @import "./components/RankedBar/style.css";
 
 @import "./components/SectionNav/style.css";
-@import "./components/BranchGraph/style.css";
-@import "./components/BranchList/style.css";
 @import "./components/BranchMark/style.css";
 @import "./components/BranchLanes/style.css";
 @import "./shared/message.css";

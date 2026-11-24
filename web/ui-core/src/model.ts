@@ -436,7 +436,7 @@ export class AppModel {
       const owner = this.data.owner.value;
       this.branches.ownerChanged(owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined);
     }));
-    this.branchCompare = new BranchCompare(this.ops, this.nowMs);
+    this.branchCompare = new BranchCompare(this.ops);
     this.disposers.push(effect(() => {
       const owner = this.data.owner.value;
       const route = this.route.value;
@@ -655,10 +655,7 @@ export class AppModel {
         // Items, not the whole state: its loading flags change without a new list.
         const listState = this.data.threadListMeta.value;
         const list = this.data.listThreadIds.value;
-        if (this.connection.value !== "connected" || (view === "branches" && (listState.stale || listState.loading))) {
-          this.branches.excerptBatch.reset();
-          return;
-        }
+        if (this.connection.value !== "connected" || (view === "branches" && (listState.stale || listState.loading))) return;
         const id = this.selectedId.value;
         if (view === "branches" && id !== undefined) {
           const b = this.branches.state.peek();

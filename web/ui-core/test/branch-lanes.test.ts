@@ -53,6 +53,16 @@ describe("lane graph", () => {
     expect(g.rows.slice(3, 7).map((r) => r.key)).toEqual(["lead|n|n101", "lead|n|n102", "lead|run|103", "lead|split|n150"]);
   });
 
+  it("two children leaving at one node make one split row; a parent listed only by ID keeps its child as a root", () => {
+    const items = [...fixtureBranches.items, { ...fixtureBranches.items[1]!, thread_id: "fork-c" }];
+    const two = laneGraph(readFamily([{ ...structuredClone(fixtureBranches), items } as unknown as Record<string, unknown>]));
+    expect(two.rows.filter((r) => r.kind === "split" && r.nodeId === "n100").map((r) => r.branchTo)).toEqual([["fork-a", "fork-c"]]);
+    const orphan = laneGraph(readFamily([{ ...structuredClone(fixtureBranches), items: [{ ...fixtureBranches.items[1]!, parent_thread_id: "unlisted" }] } as unknown as Record<string, unknown>]));
+    expect(orphan.lanes).toHaveLength(1);
+    expect(orphan.lanes[0]!).toMatchObject({ start: 0, detached: true });
+    expect(orphan.rows.some((r) => r.kind === "split")).toBe(false);
+  });
+
   it("a rewind preview marks only that lane's later rows", () => {
     const g = laneGraph(family());
     expect([...leavingRows(g, "lead", 100)]).toEqual(["lead|run|101", "lead|split|n150", "lead|run|151", "lead|tip"]);

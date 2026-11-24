@@ -1,5 +1,7 @@
 # Limited B3 Boundary Inventory (ADR-R1)
 
+> Superseded in part by the Branches redesign (#138, 2026-11-24): the list, ExcerptBatch, the comparison usage and body reads, and their screens were removed; lane reads are described in `docs/design/architecture.md` (Branch Excerpt Admission) and `docs/design/branches-threads.md`. This record is kept as history.
+
 Scope: read-only `branch-compare.ts`, its existing-screen handlers, and AppModel
 hooks added for B3. Existing B12/fork mutation machinery is unchanged. The held
 initial implementation `67968b2` is not acceptance evidence for the repaired

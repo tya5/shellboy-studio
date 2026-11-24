@@ -1,5 +1,7 @@
 # Branches Publish Boundary Inventory (ADR-R1)
 
+> Superseded in part by the Branches redesign (#138, 2026-11-24): the list, ExcerptBatch, the comparison usage and body reads, and their screens were removed; lane reads are described in `docs/design/architecture.md` (Branch Excerpt Admission) and `docs/design/branches-threads.md`. This record is kept as history.
+
 Follow-up to held fork 07661c4 atop B12 24a5825. This inventory records
 source-confirmed boundaries and synthetic coverage, not independent acceptance. Anchors
 are stable method/write names in web/ui-core/src/branching.ts unless specified.

@@ -1,4 +1,3 @@
-import { ExcerptBatch } from "../src/branching";
 import { describe, expect, it } from "vitest";
 import { details, flush, settle } from "../../data/test/harness";
 import { branchLayout, branchMarks, branchRowMarks, branchTitle, formatRoute, parseRoute, materializeHistoryPresentation, readFamily, readRewind, readWholeFamily } from "../src";
@@ -44,63 +43,6 @@ describe("branch management", () => {
     const rename = model.branches.renameBranch("fork-a", "Keep this"); await settle(t, db); await rename;
     expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "fork-a", title: "Keep this" });
     model.dispose();
-  });
-});
-
-describe("branch excerpts", () => {
-  it("reads a bounded split window and a bounded tip window", async () => {
-    const { model, t, db } = await fixtureModel({ route: "branches" });
-    const answer = db.answer.bind(db);
-    db.answer = c => c.command === "history.window" ? { ok: true, result: { thread_id: "fork-a", revision: 1, total: 103, items: (c.args as { node_id?: string }).node_id ? [{ node_id: "n100", kind: "user", excerpt: "split", selection: { ordinal: 100 } }, { node_id: "n101", kind: "user", excerpt: "first", selection: { ordinal: 101 } }] : [{ node_id: "n102", kind: "assistant_response", excerpt: "line one\nline two\nline three", selection: { ordinal: 102 } }] } } : answer(c);
-    const pending = model.branches.excerpts(family().items[1]!, new Cancel());
-    await settle(t, db); await settle(t, db);
-    expect(await pending).toEqual({ split: "split", request: "first", answer: "line one\nline two" });
-    expect(t.calls("history.window")).toHaveLength(2);
-    model.dispose();
-  });
-});
-
-describe("layout", () => {
-  it("columns follow order along the paths, tips stay in one last column, and counts come from the read", () => {
-    const l = branchLayout(family());
-    expect(l.tipColumn).toBe(3);
-    expect(l.points.map((p) => [p.nodeId, p.column])).toEqual([["n100", 1], ["n150", 2]]);
-    const edges = new Map(l.edges.map((e) => [e.key, e]));
-    expect(edges.get("run:lead:n100")!.nodes).toBe(101);
-    expect(edges.get("run:lead:n150")!.nodes).toBe(50);
-    expect(edges.get("tip:lead")!.nodes).toBe(75);
-    expect(edges.get("tip:fork-a")!.nodes).toBe(12);
-    expect(edges.get("join:fork-a")).toMatchObject({ fromRow: 0, toRow: 1 });
-  });
-  it("highlights the current Thread, and an ancestor only up to where the current path leaves it", () => {
-    const f = readFamily([{ ...fixtureBranches, thread_id: "fork-a", items: fixtureBranches.items.map((i) => ({ ...i, state: i.thread_id === "fork-a" ? "current" : i.thread_id === "lead" ? "ancestor" : "branch" })) }]);
-    const l = branchLayout(f);
-    const edges = new Map(l.edges.map((e) => [e.key, e]));
-    expect(edges.get("run:lead:n100")!.active).toBe(true);
-    expect(edges.get("run:lead:n150")!.active).toBe(false);
-    expect(edges.get("tip:lead")!.active).toBe(false);
-    expect(edges.get("join:fork-a")!.active).toBe(true);
-    expect(edges.get("tip:fork-a")!.active).toBe(true);
-    expect(l.points.find((p) => p.nodeId === "n100")!.active).toBe(true);
-    expect(l.points.find((p) => p.nodeId === "n150")!.active).toBe(false);
-  });
-  it("a child with no shared prefix is drawn apart and never joined by a guess", () => {
-    const l = branchLayout(family());
-    const plain = l.lanes.find((x) => x.item.threadId === "plain-child")!;
-    expect(plain.detached).toBe(true);
-    expect(plain.item.divergenceUnknown).toBe("no_shared_prefix");
-    expect(l.edges.some((e) => e.key === "join:plain-child")).toBe(false);
-  });
-  it("two children leaving at one node make one point", () => {
-    const items = [...fixtureBranches.items, { ...fixtureBranches.items[1]!, thread_id: "fork-c" }];
-    const l = branchLayout(readFamily([{ ...fixtureBranches, items }]));
-    expect(l.points.find((p) => p.nodeId === "n100")!.branches).toBe(2);
-  });
-  it("a parent listed only by id doesn't lose its child", () => {
-    const orphan = { ...fixtureBranches.items[1]!, parent_thread_id: "unlisted" };
-    const l = branchLayout(readFamily([{ ...fixtureBranches, items: [orphan] }]));
-    expect(l.lanes).toHaveLength(1);
-    expect(l.points).toHaveLength(0);
   });
 });
 

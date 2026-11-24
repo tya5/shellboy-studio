@@ -44,8 +44,6 @@ export { SubView } from "./SubView";
 export { PageHeader } from "./PageHeader";
 export { ModelPicker } from "./ModelPicker";
 export { MoreMenu } from "./MoreMenu";
-export { BranchGraph } from "./BranchGraph";
-export { BranchList } from "./BranchList";
 export { BranchMark } from "./BranchMark";
 export { BranchLanes, LaneName, LaneTinted, type LaneMark, type LaneRowView } from "./BranchLanes";
 export { ThreadGroup } from "./ThreadGroup";

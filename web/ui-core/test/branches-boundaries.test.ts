@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { Link } from "../../data/src/link";
 import { Operations } from "../../data/src/operations";
 import { FakeTransport, flush } from "../../data/test/harness";
-import { Branches, ExcerptBatch } from "../src/branching";
+import { Branches } from "../src/branching";
 const transitions = ["B", "ABA", "unavailable", "leave", "thread", "target", "same"] as const;
 type Transition = typeof transitions[number];
 function fixture() {
@@ -71,21 +71,6 @@ for (const transition of transitions.filter(t => t !== "target")) it(`R1 loading
     f.t.ok(f.t.calls("thread.branches")[0]!.id, { root_thread_id: "parent", items: [], total: 0 });
   } else expect(f.t.calls("thread.branches")).toHaveLength(0);
   await p; stop(); f.b.leave(); f.link.stop();
-});
-
-it("R1 show invalidation consumes no new row admission", async () => {
-  let reads = 0, initial = true;
-  const batch = new ExcerptBatch(async () => { reads++; return {}; });
-  batch.show({ threadId: "x" } as Parameters<Branches["excerpts"]>[0], () => { if (initial) { initial = false; batch.reset(); } });
-  await flush(); expect(reads).toBe(0);
-});
-it("R1 release callback replacement of the same Thread keeps its new row", async () => {
-  const pending: (() => void)[] = []; let reads = 0, replace = false;
-  const batch = new ExcerptBatch(async () => { reads++; await new Promise<void>(r => pending.push(r)); return {}; });
-  const item = { threadId: "x" } as Parameters<Branches["excerpts"]>[0];
-  const release = batch.show(item, () => { if (replace) { replace = false; batch.reset(); batch.show(item, () => {}); } });
-  replace = true; release(); pending.shift()!(); await flush(); expect(reads).toBe(2);
-  pending.shift()!(); await flush(); batch.reset();
 });
 
 const mutationSites = ["rename-error", "archive-selection", "archive-error", "rewinding", "rewind-failed", "rewind-done", "rewind-error", "previewing", "preview-await"] as const;
@@ -196,26 +181,11 @@ for (const action of ["rename", "archive", "rewind", "rewind-send", "preview"] a
   if(!isCurrent){expect(f.t.calls("thread.branches")).toHaveLength(0);expect(f.b.state.peek()).toBe(state);expect(f.b.actionError.value).toBe("new projection");}
   f.b.leave();f.link.stop();
 });
-for (const point of ["reset", "facts"] as const) for (const transition of transitions) it(`R1 excerpt ${point} x ${transition}`, async()=>{
-  let invalidated=false,armed=false,reads=0,finish!:(value:{answer:string})=>void;
-  const item={threadId:"x"} as Parameters<Branches["excerpts"]>[0];
-  const batch=new ExcerptBatch(async()=>{reads++;return new Promise<{answer:string}>(r=>{finish=r;});});
-  const facts: string[]=[];
-  const release=batch.show(item,value=>{if(value.answer)facts.push(value.answer);if(armed&&!invalidated){invalidated=true;if(transition!=="same")batch.reset();}});
-  armed=true;if(point==="reset")batch.reset();else finish({answer:"saved"});await flush();
-  if(point==="reset"){finish({answer:"late"});await flush();expect(facts).toEqual([]);}else expect(facts).toEqual(["saved"]);
-  expect(reads).toBe(1);release();batch.reset();
-});
 it("R1 leave reset callback new read owns its loading state",async()=>{
   const f=fixture();let armed=false;let fresh:Promise<void>|undefined;
-  f.b.excerptBatch.show({threadId:"x"} as Parameters<Branches["excerpts"]>[0],()=>{if(armed){armed=false;fresh=f.b.read("other");}});
-  armed=true;f.b.leave();expect(f.b.state.peek().loading).toBe(true);expect(f.b.state.peek().threadId).toBe("other");
+  const stop=effect(()=>{f.b.lanes.version.value;if(armed){armed=false;fresh=f.b.read("other");}});
+  armed=true;f.b.leave();stop();expect(f.b.state.peek().loading).toBe(true);expect(f.b.state.peek().threadId).toBe("other");
   f.t.ok(f.t.calls("thread.branches")[0]!.id,{root_thread_id:"other",items:[],total:0});await fresh;expect(f.b.state.peek().family?.rootId).toBe("other");f.b.leave();f.link.stop();
-});
-for (const transition of transitions) it(`R1 excerpt initial admission x ${transition}`, async()=>{
-  let reads=0,first=true;const batch=new ExcerptBatch(async()=>{reads++;return {};});
-  batch.show({threadId:"x"} as Parameters<Branches["excerpts"]>[0],()=>{if(first){first=false;if(transition!=="same")batch.reset();}});
-  await flush();expect(reads).toBe(transition==="same"?1:0);batch.reset();
 });
 it("R1 pending and cached fork retarget never dispatch; a valid new explicit action has its own ID",async()=>{
   const f=fixture();const p=f.b.forkAt(f.target);const original=f.t.calls("thread.fork")[0]!;
@@ -273,25 +243,14 @@ it("R1 owner invalidation preview cancellation cannot cancel an explicit new fam
   expect(f.b.state.peek().family?.rootId).toBe("other");f.b.leave();f.link.stop();
 });
 
-it("R1 owner invalidation detaches old excerpts even when family cancellation starts a new preview",async()=>{
-  const f=fixture();const family=f.ops.threadBranches.bind(f.ops),window=f.ops.historyWindow.bind(f.ops);
-  let ready:Promise<void>|undefined,cancelled=false;
+it("R1 owner invalidation drops lane reads in flight even when family cancellation starts a new preview",async()=>{
+  const f=fixture();const family=f.ops.threadBranches.bind(f.ops);
+  let ready:Promise<void>|undefined;
   f.ops.threadBranches=(args,read)=>{read?.cancel?.add(()=>{ready=f.b.previewRewind(f.target);});return family(args,read);};
-  f.ops.historyWindow=(args,read)=>{if(args.thread_id==="second")read?.cancel?.add(()=>{cancelled=true;});return window(args,read);};
-  const seen:string[]=[];f.b.excerptBatch.show({threadId:"child",tipNodeId:"tip"} as Parameters<Branches["excerpts"]>[0],v=>{if(v.answer)seen.push(v.answer);});
-  const oldWindow=f.t.calls("history.window")[0]!;const p=f.b.read("parent");
-  // A read resets prior excerpts; install another pending row in that read epoch.
-  f.b.excerptBatch.show({threadId:"second",tipNodeId:"tip"} as Parameters<Branches["excerpts"]>[0],v=>{if(v.answer)seen.push(v.answer);});
-  await flush();f.invalidate("B");await p;expect(cancelled).toBe(true);
+  f.b.lanes.want({kind:"node",threadId:"child",nodeId:"tip"});
+  const p=f.b.read("parent");
+  await flush();f.invalidate("B");await p;
   for(const call of f.t.calls("history.window"))f.t.ok(call.id,{thread_id:"child",revision:1,total:1,items:[{node_id:"tip",kind:"assistant_response",excerpt:"stale",selection:{ordinal:1}}]});
-  await flush();expect(seen).toEqual([]);expect(oldWindow.id).toBeTruthy();
+  await flush();expect(f.b.lanes.node("tip")).toBeUndefined();
   f.t.ok(f.t.calls("thread.rewind")[0]!.id,{removed_node_count:1});await ready;expect(f.b.rewind.value.kind).toBe("ready");f.b.leave();f.link.stop();
-});
-it("R1 detached old clear never overwrites a same-ID replacement using the same UI setter",async()=>{
-  let finish!:(v:{answer:string})=>void,replace=false;const displays:string[]=[];
-  const item={threadId:"x"} as Parameters<Branches["excerpts"]>[0];let batch!:ExcerptBatch;
-  const publish=(v:{answer?:string})=>{displays.push(v.answer??"empty");};
-  batch=new ExcerptBatch(async(_item,cancel)=>{cancel.add(()=>{if(replace){replace=false;batch.show(item,publish);publish({answer:"new UI"});}});return new Promise<{answer:string}>(r=>{finish=r;});});
-  batch.show(item,publish);const invalidate=batch.detach();replace=true;invalidate();
-  expect(displays.at(-1)).toBe("new UI");finish({answer:"old"});await flush();expect(displays.at(-1)).toBe("new UI");batch.reset();
 });
