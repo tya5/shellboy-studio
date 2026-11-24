@@ -53,13 +53,13 @@ try {
   const capture = async (name, width, mobile) => {
     const tall = await evaluate(`(()=>{const m=document.querySelector('.branches-main');return Math.ceil(document.documentElement.clientHeight+(m?m.scrollHeight-m.clientHeight:0))})()`);
     await metrics(width, Math.min(tall, 6000), mobile);
-    await until(`!document.querySelector('.lanes .lanes-placeholder')`, `${name}: every row read once seen`);
+    await until(`!document.querySelector('.branch-lanes .lanes-pending')`, `${name}: every row read once seen`);
     await delay(200);
     const shot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(join(out, `${name}.png`), Buffer.from(shot.data, 'base64'));
     return join(out, `${name}.png`);
   };
-  const heights = () => evaluate(`(()=>{const by={};for(const li of document.querySelectorAll('.lanes>li')){if(li.dataset.selected!==undefined)continue;const k=li.dataset.kind;const h=Math.round(li.getBoundingClientRect().height*10)/10;(by[k]??=new Set()).add(h)}return Object.fromEntries(Object.entries(by).map(([k,v])=>[k,[...v]]))})()`);
+  const heights = () => evaluate(`(()=>{const by={};for(const li of document.querySelectorAll('.branch-lanes>li')){if(li.dataset.selected!==undefined)continue;const k=li.dataset.kind;const h=Math.round(li.getBoundingClientRect().height*10)/10;(by[k]??=new Set()).add(h)}return Object.fromEntries(Object.entries(by).map(([k,v])=>[k,[...v]]))})()`);
   const noSideScroll = async label => {
     const r = await evaluate(`(()=>{const m=document.querySelector('.branches-main');return {page:document.documentElement.scrollWidth,view:document.documentElement.clientWidth,main:m.scrollWidth,mainView:m.clientWidth}})()`);
     assert(r.page <= r.view && r.main <= r.mainView, `${label}: no horizontal scroll ${JSON.stringify(r)}`);
@@ -71,16 +71,16 @@ try {
     for (const [kind, width, height, mobile] of [['desktop', 1440, 1000, false], ['phone', 390, 844, true]]) {
       await metrics(width, height, mobile);
       await call('Page.navigate', { url: `http://127.0.0.1:${appPort}/designs/console/test/browser/branches-fixture.html?theme=${theme}` });
-      await until(`document.querySelectorAll('.lanes>li').length>10 && ![...document.querySelectorAll('.lanes .lanes-placeholder')].some(e=>e.getBoundingClientRect().top<document.querySelector('.branches-main').getBoundingClientRect().bottom)`, `${kind} lanes with text on screen`);
+      await until(`document.querySelectorAll('.branch-lanes>li').length>10 && ![...document.querySelectorAll('.branch-lanes .lanes-pending')].some(e=>e.getBoundingClientRect().top<document.querySelector('.branches-main').getBoundingClientRect().bottom)`, `${kind} lanes with text on screen`);
       const h = await heights();
       for (const [k, v] of Object.entries(h)) assert.equal(v.length, 1, `${kind}: one height for ${k} rows ${JSON.stringify(h)}`);
       if (mobile) for (const k of ['start', 'message', 'split', 'run']) if (h[k]) assert(h[k][0] >= 44, `${kind}: ${k} rows reach 44px ${JSON.stringify(h)}`);
       await noSideScroll(`${kind} ${theme}`);
       // Identity: a refresh (owner hint) keeps every row element.
-      const before = await evaluate(`(()=>{window.__rows=[...document.querySelectorAll('.lanes>li')];return window.__rows.length})()`);
+      const before = await evaluate(`(()=>{window.__rows=[...document.querySelectorAll('.branch-lanes>li')];return window.__rows.length})()`);
       await evaluate(`window.branchesFixture.model.branches.read('rel')`);
       await delay(300);
-      assert(await evaluate(`[...document.querySelectorAll('.lanes>li')].every((li,i)=>li===window.__rows[i])&&document.querySelectorAll('.lanes>li').length===${before}`), `${kind}: rows kept across refresh`);
+      assert(await evaluate(`[...document.querySelectorAll('.branch-lanes>li')].every((li,i)=>li===window.__rows[i])&&document.querySelectorAll('.branch-lanes>li').length===${before}`), `${kind}: rows kept across refresh`);
       shots.push(await capture(`branches-${kind}-${theme}`, width, mobile));
       await metrics(width, height, mobile);
       await click('button.lanes-run', '#7');
