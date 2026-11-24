@@ -495,7 +495,7 @@ describe("AppModel over the fake transport", () => {
     await flush();
     t.ownerError(t.calls("message.send")[0]!.id, "busy_thread", "the thread is busy");
     expect(await sent).toBe(false);
-    expect(model.sendState.value).toEqual({ kind: "failed", message: "the thread is busy" });
+    expect(model.sendState.value).toEqual({ kind: "failed", message: "the thread is busy", diagnostic: { code: "busy_thread", hint: undefined, operationId: "x" } });
   });
 
   it("stop uses the open Run; retry reads the Thread's Run first", async () => {

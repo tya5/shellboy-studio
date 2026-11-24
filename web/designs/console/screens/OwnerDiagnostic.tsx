@@ -1,4 +1,5 @@
 import type { OpError } from "../../../data/src";
+import { LogBlock } from "../system/components";
 import type { Translate } from "../../../ui-core/src";
 
 export function OwnerDiagnostic({ t, code, message, hint, operationId }: {
@@ -12,9 +13,15 @@ export function OwnerDiagnostic({ t, code, message, hint, operationId }: {
   </span>;
 }
 
-export function ReadDiagnostic({ t, error, ownerOperationId }: { t: Translate; error: OpError; ownerOperationId?: string }) {
-  return <OwnerDiagnostic t={t} message={t("common.readError", { message: error.message })}
-    code={error.kind === "owner" || error.kind === "bridge" ? error.code : undefined}
-    hint={error.kind === "owner" ? error.hint : undefined}
-    operationId={ownerOperationId} />;
+export function ReadDiagnostic({ t, error, ownerOperationId, log }: { t: Translate; error: OpError; ownerOperationId?: string; log?: boolean }) {
+  const code = error.kind === "owner" || error.kind === "bridge" ? error.code : undefined;
+  const hint = error.kind === "owner" ? error.hint : undefined;
+  const message = t("common.readError", { message: error.message });
+  if (log) return <div data-owner-diagnostic=""><LogBlock text={[
+    code ? `${t("diagnostic.code")} ${code}` : undefined,
+    message,
+    hint ? `${t("diagnostic.hint")} ${hint}` : undefined,
+    ownerOperationId ? `${t("diagnostic.operation")} ${ownerOperationId}` : undefined,
+  ].filter(Boolean).join("\n")} /></div>;
+  return <OwnerDiagnostic t={t} message={message} code={code} hint={hint} operationId={ownerOperationId} />;
 }

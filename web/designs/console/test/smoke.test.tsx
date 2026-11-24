@@ -480,9 +480,11 @@ describe("Conversation", () => {
       model.openThread("broken");
       await (await import("../../../data/test/harness")).settle(t, db);
     });
-    // One place (#103): the status line holds the reason and the only Retry; the dock repeats neither.
+    // The status line keeps the only Retry; the supporting row shows evidence and the next action.
     const status = el.querySelector(".conversation-status")!;
-    expect(text(status)).toContain("provider: connection interrupted");
+    const diagnostic = el.querySelector(".convo > .conversation-retry-note [data-owner-diagnostic]")!;
+    expect(text(diagnostic)).toContain("provider: connection interrupted");
+    expect(text(diagnostic)).toContain("Choose an action");
     expect([...el.querySelectorAll("button")].filter(button => text(button).trim() === "Retry").map(button => status.contains(button))).toEqual([true]);
     expect(text(el.querySelector(".dock")!)).not.toContain("provider: connection interrupted");
   });

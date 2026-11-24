@@ -23,7 +23,7 @@ describe("Operations", () => {
     expect(t.calls()[0]).toMatchObject({ command: "artifact.list", args: { thread_id: "a", cursor: "opaque", limit: 32 } });
     expect(t.calls()[0]!.operation_id).toBeUndefined();
     t.ok(t.calls()[0]!.id, { items: [row], next_cursor: null });
-    await expect(list).resolves.toEqual({ ok: true, value: { items: [row] } });
+    await expect(list).resolves.toEqual({ ok: true, ownerOperationId: "op", value: { items: [row] } });
     const duplicate = ops.artifactList("a");
     t.ok(t.calls()[1]!.id, { items: [row, row] });
     await expect(duplicate).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
@@ -76,7 +76,7 @@ describe("Operations", () => {
     expect(t.calls()[0]).toMatchObject({ command: "thread.list", args: { limit: 5, archived: "only", query: "q" } });
     expect(t.calls()[0]!.operation_id).toBeUndefined();
     t.ok(t.calls()[0]!.id, { items: [summary("a")], next_cursor: "c1" });
-    expect(await p).toEqual({ ok: true, value: { items: [summary("a")], next_cursor: "c1" } });
+    expect(await p).toEqual({ ok: true, ownerOperationId: "op", value: { items: [summary("a")], next_cursor: "c1" } });
   });
 
   it("public history capture contains toJSON and getter failures as Outcomes", async () => {
@@ -174,7 +174,7 @@ describe("Operations", () => {
       id: t.calls()[0]!.id,
       response: { protocol_version: 5, operation_id: "o", ok: false, error: { code: "not_found", message: "no", hint: "list" } },
     });
-    expect(await p).toEqual({ ok: false, error: { kind: "owner", code: "not_found", message: "no", hint: "list" } });
+    expect(await p).toEqual({ ok: false, ownerOperationId: "o", error: { kind: "owner", code: "not_found", message: "no", hint: "list" } });
   });
 
   it("rejects undecodable results loudly instead of passing them on", async () => {
@@ -205,7 +205,7 @@ describe("Operations", () => {
     expect(cmds[3]!.args).toEqual({ thread_ids: ["a", "b"], descendants: true });
     for (const c of cmds) t.ok(c.id, c.command === "message.send" ? {message_id:"accepted-message",thread_id:"a"} : { done: true });
     await flush();
-    expect(await send).toEqual({ ok: true, value: {message_id:"accepted-message",thread_id:"a"}, operationId: "uuid-1" });
+    expect(await send).toEqual({ ok: true, ownerOperationId: "op", value: {message_id:"accepted-message",thread_id:"a"}, operationId: "uuid-1" });
     expect(await retry).toMatchObject({ operationId: "mine" });
     expect(await stop).toMatchObject({ ok: true });
     expect(await arch).toMatchObject({ ok: true });
@@ -227,7 +227,7 @@ describe("Operations", () => {
     t.ok(cmds[3]!.id, { items: [{ thread_id: "a", title: "A", state: "idle", tags: ["x", 3] }] });
     await flush();
     expect(await tag).toMatchObject({ ok: true, value: { changed: ["a"] } });
-    expect(await tags).toEqual({ ok: true, value: { items: ["x", "y"], next_cursor: "n" } });
+    expect(await tags).toEqual({ ok: true, ownerOperationId: "op", value: { items: ["x", "y"], next_cursor: "n" } });
     expect(await cwds).toMatchObject({ ok: false });
     expect(await list).toMatchObject({ ok: false });
   });
@@ -438,7 +438,7 @@ it.each(['work','handoff'] as const)('scoped %s decoder preserves valid operatio
  const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
  const items=[{kind:'shell',id:'operation-a',thread_id:'selected',state:'running',execution_id:'execution-a'},
   {kind:'shell',id:'operation-b',thread_id:'selected',state:'running',execution_id:'execution-b'}];
- t.ok(t.calls('status')[0]!.id,{items});expect(await pending).toEqual({ok:true,value:{items}});
+ t.ok(t.calls('status')[0]!.id,{items});expect(await pending).toEqual({ok:true, ownerOperationId: "op",value:{items}});
 });
 it.each(['work','handoff'] as const)('scoped %s decoder keeps missing public thread identity rejected',async mode=>{
  const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');

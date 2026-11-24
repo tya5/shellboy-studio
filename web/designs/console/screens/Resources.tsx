@@ -137,7 +137,7 @@ export function IndexPane({ model }: { model: AppModel }) {
     <>
       <Head t={t} title={t("res.index")} sub={t("ana.sub.index")} loading={index.loading} onRefresh={() => i.refreshRead("index")} />
       <Section title={t("res.spaces")} sub={index.value ? t("res.indexCounts", { pending: index.value.pending ?? 0, running: index.value.running ?? 0, done: index.value.done ?? 0, failed: index.value.failed ?? 0, held: index.value.held ?? 0 }) : undefined} source={<>{t("common.source", { source: "" })}<code>index.status</code></>}>
-        {index.error ? <Notice tone="bad"><ReadDiagnostic t={t} error={index.error} ownerOperationId={index.ownerOperationId} /></Notice> : null}
+        {index.error ? <Notice tone="bad"><ReadDiagnostic t={t} error={index.error} ownerOperationId={index.ownerOperationId} log /></Notice> : null}
         {index.value?.paused ? <Notice tone="wait">{t("res.indexPaused")}</Notice> : null}
         {index.value?.reason ? <div class="muted">{index.value.reason}</div> : null}
         {index.value && index.value.spaces.length > 0 ? (
