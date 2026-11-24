@@ -62,10 +62,14 @@ function groupsFor(items: readonly ThreadSummary[], pinIds: ReadonlySet<string>,
  */
 export function sidebarGroups(items: readonly ThreadSummary[], pinIds: readonly string[], selected?: string, flat = false, allItems: readonly ThreadSummary[] = items): SidebarGroup[] {
   const pinSet = new Set(pinIds);
+  // Newest first, like Core's created order; a missing or unparseable time sorts last.
+  const created = (item: ThreadSummary) => {
+    const time = item.created_at ? Date.parse(item.created_at) : Number.NaN;
+    return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+  };
   const pinnedItems = [...items].sort((a, b) => {
-    const aCreated = a.created_at ? Date.parse(a.created_at) : Number.POSITIVE_INFINITY;
-    const bCreated = b.created_at ? Date.parse(b.created_at) : Number.POSITIVE_INFINITY;
-    return aCreated - bCreated || a.thread_id.localeCompare(b.thread_id);
+    const aCreated = created(a), bCreated = created(b);
+    return aCreated === bCreated ? b.thread_id.localeCompare(a.thread_id) : bCreated - aCreated;
   });
   const pinned = groupsFor(pinnedItems, pinSet, selected, flat, []).find(group => group.key === "pins");
   // Build the All tree from its own membership so hidden pin-only parents cannot affect depth or totals.

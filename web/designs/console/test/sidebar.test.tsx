@@ -17,8 +17,9 @@ import { ThreadGroup } from "../system/components/ThreadGroup";
 it("orders the complete pin band by creation time without changing filtered All order", () => {
   const recent = summary("recent", { tags: ["pin"], created_at: "2024-01-01T00:00:00Z" });
   const older = summary("older", { tags: ["pin"], created_at: "2020-01-01T00:00:00Z" });
-  const groups = sidebarGroups([recent, older], ["recent", "older"], undefined, true, [recent, older]);
-  expect(groups[0]!.rows.map(row => row.summary.thread_id)).toEqual(["older", "recent"]);
+  const undated = summary("undated", { tags: ["pin"], created_at: null });
+  const groups = sidebarGroups([undated, recent, older], ["undated", "recent", "older"], undefined, true, [recent, older]);
+  expect(groups[0]!.rows.map(row => row.summary.thread_id)).toEqual(["recent", "older", "undated"]);
   expect(groups[1]!.rows.map(row => row.summary.thread_id)).toEqual(["recent", "older"]);
 });
 
