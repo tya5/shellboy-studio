@@ -109,13 +109,13 @@
 .branches-family{display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
 .branches-h{margin:0;font:var(--type-heading)}
 .branches-key{margin:0}
-.branches-key-split{display:inline-block;inline-size:var(--space-8);block-size:var(--space-8);margin-inline:var(--space-2);border:var(--space-2) solid var(--fg);border-radius:var(--space-2);transform:rotate(45deg)}
+.branches-key-split{display:inline-block;inline-size:var(--size-lane-node);block-size:var(--size-lane-node);margin-inline:var(--space-4);border:var(--size-lane-line) solid var(--fg);border-radius:var(--radius-s);transform:rotate(45deg)}
 .branches-phone-only{display:none}
 .branch-lines{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--size-meter-column)),1fr));gap:var(--space-12);margin:0;padding:0;list-style:none}
-.branch-line{display:grid;gap:var(--space-4);padding:var(--space-8) var(--space-12);border:1px solid var(--line);border-inline-start:var(--space-4) solid var(--lane);border-radius:var(--radius-s);background:var(--panel);min-width:0}
+.branch-line{display:grid;gap:var(--space-4);padding:var(--space-16);border:1px solid var(--line);border-inline-start:var(--size-lane-line) solid var(--lane);border-radius:var(--radius-s);background:var(--panel);min-width:0}
 .branch-line[data-picked]{background:var(--raised)}
 .branch-line-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8);font:var(--type-label);min-width:0}
-.branches-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-24);align-items:start}
+.branches-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-16);align-items:start}
 .branches-where,.branches-compare{display:flex;flex-direction:column;gap:var(--space-8);min-width:0}
 .branch-buttons{display:flex;flex-wrap:wrap;gap:var(--space-8)}
 .branch-pinned{display:flex;flex-direction:column;gap:var(--space-4);min-width:0}
@@ -128,12 +128,12 @@
 .branch-shared{display:flex;align-items:flex-start;gap:var(--space-8);margin:0;padding:var(--space-16);border:1px solid var(--line);border-radius:var(--radius-s);background:var(--inset);font:var(--type-label)}
 .branch-shared .i{flex:none;margin-block-start:var(--space-2);color:var(--muted)}
 .branch-sides{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-12);align-items:start}
-.branch-side{display:flex;flex-direction:column;gap:var(--space-8);min-width:0;padding:var(--space-16);border:1px solid var(--line);border-block-start:var(--space-4) solid var(--lane);border-radius:var(--radius);background:var(--panel)}
+.branch-side{display:flex;flex-direction:column;gap:var(--space-8);min-width:0;padding:var(--space-16);border:1px solid var(--line);border-block-start:var(--size-lane-line) solid var(--lane);border-radius:var(--radius);background:var(--panel)}
 .branch-side p{margin:0}
 .branch-side-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8);font:var(--type-heading);min-width:0}
 .branch-msgs .mono{white-space:nowrap}
 .branch-msgs{display:flex;flex-direction:column;gap:var(--space-8);margin:0;padding:0;list-style:none;font:var(--type-label)}
-.branch-msgs li{display:grid;grid-template-columns:calc(var(--space-24) + var(--space-12)) minmax(0,1fr);gap:var(--space-8);align-items:baseline;overflow-wrap:anywhere}
+.branch-msgs li{display:grid;grid-template-columns:var(--size-branch-message-index) minmax(0,1fr);gap:var(--space-8);align-items:baseline;overflow-wrap:anywhere}
 .branch-open{display:inline-flex;align-items:center;gap:var(--space-4);font:var(--type-label)}
 .branches-bar{display:none}
 @container app (max-width:1179px){
@@ -183,7 +183,7 @@
   .dock{padding:0 var(--space-12) var(--space-12)}
   .head h1{font:var(--type-heading)}
   /* Phone: a full-width lane list, the line cards below it, and Compare from a bottom bar as its own view. */
-  .branches-main{padding:var(--space-12) var(--space-16);gap:var(--space-12)}
+  .branches-main{padding:var(--space-12);gap:var(--space-16)}
   .branches-phone-only{display:block}
   .branches-lines{order:2;display:flex;flex-direction:column;gap:var(--space-8)}
   .branches-columns{order:1}
