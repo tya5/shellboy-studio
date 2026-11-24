@@ -1,4 +1,4 @@
-/** The sole owner of Thread activity-to-Monitor status meanings. */
+/** The sole owner of Thread activity-to-Thread-status meanings. */
 export const ACTIVITY_STATUS = {
   idle: "idle",
   sending: "running",

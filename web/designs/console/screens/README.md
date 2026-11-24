@@ -1,6 +1,6 @@
 # Screen-owned thread list focus
 
-The sidebar's `.side-list` and the Threads screen's `.org-rows` are the row-list
+The sidebar's `.side-list` is the row-list
 boundaries; filters, toolbars, and selection actions are outside them. Each list has one
 total focusin handler: focus on a row records its stable link id; focus on any other
 control inside the list clears the claim. Focusout to outside also clears it. It also retains each row's
@@ -23,7 +23,7 @@ subscription coalesces one follow-up pair; leaving, hiding or collapsing Analyti
 changing Threads, or losing the owner cancels both reads. The same tab works in
 the phone sheet. `thread.get` still supplies bounded context facts, not totals.
 
-The sidebar `.side-list` and management `.org-rows` are zero-inline-padding row boundaries. Bands and rows fill those boundaries and own their shared-token content insets; do not bleed individual rows or headers beyond the containers.
+The sidebar `.side-list` is a zero-inline-padding row boundary. Bands and rows fill that boundary and own their shared-token content insets; do not bleed individual rows or headers beyond the container.
 
 ## Resources Memory
 

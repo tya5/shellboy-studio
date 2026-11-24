@@ -133,7 +133,7 @@ legend and table provide the required second channel). Single series use `muted`
 | Decision | Reason | Revisit when |
 |---|---|---|
 | Analytics is split into sections by a shared SubView (user request 2026-11-07), replacing one long scroll | The page was too long; panes also make reads lazy | — |
-| Phone tabs are Awaiting you, Conversation, Monitor and More (user request 2026-11-07) | Five tabs were tight; More holds everything else | — |
+| Phone tabs are Awaiting you, Conversation and More (user request 2026-11-07) | Five tabs were tight; More holds everything else | — |
 | At phone width tables stack into label and value pairs, except a chart's value table | No hidden column and no sideways scroll | — |
 | The popover keeps theme and language, and links to Settings > Appearance | Those choices are quick and were just fixed in the popover | The user prefers one place |
 | Period is browser-local fixed offset, not `local` | Calendar days should match what the reader sees when the owner is elsewhere. Uncertain: a DST change inside the period shifts boundaries by the offset difference | Someone reads across a DST change |

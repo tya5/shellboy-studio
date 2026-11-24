@@ -50,7 +50,6 @@
 @import "./components/ChoiceList/style.css";
 @import "./shared/setup.css";
 @import "./components/VirtualSpace/style.css";
-@import "./components/MonitorTile/style.css";
 @import "./components/AppRequest/style.css";
 @import "./components/ModelPicker/style.css";
 @import "./components/PairingQr/style.css";
@@ -79,7 +78,6 @@
 @import "./components/WorkSheet/style.css";
 @import "./components/useRowMenu/style.css";
 @import "./shared/screen-layout.css";
-@import "./shared/monitor.css";
 
 @import "./components/PanelTabs/style.css";
 @import "./components/ListRow/style.css";

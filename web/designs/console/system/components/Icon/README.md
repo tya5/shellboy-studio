@@ -15,23 +15,17 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.retry` | Retry a recoverable Run; recovery, Monitor, Analytics, and Settings compaction controls. | `retry` |
 | `action.delete` | Delete a Thread after its exact preview is confirmed; destructive last row-menu item. | `trash` |
 | `action.editTags` | Open the tag editor for a Thread from any shared row menu. | Lucide `tag` |
-| `action.clearStatusFilter` | Remove one status filter chip in Monitor. | `cross` |
-| `action.clearQueryFilter` | Clear the active query filter chip in Monitor. | `cross` |
-| `action.clearArchiveFilter` | Remove the archive filter chip in Monitor. | `cross` |
-| `row.menu` | Open a row’s action menu in the sidebar or Threads list. | `more` |
+| `row.menu` | Open a row’s action menu in the sidebar. | `more` |
 | `menu.checked` | Show that a toggle item in a menu (`menuitemcheckbox`) is on. | Lucide `check` |
 | `composer.modelMenu` | Show that the composer model control opens its picker. | `chevronDown` |
 | `composer.removeAttachment` | Remove one attachment token from the composer before sending. | `cross` |
 | `thread.create` | Create a new Thread from the sidebar. | `plus` |
 | `thread.search` | Find a Thread in the sidebar list. | `search` |
 | `settings.applicationPanel` | Open or close the application Settings panel from the main header. | `gear` |
-| `organization.search` | Filter the Threads organization view. | `search` |
 | `nav.conversation` | Navigate to Conversation. | `chat` |
-| `nav.monitor` | Navigate to Monitor. | `monitor` |
 | `nav.inbox` | Navigate to Inbox. | `inbox` |
 | `nav.apps` | Navigate to Apps from the More menu. | `apps` |
 | `nav.branches` | Navigate to Branches from the app navigation More menu. | `branch` |
-| `nav.threads` | Navigate to Threads from the More menu. | `tree` |
 | `nav.analytics` | Navigate to Analytics from the More menu. | `chart` |
 | `nav.settings` | Navigate to Settings from the More menu. | `gear` |
 | `nav.openThreadList` | Open the phone Thread-list drawer. | `menu` |
@@ -68,8 +62,6 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `empty.inbox` | Empty Inbox state. | `inbox` |
 | `empty.noThread` | No Thread is selected for Conversation. | `chat` |
 | `empty.conversation` | The selected Conversation has no messages yet. | `chat` |
-| `empty.monitorNoMatches` | No Monitor rows match the current filters. | `monitor` |
-| `empty.monitor` | Monitor has no rows. | `monitor` |
 | `empty.branches` | No branches are available for the selected Thread. | `branch` |
 | `empty.panelActivity` | Compact empty state of the conversation panel's Activity tab. | `term` |
 | `empty.panelReplies` | Compact empty state of the Reply needed tab. | `reply` |
@@ -86,9 +78,6 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `work.reasoning` | Identify reasoning metadata without exposing its content. | `bot` |
 | `work.interruption` | Identify an interruption/problem record. | `cross` |
 | `work.terminal` | Identify a terminal command or shell work record. | `term` |
-| `monitor.childThreads` | Indicate child Threads in a Monitor card. | `tree` |
-| `monitor.parentThread` | Indicate the parent Thread in a Monitor card. | `tree` |
-| `monitor.openConversation` | Open the Monitor card's Conversation. | `arrow` |
 | `status.complete` | Completed status mark. | `check` |
 | `status.failed` | Failed status mark. | `cross` |
 | `message.user` | Identify a person as a message sender. | `user` |

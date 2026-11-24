@@ -6,7 +6,7 @@ import { canonicalAttemptId } from "../../data/test/work-fixture";
 
 describe("AppModel over the fake transport", () => {
   it("keeps cold-start and changed active Threads plus Inbox-only membership in Monitor rows and counts", async () => {
-    const { model, data, t, db } = await fixtureModel({ route: "monitor", configure(owner) {
+    const { model, data, t, db } = await fixtureModel({ route: "inbox", configure(owner) {
       owner.threads = { ...owner.threads, cold: summary("cold", { activity: "tools" }), changed: summary("changed", { activity: "idle" }), inbox: summary("inbox", { activity: "idle" }) };
       owner.work = { ...owner.work, cold: [{ kind: "run", id: "run-cold", state: "running", thread_id: "cold" }] };
       const answer = owner.answer.bind(owner);
@@ -93,7 +93,7 @@ describe("AppModel over the fake transport", () => {
       const call = t.calls("history.get").at(-1);
       expect(call).toBeDefined();
       expect(call!.args).toMatchObject({ node_id: "savedassistant" });
-      model.navigate({ view: "threads" });
+      model.navigate({ view: "analytics" });
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "late full body" });
       await pending;
       expect(model.bodies.peek().get(bodyKey)?.text).toBeUndefined();
@@ -112,7 +112,7 @@ describe("AppModel over the fake transport", () => {
       const bodyKey = model.bodyCacheKey("savedassistant");
       expect(model.bodies.peek().get(bodyKey)).toMatchObject({ loading: true, text: undefined });
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "successful but stale" });
-      model.navigate({ view: "threads" });
+      model.navigate({ view: "analytics" });
       expect(model.route.peek()).not.toBe(beforeRoute);
       await pending;
       expect(model.bodies.peek().get(bodyKey)?.text).toBeUndefined();
@@ -197,7 +197,7 @@ describe("AppModel over the fake transport", () => {
       await flush();
       expect(t.calls("history.get")).toHaveLength(1);
       t.ok(first!.id, { node_id: "body-node", kind: "assistant_response", text: "first", next_cursor: "next" });
-      model.navigate({ view: "threads" });
+      model.navigate({ view: "analytics" });
       await firstRead; await duplicate;
       expect(t.calls("history.get")).toHaveLength(1);
       expect(model.bodies.peek().get(key)?.text).toBeUndefined();
@@ -410,53 +410,6 @@ describe("AppModel over the fake transport", () => {
     } finally { model.dispose(); }
   });
 
-  it("Monitor doesn't open any Thread until asked", async () => {
-    const { model, t } = await fixtureModel({ route: "monitor" });
-    expect(t.calls("history.list")).toHaveLength(0);
-    expect(model.handle.value).toBeUndefined();
-    expect(model.monitorRows.value[0]!.summary.thread_id).toBe("broken");
-    model.monitorFilter.value = ["idle"];
-    expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["done"]);
-  });
-
-  it("applies one monitor selection for state, pins, query and order", async () => {
-    const { model } = await fixtureModel({ route: "monitor" });
-    model.monitorPins.value = ["lead", "child"];
-    model.monitorPinnedOnly.value = true;
-    model.monitorQuery.value = "REVIEW";
-    expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["child"]);
-    model.monitorFilter.value = ["idle"];
-    expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["child"]);
-    model.monitorFilter.value = ["running"];
-    expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["child"]);
-    model.dispose();
-  });
-
-  it("keeps existing monitor rows in place across hints and appends new rows", async () => {
-    const { model, t, db } = await fixtureModel({ route: "monitor" });
-    const ids = () => model.monitorRows.value.map((row) => row.summary.thread_id);
-    const before = ids();
-    const reads = t.calls("thread.list").length;
-    db.threads.lead = { ...db.threads.lead!, activity: "recovery", updated_at: "2099-01-01T00:00:00Z" };
-    db.threads = Object.fromEntries(Object.entries(db.threads).reverse());
-    db.threads["aaa-new"] = { ...db.threads.lead!, thread_id: "aaa-new", title: "New" };
-    t.push({ t: "changed", config_changed: false, thread_ids: ["aaa-new"], list: true });
-    await settle(t, db);
-    expect(ids().slice(0, before.length)).toEqual(before);
-    expect(ids().at(-1)).toBe("aaa-new");
-    expect(model.counts.value.error).toBe(3);
-    model.monitorFilter.value = ["error"];
-    expect(ids()).toContain("lead");
-    model.monitorFilter.value = [];
-    // The new row by ID, the list and the sidebar's Archive band.
-    expect(t.calls("thread.list").length).toBe(reads + 3);
-    model.monitorSort.value = "recent";
-    expect(ids()[0]).toBe("aaa-new");
-    model.monitorSort.value = "stable";
-    expect(ids().slice(0, before.length)).toEqual(before);
-    model.dispose();
-  });
-
   it("step facts come from shell.list and follow a change hint", async () => {
     const { model, t, db } = await fixtureModel();
     const step = () => {
@@ -618,7 +571,7 @@ describe("AppModel over the fake transport", () => {
   it("leaving the Conversation stops reading its Thread and reopening uses the positional API", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["history.window"] });
     const reads = () => t.calls("history.window").length;
-    model.applyRoute({ view: "monitor" });
+    model.applyRoute({ view: "analytics" });
     await flush();
     expect(t.watches().at(-1)!.thread_ids).toEqual([]);
     const away = reads();
@@ -742,7 +695,7 @@ it.each(['reserve-next','invalidate-route','invalidate-owner'] as const)('ACK su
   if(!rows.length||entered)return;entered=true;
   observed={pending:f.model.pendingOwnMessage.peek(),phase:f.model.sendState.peek().kind};
   if(mode==='reserve-next')next=f.model.send('Next original operation');
-  else if(mode==='invalidate-route')f.model.navigate({view:'threads'});
+  else if(mode==='invalidate-route')f.model.navigate({view:'conversation'});
   else {const owner=f.data.owner.peek();if(owner.state==='connected')f.t.push({t:'owner',event:'connected',owner:{...owner,info:{...owner.info,instance_id:'replacement-owner'}}});}
  });
  try{

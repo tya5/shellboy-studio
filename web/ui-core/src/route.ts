@@ -1,5 +1,5 @@
 // Location of the UI, as a fragment. `#token=` belongs to the entry point, not to routing.
-export type ViewName = "conversation" | "monitor" | "inbox" | "analytics" | "settings" | "branches" | "threads" | "apps" | "setup";
+export type ViewName = "conversation" | "inbox" | "analytics" | "settings" | "branches" | "apps" | "setup";
 export const SETTINGS_SECTIONS = ["general", "connections", "compaction", "storage", "index", "agent", "appearance", "studio", "core"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const ANALYTICS_SECTIONS = ["overview", "tokens", "compaction", "threads", "storage", "memory", "index"] as const;
@@ -30,10 +30,10 @@ export const START_ROUTE: Route = { view: "conversation" };
 
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/");
-  if (parts[0] === "monitor") return { view: "monitor" };
   if (parts[0] === "inbox") return { view: "inbox" };
+  // Old stored hashes for retired screens land in the surviving Conversation view.
+  if (parts[0] === "monitor" || parts[0] === "threads") return START_ROUTE;
   if (parts[0] === "setup") return parts[1] === "embedding" ? { view: "setup", step: "embedding" } : parts[1] === "share" ? { view: "setup", step: "share" } : { view: "setup" };
-  if (parts[0] === "threads") return { view: "threads" };
   if (parts[0] === "apps") {
     try {
       if (!parts[1] || parts.length > 3) return { view: "apps" };

@@ -3,7 +3,7 @@
 - **Use for:** Summarize one Thread for scanning in Monitor: status, title, relationships and the relevant action.
 - **Do not use for:** Use MonitorTile for a live tail preview and ThreadItem for the sidebar.
 - **Why:** A compact card supports scanning many Threads without opening each conversation.
-- **Source:** [Studio Monitor cards and panes](../../../../../../docs/design/monitor-tiles.md); [Studio #83](https://github.com/tya5/shellboy-studio/issues/83)
+- **Source:** [Studio #83](https://github.com/tya5/shellboy-studio/issues/83)
 
 Summarizes one Thread on the Monitor view.
 

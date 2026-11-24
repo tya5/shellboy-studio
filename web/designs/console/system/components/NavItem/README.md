@@ -6,7 +6,7 @@
 - **Source:** 出典なし（この Studio で決めた）
 
 A row that moves between views. Supply its semantic `IconRole`, label, current state,
-and optional count. The role describes the destination (for example `nav.monitor`);
+and optional count. The role describes the destination (for example `nav.analytics`);
 callers never select a glyph shape. The count uses `wait` and appears only for items
 awaiting a person. A count that is only a lower bound is passed as `N+` (the same
 form as PanelTabs); never pass an estimate.

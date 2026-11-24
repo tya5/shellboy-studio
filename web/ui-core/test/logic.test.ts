@@ -62,7 +62,7 @@ describe("previews", () => {
   });
 });
 
-describe("threads", () => {
+describe("inbox", () => {
   it("nests children under their parent, keeps the owner's order, keeps orphans", () => {
     const rows = threadTree([s("c", { parent_id: "p" }), s("p"), s("o", { parent_id: "gone" })]);
     expect(rows.map((r) => [r.summary.thread_id, r.depth])).toEqual([["p", 0], ["c", 1], ["o", 0]]);
@@ -182,23 +182,23 @@ describe("usage facts", () => {
 
 describe("routes, prefs, commands, words", () => {
   it("routes round-trip; a token fragment is not a route", () => {
-    for (const r of [{ view: "monitor" }, { view: "inbox" }, { view: "conversation", threadId: "a/b" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
+    for (const r of [{ view: "inbox" }, { view: "inbox" }, { view: "conversation", threadId: "a/b" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
+    expect(parseRoute("#/monitor")).toEqual({ view: "conversation" });
+    expect(parseRoute("#/threads")).toEqual({ view: "conversation" });
     expect(parseRoute("#token=abc")).toEqual({ view: "conversation" });
     expect(parseRoute("")).toEqual({ view: "conversation" });
   });
   it("prefs default to the first design, English; damaged or removed values fall back", () => {
     const designs = [{ name: "console", themes: [{ name: "console" }, { name: "light" }] }];
     const store = (v: string | null) => ({ read: () => v, write() {} });
-    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, panelCollapsed: false, sidebarClosedGroups: [], sidebarOpenGroups: [], sidebarOpenParents: [], sidebarUnread: [], guideOptOut: false, monitorPins: [], monitorStatuses: [], monitorQuery: "", monitorArchive: "exclude", monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
-    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, panelCollapsed: false, sidebarClosedGroups: [], sidebarOpenGroups: [], sidebarOpenParents: [], sidebarUnread: [], guideOptOut: false, monitorPins: [], monitorStatuses: [], monitorQuery: "", monitorArchive: "exclude", monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
-    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", navCollapsed: false, panelCollapsed: false, sidebarClosedGroups: [], sidebarOpenGroups: [], sidebarOpenParents: [], sidebarUnread: [], guideOptOut: false, monitorPins: [], monitorStatuses: [], monitorQuery: "", monitorArchive: "exclude", monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, panelCollapsed: false, sidebarClosedGroups: [], sidebarOpenGroups: [], sidebarOpenParents: [], sidebarUnread: [], guideOptOut: false, weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, panelCollapsed: false, sidebarClosedGroups: [], sidebarOpenGroups: [], sidebarOpenParents: [], sidebarUnread: [], guideOptOut: false, weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", navCollapsed: false, panelCollapsed: false, sidebarClosedGroups: [], sidebarOpenGroups: [], sidebarOpenParents: [], sidebarUnread: [], guideOptOut: false, weights: { cached: 0.1, output: 5 } });
     expect(loadPrefs(store('{"theme":"gone"}'), designs).theme).toBe("console");
     expect(loadPrefs(store('{"navCollapsed":true}'), designs).navCollapsed).toBe(true);
     expect(loadPrefs(store('{"guideOptOut":true}'), designs).guideOptOut).toBe(true);
     expect(loadPrefs(store('{"guideOptOut":"true"}'), designs).guideOptOut).toBe(false);
     expect(loadPrefs(store('{"navCollapsed":"true"}'), designs).navCollapsed).toBe(false);
-    expect(loadPrefs(store('{"monitorSort":"recent"}'), designs).monitorSort).toBe("recent");
-    expect(loadPrefs(store('{"monitorSort":"invalid"}'), designs).monitorSort).toBe("stable");
   });
   it("a blocked store doesn't throw", () => {
     expect(() => savePrefs({ read: () => null, write: () => { throw new Error("blocked"); } }, { design: "x", theme: "y", lang: "en", weights: { cached: 0, output: 1 } })).not.toThrow();
@@ -217,7 +217,7 @@ describe("routes, prefs, commands, words", () => {
     expect(panelShortcut({ key: "9", altKey: true })).toBe(true);
     expect(panelShortcut({ key: "9", altKey: true, shiftKey: true })).toBe(false);
     expect(panelShortcut({ key: "9", altKey: true, isComposing: true })).toBe(false);
-    expect(viewShortcut({ key: "2", altKey: true })).toBe("monitor");
+    expect(viewShortcut({ key: "3", altKey: true })).toBe("inbox");
     expect(viewShortcut({ key: "2" })).toBeUndefined();
   });
   it("every language has every word, with the same placeholders", () => {
@@ -228,7 +228,7 @@ describe("routes, prefs, commands, words", () => {
         expect(other, `${lang} ${key}`).toBeTruthy();
         expect(names(other), `${lang} ${key}`).toBe(names(text));
       }
-    expect(translator("en")("monitor.children", { n: 3 })).toBe("3 child threads");
+
     expect(activityLabel("ja", "recovery")).toBe("復旧待ち");
     expect(activityLabel("en", "new_word")).toBe("new_word");
   });

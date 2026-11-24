@@ -63,7 +63,7 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 
 | Item | Bound | Released |
 |---|---|---|
-| Thread list rows (`threadList`, sidebar, Monitor) | 1000 (`MAX_LIST_ROWS`), 50 per press of Show more; past it, search | Replaced by a changed search; a hint re-reads one page and keeps rows further down, which can stay stale until the next full read |
+| Thread list rows (`threadList`, sidebar) | 1000 (`MAX_LIST_ROWS`), 50 per press of Show more; past it, search | Replaced by a changed search; a hint re-reads one page and keeps rows further down, which can stay stale until the next full read |
 | Sidebar pinned set (`pinnedThreadIds`) | 1000 (`MAX_LIST_ROWS`), pages of 50 of `thread.list` with the `pin` tag and `archived: "include"`, walked on list hints and resync; `pinnedMore` says a continuation was left | Replaced by the next complete walk; cleared on owner change |
 | Sidebar Archive band (`archivedList`, `archivedThreadIds`) | Like the list: `thread.list` with `archived: "only"` and the list's filter, pages of 50 up to 1000 IDs (`loadMoreArchived`), rows in the one row cache; re-read (loaded page count) on resync, filter change and list hints that change archive state, parent or a filtered field; not read while Needs-you is on (#126) | Replaced by a changed filter; rows with the cache |
 | Row cache (`threadRows`, one per owner, #96) | 1000 rows (`MAX_LIST_ROWS`), oldest first out, except rows still held: open Threads (64) and every ID the list, Archive and pinned states hold (1000 each), so it can reach 3064 | A row leaves once nothing holds it and the cache is past 1000; cleared on owner change |
@@ -91,10 +91,8 @@ Measured (2026-11-07, one run, facts and not bounds): macOS arm64, headless Chro
 
 | Scenario | First paint | Ready | JS heap after GC | DOM nodes | Long tasks | Frames while scrolling |
 |---|---|---|---|---|---|---|
-| Monitor, 50 rows | 44 ms | 73 ms | 1.7 MiB | 989 | 0 | 17 ms, p95 and max |
 | Threads view, 200 rows | 44 ms | 79 ms | 2.2 MiB | 2,528 | 0 | 17 ms |
 | By Thread (no usage in this seed) | 40 ms | 79 ms | 1.5 MiB | 450 | 0 | 17 ms |
-| Monitor, 1000 rows (the bound) | | | 8.1 MiB | 17,518 | 0 | 17 ms |
 | 100,000-node Thread | | 30.8 s, 1,002 `history.list` calls | 3.1 MiB | 2,205 | 0 | 17 ms over 140 messages |
 | Four tabs on it at once | | 150 s each | about 3 MiB each | | | |
 
@@ -225,18 +223,6 @@ cancellation and cleanup; no capability or wire shape is guessed here. The
 conversation projection caps the adapter's visible results at 128 and separates
 human recipients from Thread recipients. The existing global Awaiting you adapter
 remains independent and human-only.
-
-### Stable monitor order
-
-The Monitor projects only the already bounded Thread list. It retains the order
-in which IDs first enter this local projection, appending newly observed IDs in
-ID order; it forgets IDs removed from the list. Activity, state and hints update
-row content and counts without moving retained rows. List replacement, filtering
-or the owner's bounded retention can remove rows; the displayed counts therefore
-cover loaded rows only. No additional RPC or polling is introduced. The per-browser
-sort preference offers stable order (default) or descending `updated_at` with ID
-as the tie-breaker. The stable order lives only for the AppModel's lifetime and
-is rebuilt from the bounded current list after reload.
 
 ### Compacted tool output linkage
 

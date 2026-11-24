@@ -51,7 +51,7 @@ const text = (el: Element) => el.textContent ?? "";
 
 describe("Desktop navigation", () => {
   it("renders one status footer, with the desktop Exit, in the shell and on Settings", async () => {
-    const { model, t, data } = await fixtureModel({ route: "monitor" });
+    const { model, t, data } = await fixtureModel({ route: "inbox" });
     try {
       t.push({ t: "hello", bridge_version: "0.0.1", desktop: true, data_dir: "/temp/owner-a",
         owner: { state: "connected", info: { protocol_version: 10, instance_id: "i1", capabilities: ["history.window"] } } });
@@ -648,189 +648,6 @@ describe("Conversation", () => {
   });
 });
 
-describe("Monitor", () => {
-  it("reads archived Threads for Monitor's archive scopes without adding them to sidebar All", async () => {
-    const { model, t, db, data } = await fixtureModel({ route: "monitor", configure(db) {
-      db.threads.archived = summary("archived", { title: "Archived fixture", activity: "tools", state: "completed", archived_at: "2025-01-01T00:00:00Z" });
-      const answer = db.answer.bind(db);
-      db.answer = call => {
-        if (call.command !== "thread.list" || (call.args as { thread_ids?: string[] }).thread_ids) return answer(call);
-        const args = call.args as { archived?: string; limit?: number; cursor?: string };
-        const rows = Object.values(db.threads).filter(row => { const archived = (row as typeof row & { archived_at?: string }).archived_at; return args.archived === "only" ? !!archived : args.archived === "include" ? true : !archived; });
-        return { ok: true, result: { items: rows, next_cursor: undefined } };
-      };
-    } });
-    try {
-      const el = draw(model, { monitorArchive: "exclude" });
-      await act(async () => { await settle(t, db); await flushPromises(); });
-      const button = (label: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find(b => text(b) === label)!;
-      act(() => button(model.t.value("monitor.filterButton")).click());
-      act(() => button(model.t.value("monitor.archiveOnly")).click());
-      await act(async () => { await settle(t, db); await flushPromises(); });
-      expect(el.querySelector(".mon")?.textContent).toContain("Archived fixture");
-      expect(t.calls("thread.list").some(call => (call.args as { archived?: string }).archived === "only")).toBe(true);
-      expect(el.querySelector(".side")?.textContent).not.toContain("Archived fixture");
-      act(() => button(model.t.value("monitor.archiveInclude")).click());
-      expect(el.querySelector(".mon")?.textContent).toContain("Archived fixture");
-      expect(data.threadList.value.filter?.archived).not.toBe("include");
-    } finally { model.dispose(); data.stop(); }
-  });
-
-  it("keeps archived Threads out of the sidebar All band while Monitor is open", async () => {
-    const { model, t, db, data } = await fixtureModel({ route: "conversation", configure(db) {
-      db.threads.archived = summary("archived", { title: "Archived fixture", activity: "tools", state: "completed", archived_at: "2025-01-01T00:00:00Z" });
-    } });
-    try {
-      const el = draw(model);
-      await act(async () => { await settle(t, db); await flushPromises(); });
-      const sidebarArchiveFilter = data.threadList.value.filter?.archived;
-      act(() => model.applyRoute({ view: "monitor" }));
-      await act(async () => { await flushPromises(); });
-      expect(data.threadList.value.filter?.archived).toBe(sidebarArchiveFilter);
-      const all = el.querySelector(".side .thread-groups") ?? el.querySelector(".side .threads");
-      expect(all?.textContent ?? "").not.toContain("Archived fixture");
-    } finally { model.dispose(); data.stop(); }
-  });
-
-  it("deduplicates an archived Monitor pin present in both owner reads", async () => {
-    const { model, t, db, data } = await fixtureModel({ route: "monitor", configure(db) {
-      db.threads["archived-pin"] = summary("archived-pin", { title: "Archived pinned fixture", activity: "tools", state: "completed", archived_at: "2025-01-01T00:00:00Z" });
-      const answer = db.answer.bind(db);
-      db.answer = call => {
-        if (call.command !== "thread.list" || (call.args as { thread_ids?: string[] }).thread_ids) return answer(call);
-        const args = call.args as { archived?: string };
-        const rows = Object.values(db.threads).filter(row => { const archived = (row as typeof row & { archived_at?: string }).archived_at; return args.archived === "only" ? !!archived : !archived; });
-        return { ok: true, result: { items: rows, next_cursor: undefined } };
-      };
-    } });
-    const el = draw(model, { monitorArchive: "include", monitorPins: ["archived-pin"] });
-    try {
-      await act(async () => { await settle(t, db); await flushPromises(); });
-      expect(model.monitorStableRows.value.filter(row => row.summary.thread_id === "archived-pin")).toHaveLength(1);
-      expect(el.querySelectorAll('.mon .card')).toHaveLength(model.monitorStableRows.value.length);
-    } finally { model.dispose(); data.stop(); }
-  });
-
-  it("shows the row-cache status mark for a pinned Thread outside the list without opening details", async () => {
-    const { model, t, db } = await fixtureModel({ route: "monitor", configure(db) {
-      db.threads["outside-pin"] = summary("outside-pin", { title: "Pinned outside list", activity: "tools", state: "running" });
-      const answer = db.answer.bind(db);
-      db.answer = call => {
-        if (call.command === "thread.list" && !(call.args as { thread_ids?: string[] }).thread_ids) {
-          const result = answer(call);
-          if (result.ok) return { ...result, result: { items: (result.result as { items: typeof db.threads[keyof typeof db.threads][] }).items.filter(row => row.thread_id !== "outside-pin") } };
-        }
-        return answer(call);
-      };
-    } });
-    const el = draw(model, { monitorPins: ["outside-pin"] });
-    await act(async () => { await settle(t, db); });
-    const card = [...el.querySelectorAll(".mon .card")].find(row => row.querySelector("h2")?.textContent === "Pinned outside list")!;
-    expect(card.querySelector('.st[data-status="running"]')).not.toBeNull();
-    expect(t.calls("thread.get")).toHaveLength(0);
-    expect(t.calls("thread.list").some(call => JSON.stringify(call.args) === JSON.stringify({ thread_ids: ["outside-pin"] }))).toBe(true);
-    model.dispose();
-  });
-  it("does not show counts while the first list read is outstanding", async () => {
-    const t = new FakeTransport();
-    const data = new ShellboyData({ transport: t });
-    const model = new AppModel({ data, lang: "en", pending: noPending });
-    try {
-      model.applyRoute({ view: "monitor" });
-      model.start();
-      t.open();
-      t.push({ t: "hello", bridge_version: "test", data_dir: "/temp/owner-a", owner: connected });
-      const el = draw(model);
-      const screen = el.querySelector(".mon")!;
-      expect(t.calls("thread.list")).not.toHaveLength(0);
-      expect(data.threadList.value.loaded).toBe(false);
-      expect([...screen.querySelectorAll(".monitor-tabs button")].map(text)).toEqual(["All", "Pinned in Monitor", "Needs attention"]);
-      expect(text(screen)).not.toContain("Showing");
-      expect(screen.querySelector('.loadrows[role="status"]')).toBeTruthy();
-      await act(async () => { await settle(t, fixtureDb()); });
-      expect(data.threadList.value.loaded).toBe(true);
-      expect(text(screen)).toMatch(/Showing \d+ of \d+/);
-      expect(screen.querySelector(".loadrows")).toBeNull();
-    } finally { model.dispose(); }
-  });
-  it("switches to tiles, pins a thread and filters pinned tiles without old-owner history reads", async () => {
-    const { model, t } = await fixtureModel({ route: "monitor" });
-    const el = draw(model);
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
-    act(() => button("Tiles").click());
-    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(3);
-    expect(el.querySelector(".tile-content")?.textContent).toBe("");
-    expect(el.querySelector<HTMLAnchorElement>(".tile-main")!.getAttribute("href")).toContain("conversation");
-    act(() => button("Pin").click());
-    act(() => [...el.querySelectorAll<HTMLButtonElement>(".monitor-tabs button")].find((b) => text(b).startsWith("Pinned "))!.click());
-    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(1);
-    expect(text(el)).toContain("Unpin");
-    expect(t.calls("history.list")).toHaveLength(0);
-    model.dispose();
-  });
-  it("paginates panes and retains one selection when switching views", async () => {
-    const { model } = await fixtureModel({ route: "monitor", configure: (db) => {
-      for (let i = 0; i < 4; i++) db.threads[`extra-${i}`] = { ...db.threads.lead!, thread_id: `extra-${i}`, title: `Extra ${i}` };
-    } });
-    const el = draw(model);
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
-    act(() => button("Tiles").click());
-    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(6);
-    expect(el.querySelector(".pane-grid")?.getAttribute("data-count")).toBe("6");
-    act(() => button("Next page").click());
-    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(3);
-    act(() => button("Cards").click());
-    const input = [...el.querySelectorAll<HTMLInputElement>("input")].find((e) => e.getAttribute("aria-label") === "Search threads" && e.closest(".mon"))!;
-    act(() => { input.value = "Extra"; input.dispatchEvent(new Event("input", { bubbles: true })); });
-    expect(el.querySelectorAll(".card")).toHaveLength(4);
-    act(() => button("Tiles").click());
-    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(4);
-    expect([...el.querySelectorAll(".tile-header")].every((e) => text(e).includes("Extra"))).toBe(true);
-    model.dispose();
-  });
-  it("keeps a pinned status change visible, retains filters on view switch, and clears them", async () => {
-    const { model, t, db } = await fixtureModel({ route: "monitor" });
-    const el = draw(model);
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".monitor-controls button")].find((b) => text(b) === name || text(b).startsWith(name + " "))!;
-    const lead = [...el.querySelectorAll(".card")].find((c) => c.querySelector("h2")?.textContent === "Improve history search")!;
-    act(() => lead.querySelector<HTMLButtonElement>("button")!.click());
-    act(() => button("Filters").click());
-    const running = [...el.querySelectorAll<HTMLButtonElement>(".monitor-popover-panel .chip")].find((c) => text(c).includes("Running"))!;
-    act(() => running.click());
-    const before = [...el.querySelectorAll(".card h2")].map(text);
-    db.threads.lead = { ...db.threads.lead!, activity: "completed", state: "completed" };
-    act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: true }));
-    await act(async () => settle(t, db));
-    expect([...el.querySelectorAll(".card h2")].map(text)).toEqual(before);
-    expect(text(el)).toContain("No longer matches the filter");
-    act(() => button("Tiles").click());
-    expect(el.querySelector('.monitor-popover-panel .chip[aria-pressed="true"]')).toBeTruthy();
-    act(() => [...el.querySelectorAll<HTMLButtonElement>(".monitor-tabs button")].find((b) => text(b).startsWith("Pinned "))!.click());
-    expect([...el.querySelectorAll(".tile-header")].map(text).join()).toContain("Improve history search");
-    act(() => button("All").click());
-    act(() => button("Clear all").click());
-    expect(el.querySelector('.monitor-popover-panel .chip[aria-pressed="true"]')).toBeNull();
-    expect(text(el)).not.toContain("No longer matches the filter");
-    expect(el.querySelector('.tile-header button[aria-pressed="true"]')).toBeTruthy();
-    model.dispose();
-  });
-  it("draws one card per Thread, most urgent first, with chips that filter", async () => {
-    const { model } = await fixtureModel({ route: "monitor" });
-    const el = draw(model);
-    const cards = el.querySelectorAll(".card");
-    expect(cards.length).toBe(5);
-    expect(cards[0]!.classList.contains("err")).toBe(true);
-    expect(text(cards[0]!)).toContain("Retry");
-    expect(text(el)).not.toContain("Connection interrupted");
-    expect(el.querySelector(".card.lead")).toBeTruthy();
-    expect(text(el)).toContain("Parent: Improve history search");
-    act(() => [...el.querySelectorAll<HTMLButtonElement>(".monitor-tools button")].find((b) => text(b) === "Filters")!.click());
-    const chip = [...el.querySelectorAll<HTMLButtonElement>(".chip")].find((c) => c.querySelector('[aria-label="No activity"]') !== null)!;
-    act(() => chip.click());
-    expect(el.querySelectorAll(".card").length).toBe(1);
-  });
-});
-
 describe("Awaiting you", () => {
   it("is a designed empty state in production", async () => {
     const { model } = await fixtureModel({ route: "inbox" });
@@ -871,8 +688,8 @@ describe("Frame", () => {
   it("offers all views as links in both the sidebar and the phone tab bar", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);
-    expect(el.querySelectorAll(".nav .nav-item").length).toBe(8);
-    expect(el.querySelectorAll(".tabbar > .nav-item").length).toBe(3);
+    expect(el.querySelectorAll(".nav .nav-item").length).toBe(6);
+    expect(el.querySelectorAll(".tabbar > .nav-item").length).toBe(2);
     expect(text(el.querySelector(".tabbar .more-tab")!)).toBe("More");
   });
   it("switches language without a reload", async () => {
@@ -1114,7 +931,7 @@ describe("Analytics", () => {
     expect(model.route.value.section).toBe("overview");
   });
   it("shows LoadingRows in both Storage sections before their first reads return", async () => {
-    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    const { model, t, db } = await fixtureModel({ route: "inbox" });
     try {
       model.applyRoute({ view: "analytics", section: "storage" });
       const el = draw(model);
@@ -1202,7 +1019,7 @@ describe("Analytics", () => {
     expect(el.querySelectorAll("figure.chart-figure path.chart-fill").length).toBeGreaterThan(0);
   });
   it("says Not read until something has been read", async () => {
-    const { model, t } = await fixtureModel({ route: "monitor" });
+    const { model, t } = await fixtureModel({ route: "inbox" });
     t.drop();
     const el = draw(model);
     await act(async () => {
@@ -1355,126 +1172,9 @@ describe("Branches", () => {
   });
 });
 
-describe("Threads", () => {
-  const open = async () => {
-    const made = await fixtureModel({ route: "threads" });
-    const el = draw(made.model);
-    await act(async () => {
-      await settle(made.t, made.db);
-    });
-    return { ...made, el };
-  };
-  it("offers four display modes; on v0.10.0 moving and tags say why they aren't there, with no fake controls", async () => {
-    const { el } = await open();
-    expect(el.querySelectorAll(".view .tgroup").length).toBe(1);
-    expect(el.querySelector("[draggable]")).toBeNull();
-    expect(el.querySelector(".srow-act")).toBeNull();
-    expect(text(el)).toContain("Moving a Thread under another isn't available");
-    expect(text(el)).toContain("Token totals per directory aren't shown");
-    const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
-    expect(["Tree", "Directory", "State", "Tag"].every((m) => mode(m))).toBe(true);
-    act(() => mode("Tag").click());
-    expect(text(el)).toContain("Tags aren't available");
-    expect(el.querySelector(".view .tgroup")).toBeNull();
-    act(() => mode("Directory").click());
-    expect(el.querySelectorAll(".view .tgroup").length).toBeGreaterThan(0);
-    const state = mode("State");
-    act(() => state.click());
-    expect(text(el.querySelector(".view .tgroup")!)).toContain("Error");
-    const recovery = [...el.querySelectorAll<HTMLElement>(".view .tgroup")].find(group => text(group).includes("Error"))!;
-    const checkbox = recovery.querySelector<HTMLInputElement>("input[type=checkbox]")!;
-    const disclosure = recovery.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
-    expect(disclosure.getAttribute("aria-label")).toBe("Hide the Threads under Error");
-    const rowCount = recovery.querySelectorAll("[data-thread-row]").length;
-    expect(rowCount).toBeGreaterThan(0);
-    act(() => checkbox.click());
-    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(checkbox.checked).toBe(true);
-    act(() => disclosure.click());
-    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-    expect(recovery.querySelectorAll("[data-thread-row]")).toHaveLength(0);
-    act(() => disclosure.click());
-    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(recovery.querySelectorAll("[data-thread-row]")).toHaveLength(rowCount);
-  });
-  it("with tags and directories on the owner: headings from the owner, members on demand, tags on rows and edited from a selection", async () => {
-    const made = await fixtureModel({
-      route: "threads",
-      capabilities: ["thread.tags", "thread.cwds"],
-      configure: (db) => {
-        (db.threads.lead as { tags?: string[] }).tags = ["bug hunt", "customer A"];
-        (db.threads.broken as { tags?: string[] }).tags = ["bug hunt"];
-      },
-    });
-    const el = draw(made.model);
-    const go = async (f: () => void) => {
-      await act(async () => {
-        f();
-        await settle(made.t, made.db);
-      });
-    };
-    const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
-    await go(() => mode("Tag").click());
-    expect(text(el)).not.toContain("Tags aren't available");
-    expect([...el.querySelectorAll(".view .tgroup .tgroup-name")].map(text)).toEqual(["bug hunt", "customer A"]);
-    expect(el.querySelector(".org-rows [data-thread-row]")).toBeNull();
-    const show = (n: number) => el.querySelectorAll<HTMLButtonElement>(".view .tgroup header .btn")[n]!;
-    await go(() => show(0).click());
-    expect(made.t.calls("thread.list").at(-1)!.args).toMatchObject({ tags: ["bug hunt"] });
-    expect(el.querySelectorAll(".org-rows [data-thread-row]").length).toBe(2);
-    expect([...el.querySelectorAll(".select-row-root .tag-badge")].map(text)).toContain("customer A");
-    act(() => el.querySelector<HTMLInputElement>(".select-row-root input")!.click());
-    const tagsButton = [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => text(b) === "Tags")!;
-    act(() => tagsButton.click());
-    const field = el.querySelector<HTMLInputElement>("input[aria-label='Tag to add']")!;
-    act(() => {
-      field.value = "later";
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await go(() => [...el.querySelectorAll<HTMLButtonElement>(".btn")].find((b) => text(b) === "Add to list")!.click());
-    await go(() => [...el.querySelectorAll<HTMLButtonElement>(".btn")].find((b) => /^Apply to 1/.test(text(b)))!.click());
-    expect(made.t.calls("thread.tag")).toHaveLength(1);
-    expect(text(el)).not.toContain("Tags changed on 1 Threads");
-    await go(() => mode("Directory").click());
-    expect([...el.querySelectorAll(".view .tgroup .tgroup-name")].map(text)).toEqual(["/home/me/dev/rag", "/home/me/dev/shellboy"]);
-    act(() => { made.model.lang.value = "ja"; });
-    expect(text(el)).toContain("表示");
-  });
-  it("archive needs a second press, states what it touches, and calls the owner", async () => {
-    const { el, t, db } = await open();
-    const box = el.querySelector<HTMLInputElement>(".select-row-root input")!;
-    act(() => box.click());
-    expect(text(el.querySelector(".selbar")!)).toContain("Selected: 1");
-    const archive = () => [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => /archive/i.test(text(b)))!;
-    act(() => archive().click());
-    expect(t.calls("thread.archive")).toHaveLength(0);
-    expect(text(archive())).toBe("Confirm archive");
-    await act(async () => {
-      archive().click();
-      await settle(t, db);
-    });
-    expect(t.calls("thread.archive")).toHaveLength(1);
-    expect(text(el)).toContain("Nothing was deleted");
-    expect(el.querySelector(".selbar")).toBeNull();
-  });
-  it("Archived offers Unarchive with one press", async () => {
-    const { el, t, db } = await open();
-    // The fake owner, like Core, lists only archived Threads in Archived.
-    for (const row of Object.values(db.threads)) (row as { archived_at?: string }).archived_at = "2026-01-01T00:00:00Z";
-    await act(async () => {
-      [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === "Archived")!.click();
-      await settle(t, db);
-    });
-    act(() => el.querySelector<HTMLInputElement>(".select-row-root input")!.click());
-    const go = [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => text(b) === "Unarchive")!;
-    await act(async () => {
-      go.click();
-      await settle(t, db);
-    });
-    expect(t.calls("thread.unarchive")).toHaveLength(1);
-  });
+describe("Settings controls previously colocated with Threads", () => {
   it("the status bar says which owner this is, in every view", async () => {
-    for (const route of ["conversation", "monitor", "inbox", "apps", "branches", "threads", "analytics", "settings"] as const) {
+    for (const route of ["conversation", "inbox", "apps", "branches", "analytics", "settings"] as const) {
       const made = await fixtureModel({ route });
       const el = draw(made.model);
       await act(async () => {
@@ -1484,43 +1184,6 @@ describe("Threads", () => {
     }
   });
 
-  it("opens the Conversation picker before Settings and updates its connections on a config mark", async () => {
-    let connections: Record<string, object> = { c: {}, other: {} };
-    let hash = "first";
-    const { model, t, db, data } = await fixtureModel({ route: "conversation", threadId: "lead",
-      capabilities: ["history.window", "config.edit", "thread.settings"], configure(db) {
-        const answer = db.answer.bind(db);
-        db.answer = (call) => {
-          if (call.command !== "config.get") return answer(call);
-          const side = { present: true, content_hash: hash, valid: true, values: { connections }, redacted_fields: [] };
-          return { ok: true, result: { loaded: side, file: side, differs: false, restart: { all_fields_require_restart: false } } };
-        };
-      },
-    });
-    try {
-      const el = draw(model);
-      const trigger = () => el.querySelector<HTMLButtonElement>(".model-picker-anchor > button")!;
-      const choices = () => [...new Set(Array.from(el.querySelectorAll(".model-picker-list button"), button => button.textContent!.split(" / ")[0]))];
-      expect(t.calls("config.get")).toHaveLength(0);
-      await act(async () => { trigger().click(); await settle(t, db); });
-      expect(t.calls("config.get")).toHaveLength(1);
-      expect(choices()).toEqual(["c", "other"]);
-      connections = { c: {}, third: {} };
-      hash = "second";
-      await act(async () => {
-        t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
-        await settle(t, db);
-      });
-      expect(t.calls("config.get")).toHaveLength(2);
-      expect(choices()).toEqual(["c", "third"]);
-      await act(async () => {
-        trigger().click();
-        t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
-        await settle(t, db);
-      });
-      expect(t.calls("config.get")).toHaveLength(2);
-    } finally { model.dispose(); data.stop(); }
-  });
 
   it("Settings saves a preset effort immediately as one config field", async () => {
     const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
@@ -1763,33 +1426,6 @@ describe("Threads", () => {
     expect(button("proxy / old-model")).toBeDefined();
   });
 
-  it("with the capability: picker, preview, then Move; a refusal shows the owner's words", async () => {
-    const made = await fixtureModel({ route: "threads", capabilities: ["thread.reparent"] });
-    const el = draw(made.model);
-    await act(async () => {
-      await settle(made.t, made.db);
-    });
-    expect(el.querySelector("[draggable=true]")).toBeTruthy();
-    expect(text(el)).not.toContain("isn't available: this Shellboy (v0.10.0)");
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
-    act(() => el.querySelector<HTMLButtonElement>(".srow-act")!.click());
-    expect(text(el)).toContain("New parent for");
-    act(() => button("No parent (independent)")!.click());
-    expect(made.t.calls("thread.set")).toHaveLength(0);
-    expect(text(el)).toContain("independent, with no parent");
-    await act(async () => {
-      button("Move")!.click();
-      await settle(made.t, made.db);
-    });
-    expect(made.t.calls("thread.set")).toHaveLength(1);
-    expect(text(el)).toContain("Moved");
-  });
-  it("a group's checkbox selects its rows", async () => {
-    const { el, model } = await open();
-    const group = el.querySelector<HTMLInputElement>(".view .tgroup header input")!;
-    act(() => group.click());
-    expect(model.org.selected.value.size).toBe(el.querySelector(".view .tgroup")!.querySelectorAll("[data-thread-row]").length);
-  });
 });
 
 describe("Apps", () => {
@@ -1818,7 +1454,7 @@ describe("Apps", () => {
     expect(el.querySelector("details")?.hasAttribute("open")).toBe(false);
   });
   it("says what to do when there are none, and ships nothing of its own", async () => {
-    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    const { model, t, db } = await fixtureModel({ route: "inbox" });
     const plain = db.answer;
     db.answer = (c) => (c.command === "apps.list" ? { ok: true, result: { dir: "/tmp/x/apps", apps: [] } } : plain(c));
     const el = draw(model);
@@ -1840,7 +1476,7 @@ describe("Apps", () => {
     expect(el.querySelector('.apps-toolbar button[aria-label="Reload Board"]')).toBeTruthy();
     const before = frame(el);
     await act(async () => {
-      model.applyRoute({ view: "monitor" });
+      model.applyRoute({ view: "inbox" });
     });
     expect(frame(el)).toBe(before);
     expect(el.querySelector(".apps-host.off")).toBeTruthy();
@@ -1908,7 +1544,7 @@ describe("Apps", () => {
     expect(text(el)).toContain("Sent to the bound Thread");
   });
   it("a deleted bound Thread leaves the app open, and says so", async () => {
-    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    const { model, t, db } = await fixtureModel({ route: "inbox" });
     const plain = db.answer;
     db.answer = (c) => (c.command === "thread.get" && (c.args as { thread_id: string }).thread_id === "lead" ? { ok: false, code: "thread_not_found" } : plain(c));
     const el = draw(model);
@@ -1933,17 +1569,17 @@ describe("Phone tabs", () => {
     expect(button.getAttribute("aria-current")).toBe("page");
     act(() => button.click());
     const links = [...el.querySelectorAll<HTMLAnchorElement>(".more-panel a")];
-    expect(links.map(text)).toEqual(["Apps", "Branches", "Threads", "Analytics", "Settings"]);
-    act(() => links[4]!.click());
+    expect(links.map(text)).toEqual(["Apps", "Branches", "Analytics", "Settings"]);
+    act(() => links[3]!.click());
     expect(el.querySelector(".more-panel")).toBeNull();
     act(() => button.click());
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect(el.querySelector(".more-panel")).toBeNull();
   });
-  it("Awaiting you, Conversation and Monitor have tabs of their own, in that order", async () => {
+  it("Awaiting you and Conversation have tabs of their own, in that order", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);
-    expect([...el.querySelectorAll(".tabbar > .nav-item")].map(text)).toEqual(["Awaiting you", "Conversation", "Monitor"]);
+    expect([...el.querySelectorAll(".tabbar > .nav-item")].map(text)).toEqual(["Awaiting you", "Conversation"]);
   });
 });
 
@@ -2038,7 +1674,7 @@ describe("Settings", () => {
     expect(light.getAttribute("aria-pressed")).toBe("false");
   });
   it("the popover keeps quick choices and links to all settings", async () => {
-    const { model } = await fixtureModel({ route: "monitor" });
+    const { model } = await fixtureModel({ route: "inbox" });
     const el = draw(model);
     act(() => el.querySelector<HTMLButtonElement>("[data-settings-toggle]")!.click());
     const link = [...el.querySelectorAll(".panel a")].find((a) => text(a) === "All settings")!;
@@ -2306,7 +1942,7 @@ describe("limited Branches comparison UI", () => {
       expect(t.calls("thread.archive")).toHaveLength(0);
       expect(t.calls("thread.fork")).toHaveLength(0);
       expect(t.calls("thread.rewind")).toHaveLength(0);
-      model.navigate({ view: "monitor" });
+      model.navigate({ view: "inbox" });
       expect(model.branchCompare.state.value.selected).toEqual([]);
     } finally { model.dispose(); }
   });

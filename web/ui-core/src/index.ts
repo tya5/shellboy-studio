@@ -29,9 +29,7 @@ export * from "./work";
 
 export * from "./app-templates";
 export * from "./output-renderers";
-export * from "./tiles";
 
-export * from "./monitor-selection";
 
 export * from "./guide-registration";
 

@@ -225,13 +225,9 @@ describe("approved list section and status rules", () => {
     expect(source).toContain("aria-busy={countLoading || undefined}");
     const select = componentStyleFiles["../system/components/SelectRow/style.css"] ?? "";
     expect(select).toContain(".srow-status{flex:none;display:inline-grid;place-items:center;width:var(--size-icon)}");
-    const threads = screenSources["../screens/Threads.tsx"] ?? "";
-    expect(threads).not.toContain("labelContent=");
-    expect(threads).toContain("LoadingRows label={t(\"common.loading\")}");
-    expect(threads).toContain("LoadingCount />");
-    expect(threads).toContain('leading={<Icon role="organization.search" size="small" />}');
-    expect(threads).toContain("moveAction={canMove ? <button");
     const app = screenSources["../screens/App.tsx"] ?? "";
+    expect(app).toContain("ThreadMovePicker");
+    expect(app).toContain("ThreadTagEditor");
     expect(app).toContain("pages.loaded ? t(\"org.bandCount\"");
     expect(app).toContain("LoadingRows label={t(\"common.loading\")}");
     expect(app).toContain('leading={<Icon role="thread.search" size="small" />}');

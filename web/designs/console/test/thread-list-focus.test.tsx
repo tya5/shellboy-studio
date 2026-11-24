@@ -10,7 +10,7 @@ import type { ThreadDeletePreview } from "../../../data/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 
-type Screen = "sidebar" | "threads";
+type Screen = "sidebar";
 type Rig = Awaited<ReturnType<typeof fixtureModel>> & { host: HTMLElement; list: HTMLElement; screen: Screen };
 type PreviewResult = { ok: true; value: ThreadDeletePreview };
 
@@ -25,7 +25,7 @@ function preview(threadCount: number, idsHash: string): PreviewResult {
 }
 
 async function mount(screen: Screen, capabilities?: string[], configure?: (db: Awaited<ReturnType<typeof fixtureModel>>["db"]) => void): Promise<Rig> {
-  const rig = await fixtureModel({ route: screen === "threads" ? "threads" : "conversation", threadId: "lead", capabilities, configure });
+  const rig = await fixtureModel({ route: "conversation", threadId: "lead", capabilities, configure });
   const host = document.createElement("div");
   document.body.append(host);
   const prefs = signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }]));
@@ -33,20 +33,20 @@ async function mount(screen: Screen, capabilities?: string[], configure?: (db: A
     render(<App context={{ model: rig.model, prefs, designs: DESIGNS, setPrefs() {}, submitToken: async () => false }} />, host);
     await settle(rig.t, rig.db);
   });
-  const list = host.querySelector<HTMLElement>(screen === "threads" ? ".org-rows" : ".side-list");
+  const list = host.querySelector<HTMLElement>(".side-list");
   if (!list) throw new Error(`Missing real ${screen} thread list`);
   return { ...rig, host, list, screen };
 }
 
 function rowLinks(rig: Rig): HTMLAnchorElement[] {
-  const idPrefix = rig.screen === "threads" ? "thread-link-page-" : "thread-link-sidebar-";
+  const idPrefix = "thread-link-sidebar-";
   return [...rig.list.querySelectorAll<HTMLAnchorElement>("a[id]")].filter((link) => link.id.startsWith(idPrefix));
 }
 
 const threadIdOf = (link: HTMLAnchorElement) => decodeURIComponent(link.getAttribute("href")!.split("/").at(-1)!);
 
 async function openDelete(rig: Rig, link: HTMLAnchorElement): Promise<HTMLDialogElement> {
-  const row = link.closest<HTMLElement>(rig.screen === "threads" ? "[data-thread-row]" : "[data-thread-row]");
+  const row = link.closest<HTMLElement>("[data-thread-row]");
   if (!row) throw new Error("Expected an actual rendered thread row");
   await act(async () => {
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 20, clientY: 20 }));
@@ -77,7 +77,7 @@ async function unmount(rig: Rig, outside?: HTMLElement): Promise<void> {
 }
 
 describe("screen-owned thread-list focus", () => {
-  it.each(["sidebar", "threads"] as const)("focuses the next real %s row after a focused row is deleted", async (screen) => {
+  it.each(["sidebar"] as const)("focuses the next real %s row after a focused row is deleted", async (screen) => {
     const rig = await mount(screen);
     try {
       const [target, next] = rowLinks(rig);
@@ -106,7 +106,7 @@ describe("screen-owned thread-list focus", () => {
     } finally { await unmount(rig); }
   });
 
-  it.each(["sidebar", "threads"] as const)("Cancel returns to real row B when focus started outside the %s list", async (screen) => {
+  it.each(["sidebar"] as const)("Cancel returns to real row B when focus started outside the %s list", async (screen) => {
     const rig = await mount(screen);
     const outside = document.createElement("button");
     document.body.append(outside);
@@ -123,7 +123,7 @@ describe("screen-owned thread-list focus", () => {
     } finally { await unmount(rig, outside); }
   });
 
-  it.each(["sidebar", "threads"] as const)("Cancel resolves removed row B to its current position in the %s list", async (screen) => {
+  it.each(["sidebar"] as const)("Cancel resolves removed row B to its current position in the %s list", async (screen) => {
     const rig = await mount(screen);
     try {
       const [, rowB, rowC] = rowLinks(rig);
@@ -145,33 +145,7 @@ describe("screen-owned thread-list focus", () => {
     } finally { await unmount(rig); }
   });
 
-  it("clears the Threads row claim when focus enters a group fold control", async () => {
-    const rig = await mount("threads", ["thread.tags"], (db) => {
-      (db.threads.lead as { tags?: string[] }).tags = ["focus-test"];
-      (db.threads.child as { tags?: string[] }).tags = ["focus-test"];
-    });
-    try {
-      await act(async () => {
-        rig.model.org.setGrouping("tag");
-        await settle(rig.t, rig.db);
-        rig.model.org.headings.toggle("focus-test");
-        await settle(rig.t, rig.db);
-      });
-      const [target] = rowLinks(rig);
-      const fold = rig.list.querySelector<HTMLButtonElement>(".tgroup header button");
-      expect(target).toBeDefined();
-      expect(fold).toBeDefined();
-      await act(async () => { target!.focus(); });
-      expect(document.activeElement).toBe(target);
-      fold!.focus();
-      expect(document.activeElement).toBe(fold);
-      const deletedId = threadIdOf(target!);
-      await resolveListWithout(rig, deletedId);
-      expect(document.activeElement).toBe(fold);
-    } finally { await unmount(rig); }
-  });
-
-  it.each(["sidebar", "threads"] as const)("clears the %s list focus claim after focus leaves the list", async (screen) => {
+  it.each(["sidebar"] as const)("clears the %s list focus claim after focus leaves the list", async (screen) => {
     const rig = await mount(screen);
     const outside = document.createElement("button");
     document.body.append(outside);
@@ -180,7 +154,7 @@ describe("screen-owned thread-list focus", () => {
       expect(target).toBeDefined();
       await act(async () => { target!.focus(); });
       expect(document.activeElement).toBe(target);
-      const toolbarControl = screen === "threads" ? rig.host.querySelector<HTMLButtonElement>(".choice-row button")! : rig.host.querySelector<HTMLButtonElement>(".side-controls button[title]")!;
+      const toolbarControl = rig.host.querySelector<HTMLButtonElement>(".side-controls button[title]")!;
       toolbarControl.focus();
       expect(document.activeElement).toBe(toolbarControl);
       toolbarControl.remove();
@@ -228,35 +202,6 @@ describe("screen-owned thread-list focus", () => {
       expect(rig.model.ops.threadDelete).toHaveBeenCalledWith(idB, { thread_count: 22, ids_hash: "marker-B" });
     } finally { await unmount(rig); }
   });
-});
-
-it("shows LoadingRows inside a Threads member band while its first member read is pending", async () => {
-  const f = await fixtureModel({ route: "threads", capabilities: ["thread.cwds"] });
-  const host = document.createElement("div");
-  document.body.append(host);
-  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
-  const cwd = "/home/me/dev/shellboy";
-  f.model.org.groupBy.value = "directory";
-  f.model.org.headings.headings.value = { kind: "cwd", names: [cwd], nextCursor: undefined, pages: 1, loading: false, loaded: true, error: undefined };
-  try {
-    await act(async () => {
-      render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs() {}, submitToken: async () => false }} />, host);
-    });
-    await act(async () => {
-      f.model.org.headings.toggle(cwd);
-    });
-    const band = host.querySelector<HTMLElement>(`.org .tgroup[aria-label="${cwd}"]`)!;
-    expect(band).toBeTruthy();
-    expect(band.querySelector(".tgroup-count")?.textContent).not.toMatch(/[0-9]/);
-    expect(band.querySelector(".tgroup-toggle")?.getAttribute("aria-busy")).toBe("true");
-    expect(band.querySelector(".loadrows")).toBeTruthy();
-    expect(f.t.calls("thread.list").some(call => (call.args as { cwd?: string }).cwd === cwd)).toBe(true);
-  } finally {
-    render(null, host);
-    host.remove();
-    f.model.dispose();
-    f.data.stop();
-  }
 });
 
 describe("sidebar exact-set delete", () => {

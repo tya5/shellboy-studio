@@ -16,7 +16,6 @@ import { recentAppFolders } from "./app-templates";
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, messageCancelFailure, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle, type ReplyCount } from "../../data/src";
 import { ArtifactObservation, CAPABILITY_HISTORY_WINDOW, ReplyPages, type ReplySide } from "../../data/src";
-import { MissingPins, MonitorArchiveRows, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
 import { projectHistoryWindowItems, projectSavedItems, projectOwnedHandoffFacts, normalizeLiveWorkFacts, scopeIssuedWorkFacts } from "./conversation-items";
@@ -24,7 +23,7 @@ import { branchRowMarks, collectExecutionSteps, materializeHistoryPresentation, 
 import { translator, type Lang, type Translate } from "./i18n";
 import { AppsModel } from "./apps";
 import { branchMarks } from "./branches";
-import { Branches, readWholeFamily, ThreadOrg } from "./branching";
+import { Branches, readWholeFamily, ThreadActions } from "./branching"
 import { CAPABILITY_CONFIG, ConfigEditor } from "./config";
 import { Insights } from "./insights";
 import { EmbeddingSetup } from "./embedding";
@@ -32,8 +31,8 @@ import { CAPABILITY_CONNECTION_SETUP, ConnectionSetup } from "./setup";
 import { type PendingAdapter } from "./pending";
 import { HumanInbox } from "../../data/src";
 import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
-import { isThreadRecovery, statusOfShell, type StatusKey } from "./status";
-import { StableMonitorOrder, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
+import { isThreadRecovery, statusOfShell } from "./status"
+import { countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads"
 import { contextFacts, needsConnectionSetup, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
 
 interface ModelPickerSession {
@@ -243,8 +242,8 @@ export class AppModel {
   /** Analytics, Resources and Settings reads. Nothing runs until one of those views opens. */
   readonly insights: Insights;
   readonly branches: Branches;
+  readonly threadActions: ThreadActions;
   readonly branchCompare: BranchCompare;
-  readonly org: ThreadOrg;
   readonly config: ConfigEditor;
   readonly guideRegistration: GuideRegistration;
   readonly setup: ConnectionSetup;
@@ -267,19 +266,6 @@ export class AppModel {
 
   readonly rows: ReadonlySignal<ThreadRow[]>;
   readonly counts: ReadonlySignal<StatusCounts>;
-  readonly monitorStableRows: ReadonlySignal<ThreadRow[]>;
-  readonly monitorQuery = signal("");
-  readonly monitorPinnedOnly = signal(false);
-  readonly monitorAttention = signal(false);
-  readonly monitorPins = signal<readonly string[]>([]);
-  readonly monitorSort = signal<"stable" | "recent">("stable");
-  readonly monitorFilter: Signal<readonly StatusKey[]> = signal([]);
-  readonly monitorArchive = signal<MonitorArchive>("exclude");
-  readonly monitorRefresh = signal(0);
-  readonly missingPins: MissingPins;
-  readonly monitorArchiveRows: MonitorArchiveRows;
-  readonly monitorOutOfFilter: ReadonlySignal<ReadonlySet<string>>;
-  readonly monitorRows: ReadonlySignal<ThreadRow[]>;
   /** Retained awaiting-you questions; inexact while Core has more than the loaded pages. */
   readonly pendingCount: ReadonlySignal<ReplyCount>;
   readonly connection: ReadonlySignal<ConnectionView>;
@@ -444,6 +430,7 @@ export class AppModel {
     });
     this.t = computed(() => translator(this.lang.value));
     this.branches = new Branches(this.ops, () => { const owner = this.data.owner.peek(); return owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined; }, () => this.selectedId.peek());
+    this.threadActions = new ThreadActions(this.ops);
     this.disposers.push(effect(() => {
       const owner = this.data.owner.value;
       this.branches.ownerChanged(owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined);
@@ -458,7 +445,6 @@ export class AppModel {
     }));
     this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
     this.senderTitles = new SenderTitles(this.ops);
-    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
     this.ops.onConfigWrite = fields => this.config.trackConfigWrite(fields);
     this.disposers.push(() => { this.ops.onConfigWrite = undefined; });
@@ -509,32 +495,6 @@ export class AppModel {
     });
     this.counts = computed(() => countByStatus(this.rows.value));
     this.pendingCount = computed(() => ({ count: this.pending.items.value.length, exact: this.pending.complete?.value ?? !this.pending.hasMore?.value }));
-    this.missingPins = new MissingPins(this.ops);
-    this.monitorArchiveRows = new MonitorArchiveRows(this.ops);
-    const stableMonitor = new StableMonitorOrder();
-    const stableRows = computed(() => {
-      const unique = new Map<string, ThreadRow>();
-      for (const row of [...this.monitorArchiveRows.rows.value, ...this.missingPins.rows.value, ...this.rows.value]) unique.set(row.summary.thread_id, row);
-      return stableMonitor.order([...unique.values()]);
-    });
-    this.disposers.push(effect(() => { stableRows.value; }));
-    this.disposers.push(effect(() => {
-      const active = this.route.value.view === "monitor" && this.data.threadList.value.loaded && this.data.owner.value.state === "connected";
-      const pins = this.monitorPins.value;
-      const rows = this.rows.value;
-      const archive = this.monitorArchive.value;
-      untracked(() => { this.missingPins.sync(pins, rows, active); this.monitorArchiveRows.sync(active, archive); });
-    }));
-    this.monitorStableRows = stableRows;
-    const selection = new MonitorSelection();
-    const selected = computed(() => {
-      const stable = stableRows.value;
-      const rows = this.monitorSort.value === "recent" ? [...stable].sort((a, b) => b.summary.updated_at.localeCompare(a.summary.updated_at) || a.summary.thread_id.localeCompare(b.summary.thread_id)) : stable;
-      return selection.select(rows, { statuses: this.monitorFilter.value, query: this.monitorQuery.value, archive: this.monitorArchive.value, pinnedOnly: this.monitorPinnedOnly.value, attention: this.monitorAttention.value, pins: this.monitorPins.value, refresh: this.monitorRefresh.value });
-    });
-    this.monitorRows = computed(() => selected.value.rows);
-    this.monitorOutOfFilter = computed(() => selected.value.outOfFilter);
-    this.disposers.push(effect(() => { selected.value; }));
     this.connection = computed(() => {
       const conn = this.data.connection.value;
       if (conn !== "open") return this.data.failedAttempts.value >= AUTH_HINT_ATTEMPTS ? "authNeeded" : "connecting";
@@ -655,7 +615,6 @@ export class AppModel {
         // Whatever is no longer showing stops being read.
         if (route.view !== "analytics" && route.view !== "settings") this.insights.showing(undefined);
         if (route.view !== "branches") this.branches.leave();
-        if (route.view !== "threads") this.org.leave();
         if (route.view !== "setup") {
           this.setup.leave();
           this.embedding.leave();
@@ -704,9 +663,6 @@ export class AppModel {
           const b = this.branches.state.peek();
           if (b.threadId === id && b.family && lastList !== list) void this.branches.read(id);
           else this.branches.ensure(id);
-        } else if (view === "threads") {
-          if (this.org.loaded() && lastList !== list) void this.org.read();
-          else this.org.ensure();
         }
         lastList = list;
       }),
@@ -773,8 +729,6 @@ export class AppModel {
     this.branches.leave();
     this.pending.close?.();
     this.modelListCancel.cancel();
-    this.missingPins.close();
-    this.monitorArchiveRows.close();
     this.longReader.peek()?.dispose();
     this.apps.leaveFolders();
     for (const d of this.disposers) d();
@@ -820,7 +774,7 @@ export class AppModel {
     const fallback = this.rows.peek().find(row => !deleted.has(row.summary.thread_id))?.summary.thread_id;
     this.lastThread.value = fallback;
     if (route.threadId === active || route.view === "conversation") {
-      this.navigate(fallback ? { view: "conversation", threadId: fallback } : { view: "threads" });
+      this.navigate(fallback ? { view: "conversation", threadId: fallback } : { view: "conversation" });
     }
   }
 
