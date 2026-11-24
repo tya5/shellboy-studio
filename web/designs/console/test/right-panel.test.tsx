@@ -284,25 +284,6 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
  });
 
- it('keeps loaded attachment rows quiet while a running Thread hint rereads the page', async () => {
-  const f=await setup(['attachment.list.page']);
-  const row=(id:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path:`/fixture/${id}.txt`,kind:'file',delivery_status:'applied',selected:true,managed:false});
-  const answer=f.db.answer.bind(f.db);
-  f.db.answer=call=>call.command==='attachment.list' ? {ok:true,result:{items:[row('kept')]}} : answer(call);
-  const panel=f.host.querySelector('#panel-page-possessions')!;
-  try {
-   await act(async()=>{f.host.querySelector<HTMLButtonElement>('[data-panel-tab="possessions"]')!.click();await settle(f.t,f.db);});
-   expect(panel.querySelector('[data-panel-row-id="kept"]')).not.toBeNull();
-   f.db.threads.lead!.state='running';
-   await act(async()=>{f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});await flush();});
-   const reread=f.t.calls('attachment.list').at(-1)!;
-   expect(panel.querySelector('[data-panel-row-id="kept"]')).not.toBeNull();
-   expect(panel.textContent).not.toContain('添付ファイルを読み込み中');
-   expect(panel.querySelector('[role="status"]')).toBeNull();
-   f.t.ok(reread.id,{items:[row('kept')]});await act(async()=>{await flush();});
-   expect(panel.querySelector('[data-panel-row-id="kept"]')).not.toBeNull();
-  } finally {f.model.dispose();f.data.stop();}
- });
 
  it('opens the attachment section on demand, pages by cursor, and refreshes on the Thread hint', async () => {
   const f=await setup(['attachment.list.page']);
@@ -333,8 +314,11 @@ describe('right panel purpose',()=>{
    expect([...page.querySelectorAll('[data-panel-row-id]')].map(el=>el.textContent)).toEqual(['readme.txtファイル','notes.txtファイル']);
    await act(async()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="b"] button')!.click());
    first={items:[row('c','/fixture/new.txt')],next_cursor:'new-cut'};
+   f.db.threads.lead!.state='running';
    await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await flush();});
    const read=f.t.calls('attachment.list').at(-1)!;
+   expect(page.querySelectorAll('[data-panel-row-id]')).toHaveLength(2);
+   expect(page.querySelector('[role=status]')).toBeNull();
    expect(read.args).toEqual({thread_id:'lead',limit:50});
    await act(async()=>{
     f.db.answered.add(read.id); f.t.ok(read.id,first);
