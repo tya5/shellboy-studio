@@ -176,9 +176,16 @@ fn cli_id_resolution_is_not_exposed_to_the_browser() {
 }
 
 #[test]
-fn core_schedule_commands_remain_denied_without_a_studio_surface() {
-    let command = Command::ScheduleList(ThreadTarget {
-        thread_id: Some("t".into()),
-    });
-    assert_eq!(access(&command), Access::Denied);
+fn core_schedule_and_service_reads_require_a_thread() {
+    for list in [Command::ScheduleList, Command::ServiceList] {
+        assert_eq!(
+            access(&list(ThreadTarget {
+                thread_id: Some("t".into())
+            })),
+            Access::Read
+        );
+        for thread_id in [None, Some("".into())] {
+            assert_eq!(access(&list(ThreadTarget { thread_id })), Access::Denied);
+        }
+    }
 }
