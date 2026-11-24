@@ -159,6 +159,8 @@ hundred hints per second, concurrent real tabs, `message.send` with a real provi
 
 `thread.branches` (read), `thread.fork`, `thread.rewind` and `thread.unarchive` (mutations) serve Branches and shellboy CLI operations (`branches-threads.md`). A rewind dry run is the same command with `dry_run: true` and no operation id. `tests/real_owner.rs` drives them against a real owner with a loopback provider.
 
+Activity (#131) admits `schedule.list` and `service.list` as reads only with an explicit non-empty `thread_id`. `schedule.enable`, `schedule.disable`, `schedule.remove`, `service.start`, and `service.stop` use the existing mutation receipt path. Adding or editing definitions and removing services are not exposed by this change.
+
 ## Live text validation record (2026-11-07)
 
 Environment: macOS (Darwin 25.3, arm64), toolchain 1.99.1, debug builds, via rust-slot. The feature

@@ -199,6 +199,7 @@ shows "result unconfirmed" and offers `operation.get`, exactly like the CLI's
 `message.send`, `run.stop`, `run.retry`, `thread.archive`, `message.cancel`, plus the
 rewind operations of Shellboy #246 once available. `thread.set` is restricted to either parent changes or model/connection/effort changes for one Thread; model catalog reads are explicit and late responses are discarded. `events.wait` is bridge-internal.
 `owner.shutdown` is restricted to an authenticated, instance-bound Settings › Core request for an external owner, with an operation receipt. Managed Stop and Restart go through the launcher.
+Activity (#131) allows Thread-scoped `schedule.list` and `service.list` reads, and `schedule.enable`, `schedule.disable`, `schedule.remove`, `service.start`, and `service.stop` through the mutation receipt path.
 Everything else (deletion, prune, `storage.collect`, index and
 compaction mutations) is rejected with a bridge error until a milestone adds a UI for it. The list
 is the set of operations the UI implements, so the browser cannot be used as a
@@ -540,6 +541,7 @@ the foundation works end to end (§2.1).
 | First-run GUI setup for connection, folder, security explanation, in-app updates; needs new core operations (§12) (2026-11-06, user decision) | non-server users | — |
 | `usage.get`, `compact.list`, `storage.status` and `index.status` join the allowlist as reads for Analytics and Settings (2026-11-07) | saved facts only, no provider request and no receipt; every related mutation stays denied (`analytics-settings.md`) | a UI offers a mutation with a preview |
 | `run.retry` and `thread.archive` join the allowlist with the data layer's operations (2026-11-07) | the data layer exposes them as typed operations (`docs/design/data-layer.md`); `thread.unarchive` stays denied until a UI offers it | a UI for unarchive exists |
+| Activity (#131): `schedule.list`, `service.list`; `schedule.enable`, `schedule.disable`, `schedule.remove`, `service.start`, `service.stop` | explicit Thread-scoped reads; existing mutation receipts; no definition creation, editing, or service removal | — |
 | First-run connection setup screen behind capability `connection.setup`, Cargo feature `next-connection-setup`; `connection.test` is a read, `credentials.set` and `credentials.clear` are mutations (2026-11-07) | #269's operations are on a branch; one screen from nothing to a first message (`connection-setup.md`) | the operations are in a Shellboy release |
 
 

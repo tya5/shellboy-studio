@@ -2,7 +2,7 @@ import { useRef, useState } from "preact/hooks";
 import type { DefinitionAction, DefinitionKind, ShellDefinition } from "../../../data/src/schedules";
 import type { AppModel } from "../../../ui-core/src/model";
 import { activityStatusLabel } from "../../../ui-core/src";
-import { Button, Icon, KeyValue, ListDivider, ListRow, StatusMark, Switch, WorkSheet, ScheduleLayout, ScheduleRow, ScheduleControl, ScheduleDetailLayout, ScheduleActions, ScheduleOutput } from "../system/components";
+import { Button, Icon, KeyValue, ListDivider, ListRow, LogBlock, StatusMark, Switch, WorkSheet, ScheduleLayout, ScheduleRow, ScheduleControl, ScheduleDetailLayout, ScheduleActions } from "../system/components";
 
 
 const nameOf = (row: ShellDefinition) => row.description?.trim() || row.command;
@@ -50,8 +50,8 @@ export function SchedulePanel({ model, kind, open, detailId }: {
     const disabled = !current(row.id) || pending !== undefined;
     return <>
       <ScheduleControl>{kind === "service"
-        ? <Button variant="ghost" disabled={disabled} aria-label={t(row.enabled ? "schedule.stopNamed" : "schedule.startNamed", { name: nameOf(row) })} onClick={() => void act(row, row.enabled ? "stop" : "start")}>{t(row.enabled ? "schedule.stop" : "schedule.start")}</Button>
-        : <Switch label={t("schedule.enabledNamed", { name: nameOf(row) })} stateLabel={compact ? "" : t(row.enabled ? "studio.startup.on" : "studio.startup.off")} checked={row.enabled} disabled={disabled} onChange={checked => void act(row, checked ? "enable" : "disable")} />}</ScheduleControl>
+        ? <Button variant="ghost" disabled={disabled} aria-label={t(row.enabled ? "service.stopNamed" : "service.startNamed", { name: nameOf(row) })} onClick={() => void act(row, row.enabled ? "stop" : "start")}>{t(row.enabled ? "service.stop" : "service.start")}</Button>
+        : <Switch label={t("schedule.enabledNamed", { name: nameOf(row) })} stateLabel={compact ? "" : t(row.enabled ? "schedule.on" : "schedule.off")} checked={row.enabled} disabled={disabled} onChange={checked => void act(row, checked ? "enable" : "disable")} />}</ScheduleControl>
       {kind === "schedule" ? <ScheduleControl remove><Button variant="ghost" icon={compact} label={t("schedule.removeNamed", { name: nameOf(row) })} disabled={disabled} onClick={event => setConfirm({ id: row.id, opener: event.currentTarget })}><Icon role="action.delete" size="small" />{compact ? null : t("schedule.remove")}</Button></ScheduleControl> : null}
     </>;
   };
@@ -76,9 +76,9 @@ export function SchedulePanel({ model, kind, open, detailId }: {
         { key: t("schedule.cwd"), value: <code>{detail.cwd}</code> },
         { key: t("schedule.command"), value: <code>{detail.command}</code> },
       ]} />
-      {detail.latest?.output ? <><h4>{t("schedule.output")}</h4><ScheduleOutput>{detail.latest.output}</ScheduleOutput></> : null}
+      {detail.latest?.output ? <><h4>{t("schedule.output")}</h4><LogBlock text={detail.latest.output} boxed /></> : null}
       <ScheduleActions>{controls(detail, false)}</ScheduleActions>
-    </ScheduleDetailLayout> : <p>{t("schedule.none")}</p>}
+    </ScheduleDetailLayout> : !load ? <p class="muted caption">{t("work.textUnavailable")}</p> : null}
     {open && resource.value?.size === 0 && !load ? <p class="caption muted">{t("schedule.none")}</p> : null}
     {open && kind === "schedule" && resource.value?.size ? <p class="caption muted">{t("schedule.onceNote")}</p> : null}
     {confirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("schedule.confirm")} closeLabel={t("threadSettings.cancel")} getReturnFocusTarget={() => confirm.opener.isConnected ? confirm.opener : null} onClose={() => setConfirm(undefined)}>

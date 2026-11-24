@@ -15,8 +15,11 @@ only browser API, behind the `Transport` interface (`transport.ts`).
 | `operations.ts` | typed operations (the request side of the UX boundary) |
 | `refresher.ts` | per-target read coalescing |
 | `store.ts` | `ShellboyData`: signals (view model), tracking handles, hint and resync handling |
+| `schedules.ts` | validates complete per-Thread schedule and service lists, keyed by definition ID |
 | `live.ts` | `LiveText`: one Thread's live text preview (attempt, offsets, incomplete, ending), published once per scheduled tick |
 | `errors.ts` | `OpError` kinds and `Outcome<T>` |
+
+The Activity panel observes the open Thread through `store.ts`. One coalesced reader per list (`schedule.list`, `service.list`) reads the complete response on observation and existing Thread change/resync hints. Core caps schedules and services at 64 combined per Thread; there is no client paging or polling. Mutations use `operations.ts` and the existing receipt path.
 
 ## Rules
 

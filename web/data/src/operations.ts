@@ -1,4 +1,3 @@
-import { decodeDefinitions, type DefinitionKind, type ShellDefinition } from "./schedules";
 import {HistoryWindowInput} from './history-input';
 import {decodeHistoryWindow} from './history-decoder';
 import {sanitizeMessageRelation,validHistoryProvenance} from './message-provenance';
@@ -8,6 +7,7 @@ import {captureDecode,InputCaptureError} from './immutable-input';
 import { decodeCredentialsClear, decodeCredentialsSet, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest, type CredentialsClearResult, type CredentialsSetResult, type TestFacts, type TestTarget } from "./connection-setup";
 import { fromApiError, lostConnection, type Outcome } from "./errors";
 import type { Link } from "./link";
+import { decodeDefinitions, type DefinitionKind, type ShellDefinition } from "./schedules";
 import type { DeleteMarker, ThreadDeletePreview, ThreadDeleteSetPreview } from "./thread-delete";
 import type {
   ArtifactHistory,

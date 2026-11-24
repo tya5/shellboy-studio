@@ -91,7 +91,9 @@ describe('right panel purpose',()=>{
    for(const command of ['schedule.list','service.list']) expect(f.t.calls(command).at(-1)?.args).toEqual({thread_id:'lead'});
    const opener=list.querySelector<HTMLButtonElement>(`${schedule} .panel-list-main`)!;
    await pump(()=>opener.click());
-   expect(f.host.querySelector('[data-panel-detail]')?.textContent).toContain('sample output');
+   const log=f.host.querySelector<HTMLPreElement>('[data-panel-detail] pre.log.boxed');
+   expect(log?.textContent).toBe('sample output');
+   expect(log?.tabIndex).toBe(0);
    await pump(()=>click('[data-panel-back]'));
    expect(document.activeElement).toBe(opener);
    await pump(()=>click(`${schedule} [role="switch"]`));
@@ -106,13 +108,17 @@ describe('right panel purpose',()=>{
    service={...service,enabled:true}; await pump(hint);
    await pump(()=>click(`${serviceRow} button[aria-label="Service fixture を停止"]`));
    expect(f.t.calls('service.stop').at(-1)?.args).toEqual({service_id:'svc'});
-   await pump(()=>click(`${schedule} button[aria-label="Schedule fixture を削除"]`));
+   await pump(()=>opener.click());
+   await pump(()=>click('[data-panel-detail] button[aria-label="Schedule fixture を削除"]'));
    expect(f.host.querySelector('[role="alertdialog"]')?.textContent).toContain('実行中の場合はシェルを停止');
    expect(f.t.calls('schedule.remove')).toHaveLength(0);
    await pump(()=>click('[role="alertdialog"] .work-sheet-body button'));
    expect(f.t.calls('schedule.remove').at(-1)?.args).toEqual({schedule_id:'sched'});
    schedules=[]; await pump(hint);
    expect(list.querySelector(schedule)).toBeNull();
+   expect(f.host.querySelector('[data-panel-detail] .muted.caption')?.textContent).toBe('メッセージ本文を取得できません');
+   await pump(()=>click('[data-panel-back]'));
+   expect(f.host.querySelector('[data-panel-detail]')).toBeNull();
   } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
  });
 

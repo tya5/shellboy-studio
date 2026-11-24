@@ -17,6 +17,3 @@ export function ScheduleDetailLayout({ children }: { children: ComponentChildren
 export function ScheduleActions({ children }: { children: ComponentChildren }) {
   return <div class="schedule-detail-actions">{children}</div>;
 }
-export function ScheduleOutput({ children }: { children: ComponentChildren }) {
-  return <pre class="schedule-output">{children}</pre>;
-}
