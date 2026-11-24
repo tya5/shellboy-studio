@@ -238,7 +238,8 @@ export class Branches {
           if (out.ok) this.lanes.familyChanged(out.family);
           if (target && target === this.target.peek() && point) {
             if (point.ok && point.value.thread_id === target.threadId && point.value.items.length === 1 && point.value.items[0]?.node_id === target.nodeId) {
-              if (this.lanes.refreshPoint(target.threadId, point.value) && this.targetRevision.peek() !== point.value.revision) {
+              this.lanes.refreshPoint(target.threadId, point.value);
+              if (this.targetRevision.peek() !== point.value.revision) {
                 this.targetRevision.value = point.value.revision;
                 const rewind = this.rewind.peek().kind;
                 if (rewind === "ready" || rewind === "previewing" || rewind === "refused") this.clearPreview();

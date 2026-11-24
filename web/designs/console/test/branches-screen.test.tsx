@@ -7,7 +7,7 @@ import { signal } from "@preact/signals-core";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { settle } from "../../../data/test/harness";
+import { flush as flushTransport, settle } from "../../../data/test/harness";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import type { AppModel, DesignContext, Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
@@ -203,6 +203,70 @@ describe("Branches screen", () => {
     expect(el.querySelector(".lanes-actions input")).not.toBeNull();
     expect(el.querySelector(".lanes-actions input")).not.toBe(input);
     expect(el.querySelector(".loadrows, [data-leaving]")).toBeNull();
+  });
+
+  it("keeps a surviving open row but removes its stale opened suffix after rewind and growth", async () => {
+    const { el, row, point, refresh, flush, family, model } = await open();
+    await act(async () => { row("rel|run|6")!.querySelector<HTMLButtonElement>(".lanes-run")!.click(); });
+    await flush();
+    const surviving = row("rel|n|r7");
+    expect(surviving).not.toBeNull();
+    expect(row("rel|n|r9")).not.toBeNull();
+    await act(async () => { point("Keep the stable renderer")!.click(); });
+    const input = el.querySelector(".lanes-actions input");
+    expect(input).not.toBeNull();
+    family.paths.rel!.splice(7, 7, ...Array.from({ length: 8 }, (_, i) => ({ node_id: `new-${i}`, kind: "user", excerpt: `Replacement ${i}` })));
+    family.revisions.rel = 20;
+    await refresh();
+    expect(model.branches.targetRevision.value).toBe(20);
+    expect(row("rel|n|r7")).toBe(surviving);
+    expect(surviving!.hasAttribute("data-selected")).toBe(true);
+    expect(el.querySelector(".lanes-actions input")).not.toBeNull();
+    expect(el.querySelector(".lanes-actions input")).not.toBe(input);
+    expect(row("rel|n|r9")).toBeNull();
+    expect(point("Add the upgrade notes")).toBeUndefined();
+    expect(model.branches.lanes.node("r9")?.excerpt).toBe("Add the upgrade notes.");
+    expect(text(row("rel|tip"))).toContain("Replacement 7");
+    expect(el.querySelector(".loadrows")).toBeNull();
+  });
+
+  it("settles the open action revision even when a newer lane window arrives first", async () => {
+    const { el, row, point, button, flush, model, t, db } = await open();
+    await act(async () => { point("Compare provider behavior")!.click(); });
+    await act(async () => { button("Rewind Release notes to here")!.click(); });
+    await flush();
+    expect(model.branches.rewind.value.kind).toBe("ready");
+    expect(model.branches.targetRevision.value).toBe(14);
+    await act(async () => {
+      const refresh = model.branches.read("rel");
+      const familyCall = t.calls("thread.branches").at(-1)!;
+      const familyReply = db.answer(familyCall);
+      if (!familyReply.ok) throw new Error("Expected fixture family");
+      db.answered.add(familyCall.id);
+      t.ok(familyCall.id, familyReply.result);
+      await flushTransport();
+      const targeted = t.calls("history.window").at(-1)!;
+      expect(targeted.args).toMatchObject({ thread_id: "rel", node_id: "r6", before: 0, after: 0 });
+      row("rel|run|6")!.querySelector<HTMLButtonElement>(".lanes-run")!.click();
+      const newer = t.calls("history.window").at(-1)!;
+      expect(newer.id).not.toBe(targeted.id);
+      db.answered.add(newer.id);
+      t.ok(newer.id, { thread_id: "rel", revision: 20, total: 14,
+        items: [{ node_id: "r7", kind: "user", excerpt: "Keep the stable renderer and list the fixes.", selection: { ordinal: 6 } }] });
+      await flushTransport();
+      expect(model.branches.lanes.revision("rel")).toBe(20);
+      db.answered.add(targeted.id);
+      t.ok(targeted.id, { thread_id: "rel", revision: 19, total: 14,
+        items: [{ node_id: "r6", kind: "user", excerpt: "Compare provider behavior before writing.", selection: { ordinal: 5 } }] });
+      await refresh;
+    });
+    await flush();
+    expect(model.branches.targetRevision.value).toBe(19);
+    expect(model.branches.lanes.revision("rel")).toBe(20);
+    expect(model.branches.rewind.value.kind).toBe("idle");
+    expect(el.querySelector(".lanes-actions input")).not.toBeNull();
+    expect(el.querySelector("[data-leaving]")).toBeNull();
+    expect(t.calls("thread.rewind")).toHaveLength(1);
   });
 
   it("Show opens a run with one guarded read; loading shows only on that run", async () => {

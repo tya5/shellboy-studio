@@ -657,7 +657,9 @@ late results never publish. A shorter path or a non-growing new tip drops that
 lane's positions. Because the family read has no path revision, each successful
 family refresh checks at most the one open action point with a node-scoped
 `history.window`. An unchanged revision preserves the open actions and focus;
-a new revision re-keys only the action subtree and withdraws a stale preview.
+a new revision re-keys the action subtree and withdraws a stale preview, even
+if the graph cache already saw a newer window. On revision advance the graph
+keeps only positions proved by the new window; immutable excerpts stay cached.
 Owner refusal of membership drops that lane's cached positions and closes the
 point. The model's mutation receipts survive these projection changes. The
 two-line comparison keeps its own bounded reads

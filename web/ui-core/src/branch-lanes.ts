@@ -222,7 +222,23 @@ export class LaneReader {
   }
 
   private remember(threadId: string, { revision, items }: HistoryWindowResult): boolean {
-    if (revision < (this.revision(threadId) ?? 0)) return false;
+    const previous = this.revision(threadId);
+    if (previous !== undefined && revision < previous) return false;
+    if (previous !== undefined && revision > previous) {
+      const opened = this.openedAt.get(threadId);
+      const positions = this.positions.get(threadId);
+      // A growing path may have rewound first. Carry forward only positions proved here.
+      const confirmed = new Set<number>();
+      for (const item of items) {
+        const ordinal = item.selection?.ordinal;
+        if (ordinal !== undefined && item.node_id && opened?.has(ordinal) && positions?.get(ordinal) === item.node_id) confirmed.add(ordinal);
+      }
+      this.dropPositions(threadId);
+      if (confirmed.size) {
+        this.openedAt.set(threadId, confirmed);
+        this.openedCount += confirmed.size;
+      }
+    }
     this.revisions.set(threadId, revision);
     let at = this.positions.get(threadId);
     if (!at) this.positions.set(threadId, at = new Map());
@@ -292,25 +308,28 @@ export class LaneReader {
   }
 
   /** Admit the open point from its targeted refresh, not from cached membership. */
-  refreshPoint(threadId: string, window: HistoryWindowResult): boolean {
-    if (!this.remember(threadId, window)) return false;
-    this.version.value = this.version.peek() + 1;
-    return true;
+  refreshPoint(threadId: string, window: HistoryWindowResult): void {
+    if (this.remember(threadId, window)) this.version.value = this.version.peek() + 1;
   }
 
   /** A targeted owner read disproved a cached position, even if the lane grew. */
   invalidatePath(threadId: string, revision?: number): void {
-    if (revision !== undefined && revision > (this.revision(threadId) ?? 0)) this.revisions.set(threadId, revision);
+    if (revision !== undefined && revision < (this.revision(threadId) ?? 0)) return;
+    if (revision !== undefined) this.revisions.set(threadId, revision);
+    this.dropPositions(threadId);
+    this.version.value = this.version.peek() + 1;
+  }
+
+  private dropPositions(threadId: string): void {
     const opened = this.openedAt.get(threadId);
     this.openedCount -= opened?.size ?? 0;
     this.openedAt.delete(threadId);
     this.positions.delete(threadId);
-    this.version.value = this.version.peek() + 1;
   }
 
   /**
-   * A new family read. Appending keeps every position; a shorter path, or a new tip without growth (a rewind),
-   * drops that lane's positions so they are read again rather than shown from an older path.
+   * Without a path revision in the family read, a shorter path or replacement tip without growth
+   * invalidates positions immediately. Window admission handles observed revision changes.
    */
   familyChanged(family: BranchFamily): void {
     let dropped = false;
@@ -319,10 +338,7 @@ export class LaneReader {
       this.sizes.set(i.threadId, { tip: i.tipNodeId, path: i.pathNodes });
       if (!had || had.tip === i.tipNodeId) continue;
       if (i.pathNodes === undefined || had.path === undefined || i.pathNodes <= had.path) {
-        const opened = this.openedAt.get(i.threadId);
-        this.openedCount -= opened?.size ?? 0;
-        this.openedAt.delete(i.threadId);
-        this.positions.delete(i.threadId);
+        this.dropPositions(i.threadId);
         dropped = true;
       }
     }
