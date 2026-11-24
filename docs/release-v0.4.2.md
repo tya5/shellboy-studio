@@ -1,12 +1,12 @@
 # Studio v0.4.2 pairing
 
-Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa01`, protocol 26. This document records the prepared pairing; it does not announce a Studio release.
+Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa01`, protocol 26. This document records the prepared pairing; it does not announce a Studio release. The last published download, Studio v0.4.1, pairs only with Core v0.15.0 / protocol 18. Do not use that binary with the Core v0.16.0 / protocol 26 pairing prepared on main; upgrade Studio and Core together.
 
 - Studio package version: 0.4.2.
-- main retains the published v0.4.1 pairing until v0.4.2 is released.
+- Last published download: Studio v0.4.1 with Core v0.15.0 / protocol 18. New pairing on main: Studio v0.4.2 with Core v0.16.0 / protocol 26. Never combine the v0.4.1 binary with Core protocol 26.
 - Exact pin: `Cargo.toml` and `Cargo.lock` use the published Core v0.16.0 tag commit; the exact-owner fixture reports version 0.16.0 and protocol 26. The Setup guide links to the v0.16.0 documentation.
 - macOS and Windows desktop package versions are generated from the Cargo package version; there are no independent checked-in product-version literals for those bundles.
-- Before upgrading, quit Studio and Core and back up the entire Core data directory and any settings files stored outside it; see [v0.4.0](release-v0.4.0.md) for backup and phone-pairing guidance. This supersedes the [previous v0.4.1 pairing](release-v0.4.1.md) only after the Core tag is finalized.
+- Before upgrading, quit Studio and Core and back up the entire Core data directory and any settings files stored outside it; see [v0.4.0](release-v0.4.0.md) for backup and phone-pairing guidance. This new source pairing supersedes the [previous v0.4.1 pairing](release-v0.4.1.md) for builds from main; the published v0.4.1 binary remains paired with Core v0.15.0 / protocol 18.
 
 ## Changes on main since v0.4.1
 
@@ -22,8 +22,8 @@ Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa
 - Sidebar row menus have a larger, separate touch target that does not overlap the Thread link (#128).
 - The README and bilingual [user guide](guides/user-guide.md) now match the current setup steps, screen labels, and upgrade and pairing guidance.
 - **Settings > Studio > Startup** offers **Open Studio at login** to authenticated local desktop users on macOS and Windows; on Windows, use Windows Startup settings or remove the Startup shortcut to turn it off. Linux does not have this setting (#85).
-- In **Monitor**, use **Archive scope** to choose **Active**, **All archives**, or **Archived** without changing the sidebar (#127).
-- On phones, use the **Thread panel** picker and full-screen details; dialogs scroll in one place, logs offer **Wrap lines** and **Raw text**, and **Load earlier messages** appears when earlier history is available (#128 items 3–7).
+- Use **Archive** and **Unarchive** in the sidebar selection bar to change archive status for the selected Threads (#127; Monitor was removed in #138).
+- On phones, use the **Thread panel** picker and full-screen details; dialogs scroll in one place, expanded shell steps offer **Wrap lines** and turn **Formatted** off, and **Load earlier messages** appears when earlier history is available (#128 items 3–7).
 - Global shortcuts stay out of dialogs, editable fields, Japanese text composition, and key events already handled by a control (#130).
 - Tab moves from a row menu to the next control after the row (#130).
 - Collapsed Work rows keep their keyboard focus outline (#130).
