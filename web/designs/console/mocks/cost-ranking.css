@@ -1,0 +1,8 @@
+body{margin:0;background:var(--bg);color:var(--fg)}
+.ranking-mock{box-sizing:border-box;max-inline-size:52rem;margin-inline:auto;padding:var(--space-16);display:grid;gap:var(--space-16)}
+.ranking-rows{list-style:none;margin:0;padding:0}
+.ranking-rows li+li{border-block-start:1px solid var(--line)}
+.ranking-rows button{display:grid;grid-template-columns:max-content minmax(0,1fr) max-content max-content;gap:var(--space-12);inline-size:100%;min-block-size:var(--size-touch);text-align:start}
+.ranking-index,.ranking-share{font:var(--type-code);font-variant-numeric:tabular-nums}
+.ranking-index,.ranking-arrow{color:var(--muted)}
+.ranking-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
