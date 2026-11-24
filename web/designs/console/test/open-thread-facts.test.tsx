@@ -280,19 +280,25 @@ describe("Open Thread's own hint (#103, defect seen on main in #111)", () => {
 });
 
 for (const lang of ['en', 'ja'] as const) {
-  it.each(['failed', 'held', 'recovery_wait'] as const)(`keeps %s diagnostics stable in ${lang}`, async state => {
+  it.each(['failed', 'bridge_refusal', 'held', 'recovery_wait'] as const)(`keeps %s diagnostics stable in ${lang}`, async state => {
     const thread = state === 'recovery_wait' ? 'broken' : 'lead';
     const { model, t, db } = await fixtureModel({ lang, route: 'conversation', threadId: thread });
     try {
       const el = draw(model);
       await act(async () => { await settle(t, db); });
+      let requestId: string | undefined;
       if (state !== 'recovery_wait') {
         await act(async () => {
           const send = model.send('Synthetic input');
           const call = t.calls('message.send').at(-1)!;
           db.answered.add(call.id);
-          if (state === 'held') t.ok(call.id, { thread_id: thread, message_id: 'fixture-held', assignment: 'pending', delivery_status: 'held' });
-          else t.push({ t: 'result', id: call.id, response: { protocol_version: 5, operation_id: 'fixture', ok: false,
+          requestId = call.operation_id;
+          expect(requestId).toBeTruthy();
+          expect(requestId).not.toBe('owner-receipt');
+          if (state === 'bridge_refusal') t.push({ t: 'result', id: call.id, error: { code: 'busy', message: 'Bridge refused admission' } });
+          else if (state === 'held') t.push({ t: 'result', id: call.id, response: { protocol_version: 5, operation_id: 'owner-receipt', ok: true,
+            result: { thread_id: thread, message_id: 'fixture-held', assignment: 'pending', delivery_status: 'held' } } });
+          else t.push({ t: 'result', id: call.id, response: { protocol_version: 5, operation_id: 'owner-receipt', ok: false,
             error: { code: 'io_failed', message: 'Saved evidence', hint: 'Choose an action' } } });
           await send;
           await settle(t, db);
@@ -301,16 +307,23 @@ for (const lang of ['en', 'ja'] as const) {
       const diagnostic = () => el.querySelector('[data-owner-diagnostic]');
       const initial = diagnostic();
       const text = initial?.textContent;
-      expect(text).toContain(lang === 'ja' ? 'コード:' : 'Code:');
-      expect(text).toContain(state === 'held' ? 'held' : 'io_failed');
-      if (state === 'held') {
-        expect(text).toContain(lang === 'ja' ? '受理時は保留中でした。' : 'Held at acceptance.');
-        expect(text).not.toContain(lang === 'ja' ? '次の操作:' : 'Next action:');
+      if (state === 'bridge_refusal') {
+        expect(text).toContain('Bridge refused admission');
       } else {
-        expect(text).toContain(state === 'failed' ? 'Saved evidence' : 'provider: connection interrupted');
-        expect(text).toContain(`${lang === 'ja' ? '次の操作:' : 'Next action:'} Choose an action`);
+        expect(text).toContain(lang === 'ja' ? 'コード:' : 'Code:');
+        expect(text).toContain(state === 'held' ? 'held' : 'io_failed');
+        if (state === 'held') {
+          expect(text).toContain(lang === 'ja' ? '受理時は保留中でした。' : 'Held at acceptance.');
+          expect(text).not.toContain(lang === 'ja' ? '次の操作:' : 'Next action:');
+        } else {
+          expect(text).toContain(state === 'failed' ? 'Saved evidence' : 'provider: connection interrupted');
+          expect(text).toContain(`${lang === 'ja' ? '次の操作:' : 'Next action:'} Choose an action`);
+        }
       }
-      if (state !== 'recovery_wait') expect(text).toContain(lang === 'ja' ? '操作ID:' : 'Operation ID:');
+      const receiptLabel = lang === 'ja' ? '操作ID:' : 'Operation ID:';
+      if (state === 'failed' || state === 'held') expect(text).toContain(`${receiptLabel} owner-receipt`);
+      else expect(text).not.toContain(receiptLabel);
+      if (requestId) expect(text).not.toContain(requestId);
       await act(async () => { t.push({ t: 'changed', thread_ids: [thread], list: false, config_changed: false }); await settle(t, db); });
       expect(diagnostic()).toBe(initial);
       expect(diagnostic()?.textContent).toBe(text);

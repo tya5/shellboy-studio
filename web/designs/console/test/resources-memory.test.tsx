@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { render } from "preact";
 import { expect, it } from "vitest";
-import { MemoryPane } from "../screens/Resources";
+import { MemoryPane, StoragePane } from "../screens/Resources";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { settle } from "../../../data/test/harness";
 
@@ -124,4 +124,23 @@ it.each(["en", "ja"] as const)("retries an owner admission refusal only on click
   expect(f.t.calls("bridge.memory")).toHaveLength(bridgeBefore);
   expect(f.model.insights.memory.peek().value?.caches).toHaveLength(4);
  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+
+it("renders the owner's typed storage failure and hint verbatim", async () => {
+ const f = await fixtureModel();
+ const host = document.createElement("div");
+ document.body.append(host);
+ try {
+  f.model.insights.refreshRead("storage");
+  const call = f.t.calls("storage.status").at(-1)!;
+  f.db.answered.add(call.id);
+  f.t.push({ t: "result", id: call.id, response: { protocol_version: 5, operation_id: "storage-receipt", ok: false,
+   error: { code: "io_failed", message: "Storage facts unavailable", hint: "Inspect the owner log before retrying." } } });
+  await settle(f.t, f.db);
+  render(<StoragePane model={f.model} />, host);
+  const text = host.querySelector("[data-owner-diagnostic]")?.textContent;
+  expect(text).toBe("Code: io_failed Couldn't read this: Storage facts unavailable Next action: Inspect the owner log before retrying. Operation ID: storage-receipt");
+  expect(f.t.calls("storage.status")).toHaveLength(1);
+ } finally { render(null,host); host.remove(); f.model.dispose(); f.data.stop(); }
 });

@@ -22,9 +22,17 @@ export function lostConnection(error: OpError | undefined): boolean {
   return error?.kind === "not_connected" || error?.kind === "connection_lost";
 }
 
-export type Outcome<T> =
-  | { ok: true; value: T; operationId?: string }
-  | { ok: false; error: OpError; operationId?: string };
+type OperationIdentity = {
+  /** Submitted mutation ID, retained even when no owner reply arrives. */
+  operationId?: string;
+  /** ID supplied in an owner response, never inferred from the request. */
+  ownerOperationId?: string;
+};
+
+export type Outcome<T> = OperationIdentity & (
+  | { ok: true; value: T }
+  | { ok: false; error: OpError }
+);
 
 export const fromApiError = (e: ApiError): OpError => ({
   kind: "owner",

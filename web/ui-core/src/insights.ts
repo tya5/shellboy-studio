@@ -147,6 +147,7 @@ export interface ReadState<T> {
   loading: boolean;
   value: T | undefined;
   error: OpError | undefined;
+  ownerOperationId?: string;
 }
 
 const nothing: ReadState<never> = { loading: false, value: undefined, error: undefined };
@@ -161,7 +162,7 @@ async function readInto<T, Wire>(target: Signal<ReadState<T>>, read: () => Promi
   const out = await read();
   if (latestRead.get(target) !== me || (!out.ok && out.error.kind === "cancelled")) return;
   // A failed read keeps the last value, marked with the error.
-  target.value = out.ok ? { loading: false, value: parse(out.value), error: undefined } : { ...target.peek(), loading: false, error: out.error };
+  target.value = out.ok ? { loading: false, value: parse(out.value), error: undefined } : { ...target.peek(), loading: false, error: out.error, ownerOperationId: out.ownerOperationId };
 }
 
 export interface CompactionState {

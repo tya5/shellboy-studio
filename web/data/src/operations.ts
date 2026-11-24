@@ -429,7 +429,9 @@ export class Operations {
     forget?.();
     const extra = mutation ? { operationId: mutation.operationId } : {};
     if (!reply.ok) return { ok: false, error: reply.error, ...extra };
-    return { ...unwrap(reply.response, decode), ...extra };
+    const ownerOperationId = reply.response.operation_id;
+    return { ...unwrap(reply.response, decode), ...extra,
+      ...(typeof ownerOperationId === "string" && ownerOperationId.trim() !== "" && { ownerOperationId }) };
   }
 
   // ---- reads ----

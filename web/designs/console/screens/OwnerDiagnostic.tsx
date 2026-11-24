@@ -12,9 +12,9 @@ export function OwnerDiagnostic({ t, code, message, hint, operationId }: {
   </span>;
 }
 
-export function ReadDiagnostic({ t, error }: { t: Translate; error: OpError }) {
+export function ReadDiagnostic({ t, error, ownerOperationId }: { t: Translate; error: OpError; ownerOperationId?: string }) {
   return <OwnerDiagnostic t={t} message={t("common.readError", { message: error.message })}
     code={error.kind === "owner" || error.kind === "bridge" ? error.code : undefined}
     hint={error.kind === "owner" ? error.hint : undefined}
-    operationId={error.kind === "unconfirmed" ? error.operationId : undefined} />;
+    operationId={ownerOperationId} />;
 }
