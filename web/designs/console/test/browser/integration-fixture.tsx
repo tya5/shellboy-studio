@@ -64,10 +64,6 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
   }
   if (params.get('state') === 'waiting') db.threads.lead = summary('lead', {state:'running',activity:'waiting'});
   if (params.get('state') === 'completed') db.threads.lead = summary('lead', {state:'completed',activity:'completed'});
-  if (params.get('state') === 'recovery') {
-    db.threads.lead = summary('lead', {state:'recovery_wait',activity:'recovery'});
-    db.details.lead!.recovery_reason = JSON.stringify({ code: 'io_failed', message: 'provider: connection interrupted while streaming the response from the configured endpoint' });
-  }
   if (params.get('state') !== 'running') return;
   db.work.lead = ['verify', 'inspect'].map((id) => ({ kind: 'shell', id, thread_id: 'lead', run_id: 'run-1', execution_id: id, state: 'running', started_at: '2026-11-07T10:19:00Z' }));
   db.shells.lead = [
