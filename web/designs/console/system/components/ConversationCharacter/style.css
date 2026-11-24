@@ -1,8 +1,10 @@
 .character-status{width:var(--size-conversation-character);height:var(--size-conversation-character);flex:none}
+.character-thinking{display:grid}
+.character-thinking>svg{grid-area:1/1;width:100%;height:100%}
 @media (prefers-reduced-motion:no-preference){
-  .character-status[data-running] circle{transform-box:view-box;animation:character-hop 1.2s ease-in-out infinite}
-  .character-status[data-running] circle:nth-of-type(2){animation-delay:.15s}
-  .character-status[data-running] circle:nth-of-type(3){animation-delay:.30s}
+  .character-thinking[data-running]>svg.character-dot{animation:character-hop 1.2s ease-in-out infinite}
+  .character-thinking[data-running]>svg.character-dot:nth-of-type(3){animation-delay:.15s}
+  .character-thinking[data-running]>svg.character-dot:nth-of-type(4){animation-delay:.30s}
 }
 @keyframes character-hop{
   0%,50%,100%{transform:translateY(0)}
