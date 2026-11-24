@@ -2085,7 +2085,7 @@ async fn intervention_provider(
                             .to_owned(),
                     )
                 } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-                    let args = json!({"command":if cfg!(windows){"[Console]::Out.Write('READ:' + [Console]::In.ReadToEnd()); Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
+                    let args = json!({"command":if cfg!(windows){"[Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); $inputText=[Console]::In.ReadToEnd(); [Console]::Out.Write('READ:' + $inputText); [Console]::Out.Flush(); Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
                     let call = json!({"type":"function_call","id":"intervention-shell","call_id":"intervention-shell","name":"shell","arguments":args.to_string()});
                     let reply = json!({"id":"intervention-tool","status":"completed","output":[call],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
                     ("application/json".to_owned(), reply.to_string())
@@ -2153,6 +2153,33 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let started = client.wait_running_shell(owner.as_ref(), &thread).await;
     let execution = started["execution_id"].as_str().unwrap().to_owned();
     let mut shell_cursor = Client::event_cursor(owner.as_ref()).await;
+    if cfg!(windows) {
+        let mut ready_output = Value::Null;
+        let ready = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let read = client
+                    .ok(
+                        "shell.read",
+                        json!({"execution_id":execution,"encoding":"UTF-8","limit_bytes":4096}),
+                        None,
+                    )
+                    .await;
+                ready_output = read["text"].clone();
+                if ready_output
+                    .as_str()
+                    .is_some_and(|text| text.contains("READY"))
+                {
+                    break;
+                }
+                Client::wait_owner_change(owner.as_ref(), &thread, &mut shell_cursor).await;
+            }
+        })
+        .await;
+        assert!(
+            ready.is_ok(),
+            "Windows stage 1 failed: child READY marker not seen; output={ready_output}"
+        );
+    }
     let wrote = client
         .ok(
             "shell.write",
@@ -2160,15 +2187,24 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
             None,
         )
         .await;
-    assert_eq!(wrote["status"], "complete", "{wrote}");
-    assert!(wrote["bytes_written"].as_u64().unwrap() > 0, "{wrote}");
+    assert_eq!(
+        wrote["status"], "complete",
+        "stage 2 shell.write failed: {wrote}"
+    );
+    assert!(
+        wrote["bytes_written"].as_u64().unwrap() > 0,
+        "stage 2 shell.write transferred no bytes: {wrote}"
+    );
     // The Windows ReadToEnd fixture emits its marker only after EOF; Unix
     // keeps the stronger open-stdin output-before-EOF witness.
     if cfg!(windows) {
         let eof = client
             .ok("shell.eof", json!({"execution_id":execution}), None)
             .await;
-        assert_eq!(eof["accepted"], true, "{eof}");
+        assert_eq!(
+            eof["accepted"], true,
+            "Windows stage 3 shell.eof failed: {eof}"
+        );
     }
     let mut last_output = Value::Null;
     let output = match tokio::time::timeout(Duration::from_secs(10), async {
@@ -2203,7 +2239,8 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
                 .cloned()
                 .unwrap_or(Value::Null);
             panic!(
-                "shell output must confirm the input reached the child process: {error}; captured output={last_output}; shell state={shell_state}"
+                "{} stage 4 failed: child READ marker not seen: {error}; captured output={last_output}; shell state={shell_state}",
+                if cfg!(windows) { "Windows" } else { "Unix" }
             );
         }
     };
