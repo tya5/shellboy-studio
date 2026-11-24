@@ -282,7 +282,7 @@ describe('right panel purpose',()=>{
    await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z"] button')!.click());
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-2.md');
    expect(!!page.querySelector('[data-panel-detail] button[aria-label="Finderで表示"]')).toBe(platform === 'finder');
-   expect(page.querySelector('[data-panel-detail] button[aria-label="成果物の場所をコピー"]')).not.toBeNull();
+   expect(page.querySelector('[data-panel-detail] button[aria-label="パスをコピー"]')).not.toBeNull();
    await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z:v1"] button')!.click());
    expect(f.t.calls('artifact.get').at(-1)?.args).toEqual({artifact_id:'z',version:1});
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
