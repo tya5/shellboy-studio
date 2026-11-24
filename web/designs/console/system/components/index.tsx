@@ -35,6 +35,8 @@ export { DataTable, type DataColumn } from "./DataTable";
 export { Meter } from "./Meter";
 export { BarList } from "./BarList";
 export { RangeBar } from "./RangeBar";
+export { RankedBar, RankedBarLegend } from "./RankedBar";
+
 export { SectionNav, type SectionNavItem } from "./SectionNav";
 export { FactList, type Fact } from "./FactList";
 export { ButtonGroup } from "./ButtonGroup";

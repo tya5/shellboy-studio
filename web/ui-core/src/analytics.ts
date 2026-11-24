@@ -415,3 +415,17 @@ export function periodTotals(groups: ReadonlyMap<string, UsageGroup>, w: Weights
     days: all.length,
   };
 }
+
+/** Raw token parts without overlaps. Unknown counters are not zero. */
+export function rankingParts(group: UsageGroup): readonly [number | undefined, number | undefined, number | undefined] {
+  const exact = (s: Sum) => s.unknown === 0 && !s.overflow && s.known !== undefined && s.known >= 0 ? s.known : undefined;
+  const add = (a: number | undefined, b: number | undefined) =>
+    a !== undefined && b !== undefined && Number.isSafeInteger(a + b) ? a + b : undefined;
+  const { conversation, summary } = group;
+  const input = exact(conversation.input);
+  const cached = exact(conversation.cached);
+  const pair = input !== undefined && cached !== undefined && cached <= input && group.unknownPairs === 0;
+  return [group.requests === 0 ? 0 : pair ? add(input - cached, exact(conversation.output)) : undefined,
+    group.requests === 0 ? 0 : pair ? cached : undefined,
+    group.summaryRequests === 0 ? 0 : add(exact(summary.input), exact(summary.output))];
+}

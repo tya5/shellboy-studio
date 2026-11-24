@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
-  ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, periodTotals, PERIODS, readWeights, shortDay,
+  ANALYTICS_SECTIONS, analyticsSection, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, rankingParts, periodTotals, PERIODS, readWeights, shortDay,
   splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
 } from "../../../ui-core/src";
-import { Button, ButtonGroup, Chart, DataTable, Field, Notice, PageHeader, RangeBar, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
+import { Button, ButtonGroup, Chart, DataTable, Field, Notice, PageHeader, RangeBar, RankedBar, RankedBarLegend, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
 import { IndexPane, MemoryPane, StoragePane } from "./Resources";
 import { tokenTotal } from "./usage-label";
 
@@ -98,47 +98,75 @@ function ModelUsage({ model, threadId, title, onClose }: { model: AppModel; thre
   </Section>;
 }
 
-function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
+const RANK_METRICS = [
+  { label: "ranking.excluding", parts: [0, 2] },
+  { label: "ranking.total", parts: [0, 1, 2] },
+  { label: "ranking.cached", parts: [1] },
+  { label: "usage.summary", parts: [2] },
+] as const;
+const RANK_PARTS = ["ranking.other", "ranking.cached", "usage.summary"] as const;
+
+function ByThread({ model }: { model: AppModel }) {
   const t = model.t.value;
   const i = model.insights;
   const walk = i.byThread.state.value;
   const threadRows = model.rowById.value;
   const [limit, setLimit] = useState(25);
+  const [choice, choose] = useState(0);
   const [selected, select] = useState<string>();
-  const rows = [...walk.groups.values()].map(g => ({ g, effective: groupEffective(g, weights) }))
-    .sort((a, b) => (b.effective.value ?? -1) - (a.effective.value ?? -1)).slice(0, limit);
-  const nameOf = (key: string) => threadRows.get(key)?.summary.title ?? key.slice(0, 8);
-  const complete = walkComplete(walk);
-  const placeholder = periodPlaceholder(t, walk, complete);
+  const returnTo = useRef<string>();
+  const detailBack = useRef<HTMLButtonElement>(null);
+  const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const metric = RANK_METRICS[choice]!;
+  const included: readonly number[] = metric.parts;
+  const nameOf = (key: string) => threadRows.get(key)?.summary.title || key;
+  const rows = [...walk.groups.values()].map(group => {
+    const values = rankingParts(group);
+    const parts = values.map((value, index) => included.includes(index) ? value : 0);
+    const sum = parts.reduce<number>((n, value) => n + (value ?? NaN), 0);
+    return { key: group.key, title: nameOf(group.key), parts, sum, values };
+  }).sort((a, b) => (Number.isFinite(b.sum) ? b.sum : -1) - (Number.isFinite(a.sum) ? a.sum : -1) || a.key.localeCompare(b.key));
+  const total = rows.reduce((n, row) => n + row.sum, 0);
+  const complete = walkComplete(walk) && !walk.capped && Number.isSafeInteger(total) && rows.every(row => Number.isSafeInteger(row.sum));
+  const top = Math.max(1, rows[0]?.sum ?? 0);
+  const detail = rows.find(row => row.key === selected);
+  const number = (value: number) => value.toLocaleString();
+  useLayoutEffect(() => {
+    if (selected) detailBack.current?.focus();
+    else if (returnTo.current) {
+      buttons.current.get(returnTo.current)?.focus();
+      returnTo.current = undefined;
+    }
+  }, [selected]);
   return <>
-    <Section title={t("threads.heading")} sub={t("threads.sub")}
-      source={<>{t("common.source", { source: "" })}<code>usage.get group_by=thread</code></>}>
-      {walk.capped ? <Notice tone="wait">{t("threads.groupsCapped")}</Notice> : null}
+    <PeriodHead model={model} section="threads" />
+    <Section title={t("threads.heading")} sub={t("ranking.note")} source={<code>usage.get group_by=thread</code>}>
+      <ButtonGroup label={t("ranking.metric")}>{RANK_METRICS.map((item, index) =>
+        <Button key={item.label} aria-pressed={choice === index} onClick={() => choose(index)}>{t(item.label)}</Button>)}</ButtonGroup>
       <WalkNotice t={t} state={walk} onStop={() => i.byThread.stop()} onContinue={() => void i.byThread.continue()} onRetry={() => void i.byThread.start()} />
       <Coverage t={t} walk={walk} />
-      {rows.length > 0 ? <DataTable caption={t("threads.heading")}
-        columns={[{ label: t("threads.thread") }, ...usageColumns(t), { label: t("series.effective"), numeric: true }, { label: t("series.cacheRate"), numeric: true }, { label: t("usage.summary") }, { label: t("threads.mean"), numeric: true }, { label: t("threads.max"), numeric: true }, { label: t("threads.events"), numeric: true }, { label: "" }]}
-        rows={rows.map(({ g, effective }) => {
-          const rate = complete ? cacheRate(g.conversation, g.unknownPairs) : undefined;
-          const mean = meanInput(g);
-          const count = t("usage.requests");
-          const summary = g.summaryRequests || !complete ? <>
-            {usageCells(t, g.summary, !complete).map((value, index) => <div key={index}>{usageColumns(t)[index]!.label}: {value}</div>)}
-            <div>{count}: {complete ? g.summaryRequests : t("usage.minimum", { value: g.summaryRequests })}</div>
-          </> : `${count}: 0`;
-          return { key: g.key, cells: [
-            <>{threadRows.has(g.key) ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g.key)}</a> : <span class="mono">{nameOf(g.key)}</span>}
-              {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}</>,
-            ...usageCells(t, g.conversation, !complete), walk.status === "loading" || effective.value === undefined ? placeholder : effectiveLabel(t, effective.value, effective.lowerBound || !complete), rate === undefined ? placeholder : percent(rate), summary,
-            mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
-            g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"), g.compactions,
-            <><Button variant="ghost" aria-pressed={selected === g.key} aria-label={`${t("usage.showModels")}: ${nameOf(g.key)}`} onClick={() => select(selected === g.key ? undefined : g.key)}>{t("usage.showModels")}</Button>
-              <Button variant="ghost" onClick={() => { void i.showCompaction(g.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button></>,
-          ] };
-        })} /> : walk.status === "done" ? <div class="muted">{t("threads.none")}</div> : null}
-      {walk.groups.size > limit ? <Button variant="ghost" onClick={() => setLimit(limit + 25)}>{t("usage.moreRows")}</Button> : null}
+      {!complete ? <Notice tone="wait">{t(walk.status === "loading" ? "usage.aggregating" : "ranking.unavailable")}</Notice> :
+        !rows.length ? <Notice>{t("threads.none")}</Notice> : detail ? <>
+          <Section title={detail.title} sub={t("ranking.detail")} actions={<Button variant="ghost" buttonRef={detailBack} onClick={() => select(undefined)}>{t("ranking.back")}</Button>}>
+            <DataTable flat caption={detail.title} columns={[{ label: t("ranking.part") }, { label: t("ranking.tokens"), numeric: true }]}
+              rows={RANK_PARTS.map((part, index) => ({ key: part, cells: [t(part), detail.values[index] === undefined ? t("analytics.noValue") : number(detail.values[index])] }))} />
+            {threadRows.has(detail.key) ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: detail.key })}>{detail.title}</a> : null}
+            <Button variant="ghost" onClick={() => { void i.showCompaction(detail.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button>
+          </Section>
+          <ModelUsage model={model} threadId={detail.key} title={detail.title} onClose={() => select(undefined)} />
+        </> : <>
+          <RankedBarLegend labels={RANK_PARTS.map((part, index) => included.includes(index) ? t(part) : undefined)} />
+          <DataTable flat centerRows compact caption={t(metric.label)} columns={[
+            { label: t("ranking.rank"), numeric: true }, { label: t("threads.thread") },
+            { label: t("ranking.tokens"), numeric: true }, { label: t("ranking.share"), numeric: true },
+          ]} rows={rows.slice(0, limit).map(({ key, title, parts, sum }, index) => ({ key, cells: [index + 1,
+            <Button variant="ghost" aria-label={t("ranking.open", { title })} title={title} buttonRef={node => { if (node) buttons.current.set(key, node); else buttons.current.delete(key); }}
+              onClick={() => { returnTo.current = key; select(key); }}><RankedBar name={title} parts={parts.map(value => value ?? 0)} max={top} /></Button>,
+            number(sum), total === 0 ? t("analytics.noValue") : sum === 0 ? "0%" : `${shareText(sum / total)}%`,
+          ] }))} />
+          {rows.length > limit ? <Button variant="ghost" onClick={() => setLimit(limit + 25)}>{t("usage.moreRows")}</Button> : null}
+        </>}
     </Section>
-    {selected ? <ModelUsage model={model} threadId={selected} title={nameOf(selected)} onClose={() => select(undefined)} /> : null}
   </>;
 }
 
@@ -388,10 +416,7 @@ export function Analytics({ context }: { context: DesignContext }) {
       {section === "overview" || section === "tokens" || section === "compaction" ? (
         <UsagePane context={context} section={section} />
       ) : section === "threads" ? (
-        <>
-          <PeriodHead model={model} section={section} />
-          <ByThread model={model} weights={context.prefs.value.weights} />
-        </>
+        <ByThread model={model} />
       ) : section === "storage" ? (
         <StoragePane model={model} />
       ) : section === "memory" ? (

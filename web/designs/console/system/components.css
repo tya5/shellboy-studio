@@ -34,6 +34,8 @@
 @import "./components/Meter/style.css";
 @import "./components/BarList/style.css";
 @import "./components/RangeBar/style.css";
+@import "./components/RankedBar/style.css";
+
 @import "./components/SectionNav/style.css";
 @import "./components/BranchGraph/style.css";
 @import "./components/BranchList/style.css";

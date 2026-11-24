@@ -529,6 +529,16 @@ async fn hints_and_restart_against_a_real_owner() {
     }
     assert_eq!(replies[0]["group_by"], "day");
     assert_eq!(replies[0]["more"], false);
+    // The ranking sends one unscoped, bounded Thread grouping for the selected period.
+    let ranking = &replies[1];
+    assert_eq!(ranking["group_by"], "thread");
+    assert_eq!(ranking["timezone"], "+09:00");
+    assert_eq!(ranking["group_limit"], 168);
+    assert_eq!(ranking["scope_complete"], true);
+    assert_eq!(ranking["coverage"]["summary"], "recorded_first_request_at");
+    assert_eq!(ranking["items"], json!([]));
+    assert_eq!(ranking["more"], false);
+    assert!(ranking["next_cursor"].is_null());
     assert!(replies[2]["items"].is_array());
     assert!(replies[3]["logical_live_bytes"].is_u64());
     assert!(replies[3]["warning"].is_boolean());
