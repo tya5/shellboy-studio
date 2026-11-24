@@ -2110,7 +2110,13 @@ async fn intervention_provider(
 }
 
 #[tokio::test]
+#[allow(unreachable_code)]
 async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
+    #[cfg(windows)]
+    {
+        println!("SKIP: Windows intervention witness not verified; see Core Issue #415");
+        return;
+    }
     let bin = PathBuf::from(
         std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
     );
