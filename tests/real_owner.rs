@@ -672,6 +672,48 @@ impl Client {
         reply["response"]["result"].clone()
     }
     /// A Thread's activity word, from the saved list.
+    async fn wait_shell_fact<F>(&mut self, thread: &str, execution: &str, mut ready: F) -> Value
+    where
+        F: FnMut(&Value) -> bool,
+    {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let listed = self
+                    .ok("shell.list", json!({"thread_id":thread,"limit":20}), None)
+                    .await;
+                if let Some(item) = listed["items"]
+                    .as_array()
+                    .and_then(|items| items.iter().find(|item| item["execution_id"] == execution))
+                    && ready(item)
+                {
+                    return item.clone();
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| {
+            panic!("owner shell fact for {execution} did not reach the expected state")
+        })
+    }
+
+    async fn wait_turn_state<F>(&mut self, turn: &str, mut ready: F) -> Value
+    where
+        F: FnMut(&Value) -> bool,
+    {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let got = self.ok("turn.get", json!({"turn_id":turn}), None).await;
+                if ready(&got) {
+                    return got;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("owner Turn fact for {turn} did not reach the expected state"))
+    }
+
     async fn settled(&mut self, thread: &str) {
         for _ in 0..200 {
             let got = self
@@ -1916,7 +1958,10 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
 
 /// First model response invokes a real long-lived shell; the next one waits on a
 /// test-controlled gate so the owner remains in a live Turn during intervention calls.
-async fn intervention_provider(gate: Arc<tokio::sync::Notify>) -> String {
+async fn intervention_provider(
+    gate: Arc<tokio::sync::Notify>,
+    continued_requests: tokio::sync::mpsc::UnboundedSender<String>,
+) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -1928,6 +1973,7 @@ async fn intervention_provider(gate: Arc<tokio::sync::Notify>) -> String {
             };
             let gate = gate.clone();
             let requests = requests.clone();
+            let continued_requests = continued_requests.clone();
             tokio::spawn(async move {
                 let mut seen = Vec::new();
                 let mut chunk = [0u8; 8192];
@@ -1962,11 +2008,12 @@ async fn intervention_provider(gate: Arc<tokio::sync::Notify>) -> String {
                             .to_owned(),
                     )
                 } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-                    let args = json!({"command":if cfg!(windows){"Read-Host; Start-Sleep -Seconds 300"}else{"cat; sleep 300"},"description":"intervention fixture","stdin_open":true});
+                    let args = json!({"command":if cfg!(windows){"$line = Read-Host; Write-Output ('READ:' + $line); Start-Sleep -Seconds 300"}else{r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#},"description":"intervention fixture","stdin_open":true});
                     let call = json!({"type":"function_call","id":"intervention-shell","call_id":"intervention-shell","name":"shell","arguments":args.to_string()});
                     let reply = json!({"id":"intervention-tool","status":"completed","output":[call],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
                     ("application/json".to_owned(), reply.to_string())
                 } else {
+                    let _ = continued_requests.send(request.to_string());
                     gate.notified().await;
                     let item = json!({"id":"done","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]});
                     let reply = json!({"id":"intervention-done","status":"completed","output":[item],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
@@ -1993,7 +2040,8 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let root = temp_root();
     let data = root.join("data");
     let gate = Arc::new(tokio::sync::Notify::new());
-    let url = intervention_provider(gate.clone()).await;
+    let (continued_tx, mut continued_rx) = tokio::sync::mpsc::unbounded_channel();
+    let url = intervention_provider(gate.clone(), continued_tx).await;
     let serve = start_owner_with(&bin, &root, &data, &url);
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner, true).await;
@@ -2025,41 +2073,70 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
             Some(format!("{}:intervene-send", serve.instance)),
         )
         .await;
-    let mut shell = None;
-    for _ in 0..200 {
-        let listed = client
-            .ok("shell.list", json!({"thread_id":thread,"limit":10}), None)
-            .await;
-        if let Some(item) = listed["items"]
-            .as_array()
-            .and_then(|items| items.iter().find(|item| item["state"] == "running"))
-        {
-            shell = item["execution_id"].as_str().map(str::to_owned);
-            if shell.is_some() {
-                break;
+    let execution = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let listed = client
+                .ok("shell.list", json!({"thread_id":thread,"limit":20}), None)
+                .await;
+            if let Some(item) = listed["items"].as_array().and_then(|items| {
+                items
+                    .iter()
+                    .find(|item| item["state"] == "running" && item["stdin_open"] == true)
+            }) {
+                break item["execution_id"].as_str().unwrap().to_owned();
             }
+            tokio::task::yield_now().await;
         }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    let execution = shell.expect("model tool call must create a live shell");
+    })
+    .await
+    .expect("owner must publish an interactive running shell within the deadline");
     let wrote = client
         .ok(
             "shell.write",
-            json!({"execution_id":execution,"text":"studio-input\\n","encoding":"UTF-8"}),
+            json!({"execution_id":execution,"text":"studio-input\n","encoding":"UTF-8"}),
             None,
         )
         .await;
     assert_eq!(wrote["status"], "complete", "{wrote}");
     assert!(wrote["bytes_written"].as_u64().unwrap() > 0, "{wrote}");
+    let output = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let read = client
+                .ok(
+                    "shell.read",
+                    json!({"execution_id":execution,"encoding":"UTF-8","limit_bytes":4096}),
+                    None,
+                )
+                .await;
+            if read["text"]
+                .as_str()
+                .is_some_and(|text| text.contains("READ:studio-input"))
+            {
+                break read;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("shell output must confirm the input reached the child process");
+    assert!(
+        output["text"]
+            .as_str()
+            .unwrap()
+            .contains("READ:studio-input"),
+        "{output}"
+    );
     let eof = client
         .ok("shell.eof", json!({"execution_id":execution}), None)
         .await;
     assert_eq!(eof["accepted"], true, "{eof}");
-    let background = client
-        .ok("shell.background", json!({"execution_id":execution}), None)
+    let closed = client
+        .wait_shell_fact(&thread, &execution, |item| item["stdin_open"] == false)
         .await;
-    assert_eq!(background["execution_id"], execution);
-    assert_eq!(background["requested"], true, "{background}");
+    assert_eq!(
+        closed["state"], "running",
+        "EOF must close input without stopping the sleeper: {closed}"
+    );
     let live = client
         .ok("thread.get", json!({"thread_id":thread}), None)
         .await;
@@ -2067,16 +2144,47 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
         .as_str()
         .expect("foreground live turn")
         .to_owned();
+    let background = client
+        .ok("shell.background", json!({"execution_id":execution}), None)
+        .await;
+    assert_eq!(background["execution_id"], execution);
+    assert_eq!(background["requested"], true, "{background}");
+    let continued = tokio::time::timeout(Duration::from_secs(10), continued_rx.recv())
+        .await
+        .expect("backgrounded shell must release its foreground wait before deadline")
+        .expect("continuation request");
+    assert!(
+        continued.contains("human_backgrounded"),
+        "provider continuation lacked the owner-recorded background release: {continued}"
+    );
     let interrupted = client
         .ok("turn.interrupt", json!({"turn_id":turn}), None)
         .await;
     assert_eq!(interrupted["requested"], true, "{interrupted}");
     assert_eq!(interrupted["turn_id"], turn);
+    let stopped_turn = client
+        .wait_turn_state(&turn, |item| item["state"] == "stopped")
+        .await;
+    assert_eq!(stopped_turn["thread_id"], thread);
+    let still_running = client
+        .wait_shell_fact(&thread, &execution, |item| item["state"] == "running")
+        .await;
+    assert_eq!(
+        still_running["execution_id"], execution,
+        "background execution should survive Turn interruption"
+    );
     let stopped = client
         .ok("shell.stop", json!({"execution_id":execution}), None)
         .await;
     assert_eq!(stopped["accepted"], true, "{stopped}");
-    gate.notify_waiters();
+    let stopped_shell = client
+        .wait_shell_fact(&thread, &execution, |item| {
+            matches!(item["state"].as_str(), Some("stopped" | "exited"))
+        })
+        .await;
+    assert_eq!(stopped_shell["execution_id"], execution);
+    assert_ne!(stopped_shell["state"], "running", "{stopped_shell}");
+    gate.notify_one();
     cancel.cancel();
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);

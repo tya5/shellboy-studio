@@ -747,24 +747,39 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
   const activity=host.querySelector<HTMLButtonElement>('[role="tab"][data-panel-tab="work"]')!;
   expect(activity).toBeDefined();
   const shellRow=host.querySelector('[data-panel-row-id="exec-2"]')!;
+  const backgroundBeforeRow=f.t.calls("shell.background").length;
   await act(async()=>{shellRow.querySelector<HTMLButtonElement>(".list-row-action button")!.click();await flush();});
   expect(document.body.querySelector('[role="menuitem"]')?.textContent).toContain("Move to background");
   await act(async()=>{document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();await flush(8);await settle(f.t,f.db);});
+  expect(f.t.calls("shell.background")).toHaveLength(backgroundBeforeRow+1);
   expect(f.t.calls("shell.background").at(-1)?.args).toMatchObject({execution_id:"exec-2"});
+  const stopBeforeRow=f.t.calls("shell.stop").length;
+  await act(async()=>{shellRow.querySelector<HTMLButtonElement>(".list-row-action button")!.click();await flush();});
+  const rowStop=[...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button=>button.textContent?.includes("Stop this shell"))!;
+  await act(async()=>{rowStop.click();await flush();});
+  expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain("Stop python -m http.server?");
+  expect(f.t.calls("shell.stop")).toHaveLength(stopBeforeRow);
+  await act(async()=>{host.querySelector<HTMLButtonElement>('[role="alertdialog"] .shell-stop-confirmation button')!.click();await flush(8);await settle(f.t,f.db);});
+  expect(f.t.calls("shell.stop")).toHaveLength(stopBeforeRow+1);
+  expect(f.t.calls("shell.stop").at(-1)?.args).toMatchObject({execution_id:"exec-2"});
   await act(async()=>{shellRow.querySelector<HTMLButtonElement>(".panel-list-main")!.click();await flush(8);});
   expect(host.querySelector('[data-panel-detail]')).not.toBeNull();
   const detailMenu=host.querySelector<HTMLButtonElement>('[data-panel-detail] button[aria-label="Shell actions"]')!;
   await act(async()=>{detailMenu.click();await flush();});
   expect(document.body.querySelector('[role="menu"]')).not.toBeNull();
   expect(document.body.querySelector('[role="menuitem"]')?.textContent).toContain("Move to background");
+  const backgroundBeforeDetail=f.t.calls("shell.background").length;
   await act(async()=>{document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();await flush(8);await settle(f.t,f.db);});
+  expect(f.t.calls("shell.background")).toHaveLength(backgroundBeforeDetail+1);
   expect(f.t.calls("shell.background").at(-1)?.args).toMatchObject({execution_id:"exec-2"});
   await act(async()=>{host.querySelector<HTMLButtonElement>('[data-panel-detail] button[aria-label="Shell actions"]')!.click();await flush();});
+  const stopBeforeDetail=f.t.calls("shell.stop").length;
   const stopEntry=[...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button=>button.textContent?.includes("Stop this shell"))!;
   await act(async()=>{stopEntry.click();await flush();});
   expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain("Stop python -m http.server?");
-  expect(f.t.calls("shell.stop")).toHaveLength(0);
+  expect(f.t.calls("shell.stop")).toHaveLength(stopBeforeDetail);
   await act(async()=>{host.querySelector<HTMLButtonElement>('[role="alertdialog"] .shell-stop-confirmation button')!.click();await flush(8);await settle(f.t,f.db);});
+  expect(f.t.calls("shell.stop")).toHaveLength(stopBeforeDetail+1);
   expect(f.t.calls("shell.stop").at(-1)?.args).toMatchObject({execution_id:"exec-2"});
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
@@ -773,7 +788,10 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
 it("keeps a shell draft blocked when its owner fact disappears until explicit retarget", async () => {
  const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["history.window"],configure(db){
   db.details.lead=details("lead");
+  db.details.other=details("other");
   db.work.lead=[{kind:"shell",id:"exec-stale",thread_id:"lead",run_id:"run-old",execution_id:"exec-stale",state:"running",turn_id:"turn-old",started_at:"2026-11-07T10:20:00Z"}];
+  db.work.other=[];
+  db.shells.other=[];
   db.shells.lead=[{execution_id:"exec-stale",thread_id:"lead",run_id:"run-old",turn_id:"turn-old",state:"running",started_at:"2026-11-07T10:20:00Z",command_excerpt:"python worker.py"}];
  }});
  const host=document.createElement("div");document.body.append(host);
@@ -784,11 +802,13 @@ it("keeps a shell draft blocked when its owner fact disappears until explicit re
   const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
   composer.value="do not send to a different recipient";composer.dispatchEvent(new Event("input",{bubbles:true}));
   await act(async()=>{await flush(4);});
+  await act(async()=>{f.model.openThread("other");await settle(f.t,f.db);});
+  await act(async()=>{f.model.openThread("lead");await settle(f.t,f.db);});
+  expect(composer.value).toBe("do not send to a different recipient");
   f.db.shells.lead=[];
   f.db.work.lead=[];
   f.db.details.lead=details("lead",{run_id:"run-next",turn_id:"turn-next"});
   await act(async()=>{f.model.shells.value=new Map();await flush(4);});
-  expect(composer.value).toBe("do not send to a different recipient");
   expect(target.value).toBe("exec-stale");
   expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(true);
   expect(host.textContent).toContain("Selected shell unavailable");

@@ -976,7 +976,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
     const bForeground = details?.turn_id !== undefined && b.turn_id === details.turn_id;
     return Number(bForeground) - Number(aForeground) || (b.started_at ?? "").localeCompare(a.started_at ?? "");
   });
-  const [shellTarget, setShellTarget] = useState<string | "model" | undefined>(undefined);
+  const [shellTargets, setShellTargets] = useState<Record<string, string | undefined>>({});
   const [delivery, setDelivery] = useState<"next" | "now">("next");
   const [shellStopTarget, setShellStopTarget] = useState<{ executionId: string; command: string }>();
   const shellStopReturnFocus = useRef<HTMLElement | null>(null);
@@ -984,8 +984,12 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
     shellStopReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setShellStopTarget(target);
   };
-  useEffect(() => setShellTarget(undefined), [handle?.threadId]);
-  const currentTarget = shellTarget;
+  const currentTarget = handle ? shellTargets[handle.threadId] : undefined;
+  const setShellTarget = (target: string | undefined) => {
+    if (!handle) return;
+    const threadId = handle.threadId;
+    setShellTargets(previous => ({ ...previous, [threadId]: target }));
+  };
   const selectedShell = typeof currentTarget === "string" && currentTarget !== "model" ? activeShells.find(shell => shell.execution_id === currentTarget) : undefined;
   const unavailableShellTarget = typeof currentTarget === "string" && currentTarget !== "model" && selectedShell === undefined;
   useLayoutEffect(() => {
