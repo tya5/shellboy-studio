@@ -591,15 +591,14 @@ pub async fn open_or_start(dir: &Path, args: PathArgs) -> Result<(), String> {
     open_or_start_with(
         dir,
         &paths.data_dir,
-        || {
-            let log = || open_log(&dir.join("studio.log"));
+        |log, stderr| {
             let mut command = std::process::Command::new(std::env::current_exe().map_err(io)?);
             platform::detach(&mut command);
             command
                 .args(paths.server_args())
                 .stdin(Stdio::null())
-                .stdout(log().map_err(io)?)
-                .stderr(log().map_err(io)?);
+                .stdout(log)
+                .stderr(stderr);
             command.spawn().map(Some).map_err(io)
         },
         |url| async move { platform::open_browser(&url).await },
@@ -610,12 +609,19 @@ pub async fn open_or_start(dir: &Path, args: PathArgs) -> Result<(), String> {
 async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>(
     dir: &Path,
     data_dir: &Path,
-    spawn: impl FnOnce() -> Result<Option<std::process::Child>, String>,
+    spawn: impl FnOnce(File, File) -> Result<Option<std::process::Child>, String>,
     open: impl FnOnce(String) -> F,
 ) -> Result<(), String> {
-    fs::create_dir_all(dir).map_err(io)?;
-    platform::check_directory(dir).map_err(io)?;
-    let guard = launcher_lock(dir, "launcher.lock")?;
+    let storage_error = |path: &Path, cause: &dyn std::fmt::Display| {
+        format!(
+            "Cannot use Studio's settings or log path {}: {cause}. Make sure the folder is available and your account can write there; on a managed PC, ask IT to check access.",
+            path.display()
+        )
+    };
+    fs::create_dir_all(dir).map_err(|e| storage_error(dir, &e))?;
+    platform::check_directory(dir).map_err(|e| storage_error(dir, &e))?;
+    let guard = launcher_lock(dir, "launcher.lock")
+        .map_err(|e| storage_error(&dir.join("launcher.lock"), &e))?;
     // Serializes desktop launchers, not the separate server's lifetime.
     let _guard = tokio::task::spawn_blocking(move || {
         guard.lock()?;
@@ -624,10 +630,12 @@ async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>
     .await
     .map_err(io)?
     .map_err(io)?;
-    let running = launcher_lock(dir, "running.lock")?;
+    let running = launcher_lock(dir, "running.lock")
+        .map_err(|e| storage_error(&dir.join("running.lock"), &e))?;
     let mut child = match running.try_lock() {
         Ok(()) => {
-            fs::remove_file(dir.join("running.json"))
+            let marker = dir.join("running.json");
+            fs::remove_file(&marker)
                 .or_else(|e| {
                     if e.kind() == std::io::ErrorKind::NotFound {
                         Ok(())
@@ -635,9 +643,12 @@ async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>
                         Err(e)
                     }
                 })
-                .map_err(io)?;
+                .map_err(|e| storage_error(&marker, &e))?;
+            let path = dir.join("studio.log");
+            let log = open_log(&path).map_err(|e| storage_error(&path, &e))?;
+            let stderr = log.try_clone().map_err(|e| storage_error(&path, &e))?;
             drop(running);
-            spawn()?
+            spawn(log, stderr)?
         }
         Err(std::fs::TryLockError::WouldBlock) => None,
         Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
@@ -1050,6 +1061,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn inaccessible_desktop_storage_names_path_before_spawn_or_browser() {
+        let temp = Temp::new();
+        let blocked_settings = temp.0.join("settings-file");
+        fs::write(&blocked_settings, "not a directory").unwrap();
+        let settings = temp.0.join("settings");
+        let blocked_log = settings.join("studio.log");
+        fs::create_dir_all(&blocked_log).unwrap();
+        for (dir, blocked) in [
+            (&blocked_settings, &blocked_settings),
+            (&settings, &blocked_log),
+        ] {
+            let error = open_or_start_with(
+                dir,
+                &temp.0.join("data"),
+                |_, _| panic!("must not spawn with inaccessible storage"),
+                |_| std::future::ready(Err("browser was called".into())),
+            )
+            .await
+            .unwrap_err();
+            assert!(error.contains(&blocked.display().to_string()), "{error}");
+            assert!(error.contains("your account can write there"), "{error}");
+        }
+    }
+
+    #[tokio::test]
     async fn concurrent_opens_reuse_one_verified_authenticated_server() {
         use std::cell::RefCell;
         let dir = Temp::new();
@@ -1061,7 +1097,7 @@ mod tests {
         let token = Auth::load_or_create(path).unwrap();
         let data = path.join("data");
         let task = RefCell::new(None);
-        let spawn = || {
+        let spawn = |_: File, _: File| {
             let listener = listener.borrow_mut().take().expect("start exactly once");
             *task.borrow_mut() = Some(fixture_studio(path, listener, started.clone(), &data));
             Ok(None)
@@ -1132,7 +1168,7 @@ mod tests {
         let error = open_or_start_with(
             path,
             &requested,
-            || panic!("a running Studio must not be started again"),
+            |_, _| panic!("a running Studio must not be started again"),
             |_: String| std::future::ready(Err("opened another data directory".into())),
         )
         .await
@@ -1142,7 +1178,7 @@ mod tests {
         let opened = open_or_start_with(
             path,
             &running,
-            || panic!("a running Studio must not be started again"),
+            |_, _| panic!("a running Studio must not be started again"),
             |url: String| async move {
                 assert!(url.contains("#token="));
                 Ok(())
@@ -1154,7 +1190,7 @@ mod tests {
         let respelled = open_or_start_with(
             path,
             &running.join("sub").join(".."),
-            || panic!("a running Studio must not be started again"),
+            |_, _| panic!("a running Studio must not be started again"),
             |url: String| async move {
                 assert!(url.contains("#token="));
                 Ok(())

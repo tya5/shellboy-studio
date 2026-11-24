@@ -12,6 +12,22 @@ Download Studio from the [releases page](https://github.com/tya5/shellboy-studio
 
 The desktop app opens your default browser and signs in locally. It attaches to an owner already running on the selected data directory or starts its bundled Core if needed. To use custom Core settings, launch with `--config PATH` and `--data-dir PATH`; relative paths are resolved from the launch folder. Don't start a second owner for the same data. Opening the app again reopens the running Studio, but a different requested data directory requires quitting the existing Studio first.
 
+### Windows on a company PC
+
+**Downloaded ZIP.** Verify the download and extract it in full. Mark of the Web may carry through to the unsigned executables. Only unblock a verified ZIP if your organization explicitly permits it or IT directs you to; ask IT about a block on either executable. Do not disable Defender or bypass SmartScreen or application control.
+
+**Data.** Keep Core's live data on a local, non-synced disk (normally `%LOCALAPPDATA%\shellboy\data`). If necessary, use `--data-dir` with an approved local folder, not a mapped or UNC share or a OneDrive sync folder. Studio settings and logs are separate, under `%APPDATA%\shellboy-studio`.
+
+**VPN and proxy.** Being on the VPN or opening Studio in the browser does not prove Core can reach the model service. Core inherits the launcher environment, not another terminal's environment or the browser's proxy settings. Ask IT what outbound HTTPS proxy and certificate settings the Explorer-launched process needs.
+
+**Firewall.** The desktop bridge listens only on `127.0.0.1`, normally port 8751 (an available port if occupied). It does not need inbound LAN access. If Windows prompts or the local URL is blocked, check with IT rather than opening a firewall port.
+
+**Open at login.** A shortcut in `shell:startup` does not prove Windows will run it. Check **Settings > Apps > Startup** and verify at sign-in; if company policy blocks registration or launch, open Studio manually.
+
+**Updates.** Use **Quit Studio**, not just close the tab, and make sure the processes you are replacing have stopped. Extract the new ZIP and keep its two EXEs together; do not swap one executable while the other is running. Update shortcuts if the folder moves.
+
+**Removal.** Quit Studio, then remove the extracted folder and the Studio startup shortcut if present. This leaves Studio settings, its token and logs, and Core's separate config, credentials and conversation data. Keep the Core files if another client uses them.
+
 ## Connect a model
 
 If there is no model connection, choose **Connect a model service**. Select your provider or proxy, verify the address and API format, and provide a key if required. A Claude or ChatGPT subscription login is not an API key. Supported presets can offer to use a key already in the Core owner's environment. **Test connection** asks for the model list; it doesn't send a conversation or guarantee that the provider verified the key. Choose a model or enter its exact ID, then select **Save and use this connection** and **Go to Conversation**. Embeddings are optional. If you already have a portable TOML file, choose **Import settings** instead.
@@ -109,6 +125,22 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 - **CLI（Linux x64 を含む）：** `shellboy serve` を起動するか、同じデータディレクトリを使用中の Shellboy TUI を使います。別のターミナルで `shellboy-studio` を実行し、表示された URL を開きます。URL のトークンは共有しないでください。既定の待ち受け先は `127.0.0.1:8751` です。Core のデータディレクトリを変更している場合は、Studio にも同じ `--data-dir DIR` または `SHELLBOY_DATA_DIR` を指定してください。
 
 デスクトップ版は既定のブラウザを開き、ローカルで認証します。指定のデータディレクトリに稼働中のオーナーがいれば接続し、いなければ同梱の Core を起動します。Core の設定とデータの場所は `--config PATH` と `--data-dir PATH` で指定でき、相対パスの基準は起動フォルダです。同じデータに対して別のオーナーを起動しないでください。アプリをもう一度開くと既存の Studio が開きます。別のデータディレクトリを使う場合は、先に既存の Studio を終了してください。
+
+### 会社の Windows PC で使う
+
+**ダウンロードした ZIP。** 入手元とチェックサムを確認し、ZIP をすべて展開します。インターネット由来のマーク（Mark of the Web）が署名のない EXE に引き継がれる場合があります。確認済みの ZIP のブロック解除は、組織が明示的に許可している場合か IT の指示がある場合だけ行い、どちらかの EXE が止められたら IT に相談してください。Defender を無効にしたり、SmartScreen やアプリ実行制御を回避したりしないでください。
+
+**データの場所。** Core の使用中のデータは同期対象外のローカルディスク（通常は `%LOCALAPPDATA%\shellboy\data`）に置きます。必要なら `--data-dir` で承認済みのローカルフォルダを指定し、UNC・割り当て共有ドライブや OneDrive 同期フォルダは使わないでください。Studio の設定とログは別の `%APPDATA%\shellboy-studio` にあります。
+
+**VPN とプロキシ。** VPN 接続中でも、ブラウザで Studio が開いても、Core がモデルサービスに接続できるとは限りません。Core は起動元の環境を引き継ぎますが、別のターミナルだけで設定した環境変数やブラウザのプロキシ設定は引き継ぎません。Explorer から起動するプロセスに必要な外向き HTTPS のプロキシ・証明書設定は IT に確認してください。
+
+**ファイアウォール。** デスクトップ版は `127.0.0.1` だけで待ち受けます（通常は 8751、使用中は空きポート）。LAN からの受信許可は不要です。警告が出るかローカル URL が遮断される場合は、ポートを開放せず IT に確認してください。
+
+**ログイン時の起動。** `shell:startup` にショートカットがあっても、自動起動するとは限りません。**設定 > アプリ > スタートアップ** と実際のサインインで確認し、組織のポリシーで登録・起動できない場合は手動で開いてください。
+
+**更新。** タブを閉じるだけでなく **終了** を選び、交換するプロセスが止まったことを確認します。新しい ZIP を展開し、同じ ZIP の 2 つの EXE を一緒に使ってください。片方だけを稼働中に上書きせず、フォルダを変えた場合はショートカットも更新します。
+
+**削除。** Studio を終了し、展開したフォルダと、あれば Studio の自動起動ショートカットを削除します。Studio の設定・トークン・ログと、Core の設定・資格情報・会話データは残ります。他のクライアントでも使う Core のファイルは残してください。
 
 ### モデルの初期設定
 
