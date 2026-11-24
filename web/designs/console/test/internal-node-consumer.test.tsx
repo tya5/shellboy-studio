@@ -3,7 +3,7 @@ import '@preact/signals';
 import {signal} from '@preact/signals-core';
 import {render} from 'preact';
 import {act} from 'preact/test-utils';
-import {expect,it} from 'vitest';
+import {expect,it,vi} from 'vitest';
 import {fixtureModel} from '../../../ui-core/test/fixture';
 import {summary,details,settle} from '../../../data/test/harness';
 import type {HistoryItem} from '../../../data/src/protocol';
@@ -79,8 +79,17 @@ it('Core302 notification descriptors reach actual App through the issued Work bu
  }});
  const host=document.createElement('div');document.body.append(host);
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ const geometry = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({top:0,bottom:40,height:40}) as DOMRect);
+ const viewport = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(1200);
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  // Open the disclosure before inspecting notification content.
+  await act(async()=>{
+   for (const work of host.querySelectorAll<HTMLDetailsElement>('details[data-work-group]')) {
+    work.open=true;
+    work.dispatchEvent(new Event('toggle'));
+   }
+  });
   for(const [index,label] of labels.entries()){
    const node=host.querySelector(`[data-node="notification-${index}"]`)!;
    expect(node).not.toBeNull();expect(node.closest('[data-work-group]')).not.toBeNull();
@@ -109,5 +118,5 @@ it('Core302 notification descriptors reach actual App through the issued Work bu
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   expect(f.t.calls()).toHaveLength(before);
   expect(host.querySelector('[data-node="notification-6"] .work-element-row')).toBe(shell);
- }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+ }finally{geometry.mockRestore();viewport.mockRestore();render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

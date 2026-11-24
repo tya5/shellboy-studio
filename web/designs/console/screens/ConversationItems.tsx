@@ -233,13 +233,12 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       else visible.push(...slice);
       index = next;
     }
-    return <div class="conversation-items">
-      <div ref={before} aria-hidden="true" />
-      {first === 0 ? renderLocalAt(-1) : null}
-      {visible}
-      <div ref={after} aria-hidden="true" />
-      {end === slots.length ? trailing : null}
-    </div>;
+    const views = [<div key="viewport:before" ref={before} aria-hidden="true" />,
+      ...(first === 0 ? renderLocalAt(-1) : []), ...visible,
+      <div key="viewport:after" ref={after} aria-hidden="true" />,
+      end === slots.length ? trailing : null];
+    return <div class="conversation-items">{views}</div>;
+
 
   }
   const rows: ComponentChildren[] = [];
