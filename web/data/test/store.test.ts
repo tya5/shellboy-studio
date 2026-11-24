@@ -1,7 +1,7 @@
 const nextOrdinal = () => { let ordinal = 0; return () => ++ordinal; };
 import { describe, expect, it } from "vitest";
 import { MAX_PREVIEW_CHARS, type Preview } from "../src/live";
-import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
+import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, ShellboyData, type ListFilter } from "../src/store";
 import { Cancel } from "../src/operations";
 import type { ThreadSummary } from "../src/protocol";
 
@@ -247,13 +247,27 @@ describe("operation ids", () => {
 });
 
 describe("paging", () => {
+  it("omits creation ordering for constrained membership reads", async () => {
+    for (const filter of [{ query: "x" }, { tags: ["pin"] }, { cwd: "/tmp" }, { awaiting: "human" }] satisfies ListFilter[]) {
+      const { t, data, db } = await setup();
+      data.trackThreadList();
+      await settle(t, db);
+      data.setListFilter(filter);
+      await settle(t, db);
+      const call = t.calls("thread.list").find(c => Object.keys(filter).every(key => JSON.stringify((c.args as Record<string, unknown>)[key]) === JSON.stringify((filter as Record<string, unknown>)[key])))!;
+      expect(call.args).toMatchObject(filter);
+      expect(call.args).not.toHaveProperty("order");
+      data.stop();
+    }
+  });
+
   it("changing the list filter re-reads with the new filter", async () => {
     const { t, data, db } = await setup();
     data.trackThreadList();
     await settle(t, db);
     data.setListFilter({ query: "x", archived: "only" });
     await settle(t, db);
-    expect(t.calls("thread.list").at(-1)!.args).toEqual({ limit: 50, order: "created", query: "x", archived: "only" });
+    expect(t.calls("thread.list").at(-1)!.args).toEqual({ limit: 50, query: "x", archived: "only" });
   });
 });
 
@@ -462,10 +476,11 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     const answer = db.answer.bind(db);
     db.answer = (c) => {
       if (c.command !== "thread.list") return answer(c);
-      const a = (c.args ?? {}) as { thread_ids?: string[]; cursor?: string; order?: string; state?: string };
+      const a = (c.args ?? {}) as { thread_ids?: string[]; cursor?: string; order?: string; state?: string; query?: string; tags?: string[]; cwd?: string; awaiting?: string };
       if (a.state) return answer(c);
       if (a.thread_ids) return { ok: true, result: { items: a.thread_ids.flatMap(id => all.filter(row => row.thread_id === id)) } };
-      expect(a.order).toBe("created");
+      if (a.query || a.tags?.length || a.cwd || a.awaiting || a.state) expect(a.order).toBeUndefined();
+      else expect(a.order).toBe("created");
       const start = a.cursor ? Number(a.cursor) : 0;
       const end = start + PAGE_LIMIT;
       return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
@@ -592,8 +607,9 @@ describe("reads nobody needs are cancelled", () => {
     await flush();
     expect(t.cancels()).toContain(first.id);
     await settle(t, db);
-    const ordinary = t.calls("thread.list").filter(call => (call.args as { order?: string }).order === "created");
-    expect(ordinary.at(-1)?.args).toMatchObject({ query: "q" });
+    const ordinary = t.calls("thread.list").find(call => (call.args as { query?: string }).query === "q");
+    expect(ordinary?.args).toMatchObject({ query: "q" });
+    expect(ordinary?.args).not.toHaveProperty("order");
     expect(data.threadList.value.loaded).toBe(true);
   });
 });
@@ -606,6 +622,7 @@ describe("pinned set", () => {
     for (let round = 0; round < 4; round++) await settle(t, db).catch(() => undefined);
     const pinReads = t.calls("thread.list").filter(call => (call.args as { tags?: string[] }).tags?.includes("pin"));
     expect(pinReads).toHaveLength(MAX_LIST_ROWS / PAGE_LIMIT);
+    expect(pinReads.every(call => !(call.args as { order?: string }).order)).toBe(true);
     expect(data.pinnedThreadIds.value).toHaveLength(MAX_LIST_ROWS);
     expect(data.pinnedMore.value).toBe(true);
     delete db.threads.p0;
@@ -613,5 +630,22 @@ describe("pinned set", () => {
     for (let round = 0; round < 4; round++) await settle(t, db).catch(() => undefined);
     expect(data.pinnedThreadIds.value).toHaveLength(MAX_LIST_ROWS);
     expect(data.pinnedMore.value).toBe(false);
+  });
+
+  it("preserves known pins and exposes a failed constrained read", async () => {
+    const { t, data, db } = await setup({ capabilities: ["history.window", "thread.tags"] });
+    db.threads.p = summary("p", { tags: ["pin"] });
+    data.trackThreadList();
+    await settle(t, db);
+    expect(data.pinnedThreadIds.value).toEqual(["p"]);
+    const answer = db.answer.bind(db);
+    db.answer = call => (call.command === "thread.list" && (call.args as { tags?: string[] }).tags?.includes("pin"))
+      ? { ok: false, code: "invalid", message: "refused constrained list" }
+      : answer(call);
+    data.setListFilter({ query: "p" });
+    await settle(t, db);
+    expect(data.pinnedThreadIds.value).toEqual(["p"]);
+    expect(data.pinnedError.value?.message).toBe("refused constrained list");
+    data.stop();
   });
 });

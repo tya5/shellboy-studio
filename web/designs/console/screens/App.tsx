@@ -253,6 +253,7 @@ export function App({ context }: { context: DesignContext }) {
             const next = event.relatedTarget;
             if (!(next instanceof Node) || !sidebarListRef.current?.contains(next)) lastSidebarFocus.current = undefined;
           }}>
+            {model.data.pinnedError.value ? <Notice tone="bad">{t("common.readError", { message: model.data.pinnedError.value.message })}</Notice> : null}
             <div class="tree">
               {groups.map(group => {
                 const label = t(group.key === "pins" ? "sidebar.pinned" : "sidebar.all");

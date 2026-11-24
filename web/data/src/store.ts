@@ -192,6 +192,7 @@ export class ShellboyData {
   private readonly threadRowsSig = signal<ReadonlyMap<string, ThreadSummary>>(new Map());
   private readonly pinnedThreadIdsSig = signal<readonly string[]>([]);
   private readonly pinnedMoreSig = signal(false);
+  private readonly pinnedErrorSig = signal<OpError | undefined>(undefined);
   private readonly activeThreadIdsSig = signal<readonly string[]>([]);
   private readonly inboxThreadIdsSig = signal<readonly string[]>([]);
   private readonly filterSig = signal<ListFilter>({});
@@ -230,6 +231,7 @@ export class ShellboyData {
   readonly pinnedThreadIds: ReadonlySignal<readonly string[]>;
   /** The pinned read stopped at MAX_LIST_ROWS with a continuation left: the pinned set is a lower bound. */
   readonly pinnedMore: ReadonlySignal<boolean>;
+  readonly pinnedError: ReadonlySignal<OpError | undefined>;
   readonly activeThreadIds: ReadonlySignal<readonly string[]>;
   readonly inboxThreadIds: ReadonlySignal<readonly string[]>;
   readonly listFilter: ReadonlySignal<ListFilter>;
@@ -260,6 +262,7 @@ export class ShellboyData {
     this.threadListMeta = computed(() => { const { items: _ids, ...meta } = this.listSig.value; return meta; });
     this.pinnedThreadIds = this.pinnedThreadIdsSig;
     this.pinnedMore = this.pinnedMoreSig;
+    this.pinnedError = this.pinnedErrorSig;
     this.activeThreadIds = this.activeThreadIdsSig;
     this.inboxThreadIds = this.inboxThreadIdsSig;
     this.listFilter = this.filterSig;
@@ -579,7 +582,7 @@ export class ShellboyData {
     const previous = this.ownerSig.peek();
     if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) {
       this.discardAllPreviews("owner_restarted");
-      this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.pinnedMoreSig.value = false; this.activeThreadIdsSig.value = []; this.inboxThreadIdsSig.value = [];
+      this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.pinnedMoreSig.value = false; this.pinnedErrorSig.value = undefined; this.activeThreadIdsSig.value = []; this.inboxThreadIdsSig.value = [];
     }
     this.ownerSig.value = owner;
     if (owner.state === "unreachable") {
@@ -730,14 +733,19 @@ export class ShellboyData {
     let rows: ThreadSummary[] = [];
     let cursor: string | undefined;
     do {
-      const out = await this.operations.threadList({ ...listArgs(filter), tags: [...(filter.tags ?? []), "pin"], ...(cursor ? { cursor } : {}) }, { onSent });
+      const out = await this.operations.threadList({ ...listArgs({ ...filter, tags: [...(filter.tags ?? []), "pin"] }), ...(cursor ? { cursor } : {}) }, { onSent });
       // A changed filter has already asked for a fresh read; keep the previous set until it lands.
-      if (!out.ok || epoch !== this.readQualificationEpoch || this.listRefs === 0 || filter !== this.filterSig.value) return;
+      if (!out.ok) {
+        if (epoch === this.readQualificationEpoch && this.listRefs > 0 && filter === this.filterSig.value) this.pinnedErrorSig.value = out.error;
+        return;
+      }
+      if (epoch !== this.readQualificationEpoch || this.listRefs === 0 || filter !== this.filterSig.value) return;
       rows = mergeRows(rows, out.value.items);
       cursor = out.value.next_cursor;
     } while (cursor && rows.length < MAX_LIST_ROWS);
     batch(() => {
       this.pinnedThreadIdsSig.value = rows.map(row => row.thread_id);
+      this.pinnedErrorSig.value = undefined;
       this.pinnedMoreSig.value = cursor !== undefined;
       this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), rows, this.entries);
     });
@@ -879,7 +887,8 @@ export class ShellboyData {
 }
 
 function listArgs(filter: ListFilter): ThreadListArgs {
-  return { ...filter, order: "created", limit: PAGE_LIMIT };
+  const constrained = filter.query !== undefined || !!filter.tags?.length || filter.cwd !== undefined || filter.awaiting !== undefined;
+  return { ...filter, ...(!constrained ? { order: "created" as const } : {}), limit: PAGE_LIMIT };
 }
 
 /**
