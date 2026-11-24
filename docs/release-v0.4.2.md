@@ -4,7 +4,7 @@ Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa
 
 - Studio package version: 0.4.2.
 - Last published download: Studio v0.4.1 with Core v0.15.0 / protocol 18. New pairing on main: Studio v0.4.2 with Core v0.16.0 / protocol 26. Never combine the v0.4.1 binary with Core protocol 26.
-- Exact pin: `Cargo.toml` and `Cargo.lock` use the published Core v0.16.0 tag commit; the exact-owner fixture reports version 0.16.0 and protocol 26. The Setup guide links to the v0.16.0 documentation.
+- Exact pin: `Cargo.toml` and `Cargo.lock` still use the published Core v0.16.0 tag commit `46212b5391e2d486efec770291359a2ba671fa01` (protocol 26); the exact-owner fixture reports version 0.16.0 and protocol 26. The Setup guide links to the v0.16.0 documentation.
 - macOS and Windows desktop package versions are generated from the Cargo package version; there are no independent checked-in product-version literals for those bundles.
 - Before upgrading, quit Studio and Core and back up the entire Core data directory and any settings files stored outside it; see [v0.4.0](release-v0.4.0.md) for backup and phone-pairing guidance. This new source pairing supersedes the [previous v0.4.1 pairing](release-v0.4.1.md) for builds from main; the published v0.4.1 binary remains paired with Core v0.15.0 / protocol 18.
 
@@ -25,6 +25,8 @@ Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa
 - Use **Archive** and **Unarchive** in the sidebar selection bar to change archive status for the selected Threads (#127; Monitor was removed in #138).
 - On phones, use the **Thread panel** picker and full-screen details; dialogs scroll in one place. When formatting is available in an expanded shell step, turn **Formatted** off to see raw text. **Wrap lines** controls shell output; **Load earlier messages** appears when earlier history is available (#128 items 3–7).
 - Expanded shell steps count saved lines containing standard error. Where the display keeps the original lines, those lines have a `stderr` label and a line along the left edge. Raw text and copied output stay unchanged (#140).
+- In **Activity**, use **Move to background** to let a shell keep running, or **Stop this shell** to stop it without stopping the Run. In the composer, choose **Now** instead of **Next boundary** to deliver a message right away, or choose a running shell under **Send input to:** to type directly into it (#134).
+  Sending input or EOF to a running shell has not been verified on Windows ([Core #415](https://github.com/tya5/shellboy/issues/415)).
 - Global shortcuts stay out of dialogs, editable fields, Japanese text composition, and key events already handled by a control (#130).
 - Tab moves from a row menu to the next control after the row (#130).
 - Collapsed Work rows keep their keyboard focus outline (#130).
