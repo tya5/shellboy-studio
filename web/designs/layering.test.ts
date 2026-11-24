@@ -22,8 +22,12 @@ describe("layering", () => {
     for (const f of source("data")) for (const t of imports(f)) expect(t, f).not.toMatch(/^(ui-core|designs|app)\b/);
     for (const f of source("ui-core")) for (const t of imports(f)) expect(t, f).not.toMatch(/^(designs|app)\b/);
   });
-  it("only the registry imports a design, and only dynamically", () => {
-    for (const f of source("app")) for (const t of imports(f)) expect(t === "designs/registry" || !t.startsWith("designs/"), f).toBe(true);
+  it("only the registry imports a design, and only dynamically; a static mock entry imports only its own mock", () => {
+    for (const f of source("app")) for (const t of imports(f)) {
+      const mock = /\/app\/([a-z0-9-]+)-mock\.tsx$/.exec(f.replaceAll("\\", "/"))?.[1];
+      const mockEntry = mock !== undefined && t === `designs/console/mocks/${mock}`;
+      expect(mockEntry || t === "designs/registry" || !t.startsWith("designs/"), f).toBe(true);
+    }
     const registry = readFileSync(join(web, "designs/registry.ts"), "utf8");
     for (const d of DESIGNS) expect(registry).toContain(`import("./${d.name}/index")`);
     expect(registry).not.toMatch(/^import .*"\.\/console/m);

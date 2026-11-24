@@ -1,0 +1,7 @@
+# Static design mocks
+
+Mocks are design-only previews built from the system components and tokens. They use fixture data and local state; their interactions never call Studio or Core.
+
+Open one with `cd web && npm ci && npm run dev`, then `http://127.0.0.1:5173/<name>-mock.html` (use the port Vite prints). Each page shows the Console (dark) and Light themes; at a wide viewport it shows desktop frames and 390 px phone frames side by side, and at phone width only the phone frames. `frame.tsx` holds the shared page scaffolding; product screens never import it.
+
+- **Shell step (#140):** `shell-step-mock.html`. The detail under an open shell row in Conversation, before (today's StepView and Output markup from the real components) and after: one command block with the full command and Copy command, a facts line (status mark with exit code, duration, directory), and an output code block whose header carries the line count and the icon actions Wrap lines, Copy output and Open execution details. The After frames show running, succeeded (Copy just pressed), failed with stderr, long output, cut off and reclaimed. Captures: `shell-step-desktop.png` (1440 px), `shell-step-phone.png` (390 px, laid out at a true 390 px viewport through the DevTools protocol, since headless Chrome's window is at least 500 px wide), and Console-theme crops `shell-step-{before,after}-{desktop,phone}.png`. Sources and rationale: `docs/design/shell-step-research.md`.

@@ -1,0 +1,64 @@
+/* Mock-only styles for the #140 shell step proposal. Tokens only; the build moves these into the system. */
+
+/* Frames grow with their content so every state is visible in one capture. */
+.mock-frame:has(.convo) { block-size:auto; }
+.mock-frame .convo, .mock-frame .scroll-frame { min-height:0; }
+.mock-frame .scroll.mock-scroll { overflow:visible; }
+
+.ss-state { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--space-4); min-width:0; }
+.ss-state + .ss-state { margin-top:var(--space-4); }
+.ss-state-label { margin:0; color:var(--muted); font:var(--type-caption); text-transform:uppercase; letter-spacing:var(--letter-caps); }
+.ss-state .conversation-row.steps { padding-bottom:0; }
+
+/* The block sits under the open row and starts at the row's text edge (after the icon column). */
+.ss-block { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--space-8); min-width:0; padding:0 var(--space-12) var(--space-12) calc(var(--space-12) + var(--size-icon) + var(--space-8)); }
+
+/* 1. Command: full text in code type, wrapping; Copy command at the end of its first line. */
+.ss-command { display:flex; align-items:flex-start; gap:var(--space-8); min-width:0; }
+.ss-command-text { flex:1; min-width:0; padding-block:calc((var(--size-control) - 1lh) / 2); font:var(--type-code); color:var(--fg); white-space:pre-wrap; overflow-wrap:anywhere; }
+
+/* 2. Facts: status mark with exit code, duration, directory. One caption line that wraps between facts. */
+.ss-facts { display:flex; flex-wrap:wrap; align-items:center; column-gap:var(--space-16); row-gap:var(--space-4); min-width:0; font:var(--type-caption); color:var(--muted); }
+.ss-fact { display:inline-flex; align-items:center; gap:var(--space-4); min-width:0; }
+.ss-fact .mono, .ss-fact.mono { font-size:var(--size-caption); }
+.ss-status { gap:var(--space-4); }
+.ss-status .mono { color:var(--fg); }
+.ss-block[data-status="failed"] .ss-status .mono { color:var(--bad); }
+.ss-cwd { overflow-wrap:anywhere; }
+
+/* 3. Output: one bordered code block with a header bar (label left, icon actions right) and the bounded log. */
+.ss-output-bar { display:flex; align-items:center; gap:var(--space-8); min-height:var(--size-control); padding-inline:var(--space-12) var(--space-4); border:1px solid var(--line); border-bottom:0; border-radius:var(--radius-s) var(--radius-s) 0 0; background:var(--panel); }
+.ss-output-facts { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ss-actions { display:flex; flex:none; align-items:center; gap:0; }
+.ss-output { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; }
+.ss-log.log { border:1px solid var(--line); border-radius:0 0 var(--radius-s) var(--radius-s); }
+.ss-log.ss-wrap { white-space:pre-wrap; overflow-wrap:anywhere; }
+.ss-block > .ss-note { margin-top:calc(-1 * var(--space-4)); }
+.ss-note, .ss-gone { display:flex; align-items:flex-start; gap:var(--space-8); }
+.ss-note .i, .ss-gone .i { margin-top:calc((1lh - var(--size-icon-small)) / 2); }
+.ss-gone { padding:var(--space-8) var(--space-12); border:1px dashed var(--line-strong); border-radius:var(--radius-s); }
+
+/* stderr: a labelled run with a leading rule, so it reads without colour. */
+.ss-stderr { display:block; margin-inline-start:calc(-1 * var(--space-4)); padding-inline-start:var(--space-4); border-inline-start:1px solid var(--bad); }
+.ss-stream { display:block; color:var(--bad); font:var(--type-caption); user-select:none; }
+.ss-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+
+/* Tooltip: on hover and keyboard focus, never the only label (aria-label carries the name). */
+.ss-tip { position:relative; display:inline-flex; }
+.ss-tip::after { content:attr(data-tip); position:absolute; bottom:calc(100% + var(--space-4)); right:0; z-index:var(--z-popover); padding:var(--space-2) var(--space-8); border:1px solid var(--line-strong); border-radius:var(--radius-s); background:var(--raised); color:var(--fg); font:var(--type-caption); white-space:nowrap; opacity:0; pointer-events:none; }
+.ss-tip:hover::after, .ss-tip:has(:focus-visible)::after, .ss-tip.ss-tip-shown::after { opacity:1; }
+.ss-tip .btn-icon .i { color:var(--muted); }
+.ss-tip .btn-icon[aria-pressed=true] { border-color:transparent; }
+.ss-tip .btn-icon[aria-pressed=true] .i { color:var(--accent); }
+.ss-done .btn-icon .i { color:var(--ok); }
+/* The group card clips overflow; the first block's tooltips need the room above them. */
+.mock-frame [data-work-group] { overflow:visible; }
+
+@container app (max-width:899px) {
+  .ss-block { padding-inline-start:var(--space-12); }
+  .ss-command-text { padding-block:calc((var(--size-touch) - 1lh) / 2); }
+  .ss-output-bar { min-height:var(--size-touch); padding-inline-end:0; }
+}
+
+/* Mock-local glyphs use the small icon size until the build adds them as Icon roles. */
+.ss-icon { width:var(--size-icon-small); height:var(--size-icon-small); }

@@ -1,0 +1,37 @@
+/* Mock-only page geometry. Studio components and tokens keep their own styles. */
+html, body { height:auto; overflow:visible; }
+body { background:var(--stage); }
+.mock-page { display:grid; gap:var(--space-24); padding:var(--space-24); color:var(--fg); }
+.mock-intro { max-width:var(--size-setup-column-width); }
+.mock-kicker { margin:0 0 var(--space-4); color:var(--muted); font:var(--type-caption); text-transform:uppercase; letter-spacing:var(--letter-caps); }
+.mock-intro h1 { margin:0; font:var(--type-title); }
+.mock-intro p { margin:var(--space-8) 0 0; color:var(--muted); }
+.mock-notes { margin:var(--space-8) 0 0; padding-inline-start:var(--space-16); color:var(--muted); font:var(--type-caption); }
+.mock-notes li + li { margin-top:var(--space-4); }
+.mock-theme { display:grid; gap:var(--space-12); padding:var(--space-16); border:1px solid var(--line); border-radius:var(--radius); background:var(--stage); color:var(--fg); }
+.mock-light { color-scheme:light; }
+.mock-theme-title { margin:0; font:var(--type-heading); }
+.mock-frames { display:flex; flex-wrap:wrap; align-items:flex-start; gap:var(--space-16); }
+.mock-figure { display:grid; gap:var(--space-8); min-width:0; margin:0; }
+.mock-figure figcaption { color:var(--muted); font:var(--type-label); }
+.mock-frame { position:relative; overflow:hidden; box-sizing:border-box; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--bg); color:var(--fg); font:var(--type-body); contain:layout paint; }
+/* Desktop: the frame is not an `app` container, so the docked desktop panel rules apply.
+   `contain` makes each frame the containing block for fixed layers (full-screen detail, static sheets). */
+.mock-frame-desktop { display:flex; inline-size:41rem; block-size:46rem; }
+/* Phone: a 390 CSS px `app` container, so the system's phone-width container rules apply inside it. */
+.mock-frame-phone { container:app / inline-size; display:flex; flex-direction:column; inline-size:390px; max-inline-size:100%; block-size:46rem; }
+.mock-scrim { position:fixed; inset:0; z-index:calc(var(--z-popover) + 1); background:var(--scrim); }
+/* The static sheet reuses the shared .work-sheet frame; its body mirrors WorkSheet's body rules (scrolling body,
+   and the phone panel shown inside it), which the WorkSheet component owns. */
+.mock-sheet-body { display:flex; flex:1; flex-direction:column; gap:var(--space-12); min-height:0; overflow:auto; }
+.mock-sheet-body [data-phone-panel] { display:flex; width:100%; min-height:0; overflow:visible; }
+.mock-static-sheet { position:fixed; inset:var(--space-16) calc(1em + 3px); /* the UA modal dialog margin */ z-index:calc(var(--z-popover) + 2); block-size:max-content; max-block-size:calc(100% - 2 * var(--space-16)); margin-block:auto; width:auto; }
+@media (max-width:700px) {
+  .mock-page { padding:var(--space-12) 0; gap:var(--space-16); }
+  .mock-intro { padding-inline:var(--space-12); }
+  .mock-theme { padding:var(--space-12) 0; border-inline:0; border-radius:0; }
+  .mock-theme-title, .mock-figure figcaption { padding-inline:var(--space-12); }
+  .mock-frames { display:grid; grid-template-columns:minmax(0,1fr); }
+  .mock-figure-desktop { display:none; }
+  .mock-frame-phone { inline-size:100%; border-inline:0; border-radius:0; }
+}
