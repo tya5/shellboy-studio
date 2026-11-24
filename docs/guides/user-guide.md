@@ -86,9 +86,11 @@ tailscale serve status
 
 Use your computer's full MagicDNS hostname. See [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve). Do not use Funnel. In global **Settings > Studio**, under **Open on a phone**, choose **Create QR code** and scan it on the phone. The code is usable once and expires after 120 seconds. Never share the local token URL, QR code, or its contents. If pairing fails, check the exact hostname, HTTPS and network access, then reissue an expired code.
 
+If you lose a paired device, revoke its access in the Tailscale admin console first, then restart the Studio bridge to drop all Studio sessions. Restarting only the Core owner does not revoke Studio sessions. Pair your remaining devices again as needed.
+
 ## Explicit Development Authentication Opt-Out
 
-Keep default authentication for normal use. Explicit `--no-auth` is for disposable development over loopback or deliberately trusted private access through HTTPS with an exact allowed host. Anyone who can reach Studio in this mode can operate it, including other local processes and reachable tailnet users. Host and Origin checks are not authentication. Never use this mode on the public internet or via Funnel. Studio does not configure or verify your proxy or VPN. **Authentication off** is visible and phone pairing is disabled. If you enable `/debug`, it also lacks token/session protection in this mode. Use the console CLI for `--no-auth`, not the desktop launcher.
+Keep default authentication for normal use. Explicit `--no-auth` is for disposable development over loopback or deliberately trusted private access through HTTPS with an exact allowed host. Any tailnet peer or local process that can reach Studio in this mode can read conversations, send messages, start or stop runs, and delete threads without signing in. Host and Origin checks are not authentication. Never use this mode on the public internet or via Funnel. Studio does not configure or verify your proxy or VPN. **Authentication off** is visible and phone pairing is disabled. If you enable `/debug`, it also lacks token/session protection in this mode. Use the console CLI for `--no-auth`, not the desktop launcher.
 
 ## Apps, guides, and troubleshooting
 
@@ -173,9 +175,11 @@ macOS では **システム設定 > 一般 > ログイン項目と機能拡張 >
 
 Studio はループバックのまま、別の端末から届くプライベート HTTPS の入口を用意し、正確なホスト名を `--allow-host HOSTNAME` で許可します。VPN だけでは HTTPS や利用者認証にはなりません。[Tailscale Serve の例](#open-on-another-device)は同じ tailnet に両端末を参加させて使います。公開する Funnel は使わないでください。全体の **設定 > Studio > スマホで開く** で **QR コードを作成** を選び、スマホで読み取ります。コードは一度だけ使え、120 秒で失効します。トークン付き URL や QR コードは共有しないでください。接続できない場合はホスト名、HTTPS、ネットワークを確認し、期限切れならコードを発行し直します。
 
+ペアリングした端末を紛失した場合は、先に Tailscale 管理画面でその端末のアクセスを取り消し、その後 Studio ブリッジを再起動して Studio の全セッションを失効させます。Core オーナーだけを再起動しても Studio のセッションは失効しません。残りの端末は必要に応じて再ペアリングしてください。
+
 ### 開発時の認証なしモード
 
-通常は既定の認証を使います。`--no-auth` はループバック、または正確な許可ホストと HTTPS を設定した、信頼できる非公開の開発環境向けです。到達できる別プロセスや利用者も操作できます。Host と Origin の検査は認証ではありません。インターネットや Funnel には絶対に公開しないでください。Studio はプロキシや VPN の設定を検証しません。**認証なし** が表示され、スマホのペアリングは使えなくなります。`/debug` を有効にすると、その画面もトークン・セッションなしで接続できます。このフラグはデスクトップ版ではなく CLI 版で使います。
+通常は既定の認証を使います。`--no-auth` はループバック、または正確な許可ホストと HTTPS を設定した、信頼できる非公開の開発環境向けです。到達できる tailnet 上の端末やローカルプロセスは、ログインなしで会話の閲覧、メッセージの送信、Run の開始・停止、スレッドの削除ができます。Host と Origin の検査は認証ではありません。インターネットや Funnel には絶対に公開しないでください。Studio はプロキシや VPN の設定を検証しません。**認証なし** が表示され、スマホのペアリングは使えなくなります。`/debug` を有効にすると、その画面もトークン・セッションなしで接続できます。このフラグはデスクトップ版ではなく CLI 版で使います。
 
 ### アプリ、ガイド、トラブル対応
 

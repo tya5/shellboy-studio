@@ -217,15 +217,28 @@ async fn auth_exchange<O: Owner>(
             StatusCode::NO_CONTENT,
             [(
                 header::SET_COOKIE,
-                format!(
-                    "{}={id}; HttpOnly; SameSite=Strict; Path=/",
-                    auth::cookie_name(state.config.listen.port())
-                ),
+                session_cookie(state.config.listen.port(), &id, &headers),
             )],
         )
             .into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "no random source").into_response(),
     }
+}
+
+fn session_cookie(port: u16, id: &str, headers: &HeaderMap) -> String {
+    // The exchange has already passed the Origin/Host check. The browser's Origin
+    // reports the public scheme even when HTTPS terminates before this HTTP listener.
+    let secure = if header_str(headers, header::ORIGIN)
+        .is_some_and(|origin| origin.starts_with("https://"))
+    {
+        "; Secure"
+    } else {
+        ""
+    };
+    format!(
+        "{}={id}; HttpOnly; SameSite=Strict; Path=/{secure}",
+        auth::cookie_name(port)
+    )
 }
 
 pub(crate) fn authorized<O: Owner>(state: &AppState<O>, headers: &HeaderMap) -> bool {
@@ -311,10 +324,7 @@ async fn pairing_exchange<O: Owner>(
             [
                 (
                     header::SET_COOKIE,
-                    format!(
-                        "{}={id}; HttpOnly; SameSite=Strict; Path=/",
-                        auth::cookie_name(state.config.listen.port())
-                    ),
+                    session_cookie(state.config.listen.port(), &id, &headers),
                 ),
                 (header::CACHE_CONTROL, "no-store".to_owned()),
             ],

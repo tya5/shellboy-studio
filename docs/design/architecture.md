@@ -274,7 +274,9 @@ Defaults (convenient):
    is plain HTTP unless a TLS-terminating tunnel is in front.
 2. **Token.** On first start the bridge creates a 256-bit random token in its
    own config directory (file mode 0600 on Unix; per-user directory on
-   Windows) and prints `http://127.0.0.1:<port>/#token=<token>`. The token is in
+   Windows). On a terminal the CLI prints `http://127.0.0.1:<port>/#token=<token>`;
+   captured stdout omits the fragment. The desktop launcher passes the URL to
+   the browser without printing it to `studio.log`. The token is in
    the fragment so it is not sent in requests or logged by proxies. The page
    posts it once to `/auth`, receives an `HttpOnly; SameSite=Strict` session
    cookie (`Secure` when served over HTTPS), and removes the fragment. A token

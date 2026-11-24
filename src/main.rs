@@ -7,7 +7,7 @@ use shellboy_studio::{
     owner::{IpcOwner, startup_probe},
     server::{AppsPaths, ServerConfig, Shared, serve},
 };
-use std::{net::SocketAddr, path::PathBuf, process::ExitCode, sync::Arc};
+use std::{io::IsTerminal, net::SocketAddr, path::PathBuf, process::ExitCode, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
 /// Browser bridge for a running Shellboy owner.
@@ -173,6 +173,7 @@ async fn run_bundle_server(
     let Some(mut launch) = Launch::prepare(&config_dir, &cwd, paths).await? else {
         return Ok(());
     };
+    // The launcher opens the token URL separately; this child writes diagnostics to studio.log.
     let listener = launch.listener.take().expect("prepared listener");
     let config = ServerConfig {
         listen: listener.local_addr().map_err(|e| e.to_string())?,
@@ -279,7 +280,7 @@ async fn run(args: Args) -> Result<(), String> {
     };
     let auth = if args.no_auth {
         eprintln!(
-            "shellboy-studio: WARNING: authentication disabled (--no-auth). Local processes and anyone able to reach this bridge can operate it. Use only local or explicitly trusted private access; NEVER expose it to the public internet (for example via Tailscale Funnel). A VPN is not user authentication. Proxy/VPN exposure is NOT detected or guaranteed."
+            "shellboy-studio: WARNING: authentication disabled (--no-auth). Any tailnet peer or local process that can reach this bridge can read conversations and send messages, start or stop runs, or delete threads without signing in. Use only local or explicitly trusted private access; NEVER expose it to the public internet (for example via Tailscale Funnel). A VPN is not user authentication. Proxy/VPN exposure is NOT detected or guaranteed."
         );
         Auth::disabled()
     } else {
@@ -295,17 +296,10 @@ async fn run(args: Args) -> Result<(), String> {
         .await
         .map_err(|e| format!("cannot listen on {}: {e}", args.listen))?;
     let addr = listener.local_addr().map_err(|e| e.to_string())?;
-    if args.no_auth {
-        println!("open http://{addr}/ (NO AUTHENTICATION)");
-    } else {
-        println!("open http://{addr}/#token={}", auth.token());
-    }
+    let terminal = std::io::stdout().is_terminal();
+    println!("{}", startup_line(addr, false, &auth, terminal));
     if args.debug {
-        if args.no_auth {
-            println!("debug page: http://{addr}/debug (NO AUTHENTICATION)");
-        } else {
-            println!("debug page: http://{addr}/debug#token={}", auth.token());
-        }
+        println!("{}", startup_line(addr, true, &auth, terminal));
     }
     let cancel = CancellationToken::new();
     let config = ServerConfig {
@@ -335,11 +329,47 @@ fn inherited_socket_matches(
         && socket.is_some_and(|socket| !socket.is_empty())
 }
 
+fn startup_line(addr: SocketAddr, debug: bool, auth: &Auth, terminal: bool) -> String {
+    let (label, path) = if debug {
+        ("debug page:", "/debug")
+    } else {
+        ("open", "/")
+    };
+    let mut line = format!("{label} http://{addr}{path}");
+    if auth.is_disabled() {
+        line.push_str(" (NO AUTHENTICATION)");
+    } else if terminal {
+        line.push_str("#token=");
+        line.push_str(auth.token());
+    }
+    line
+}
+
 #[cfg(test)]
 mod tests {
-    use super::owner_problem;
+    use super::{Auth, owner_problem, startup_line};
     use shellboy::protocol::{ApiError, ErrorCode};
     use std::path::Path;
+
+    #[test]
+    fn startup_output_omits_token_when_captured() {
+        let addr = "127.0.0.1:8751".parse().unwrap();
+        let auth = Auth::new("ab".repeat(32));
+        for (debug, expected) in [
+            (false, "open http://127.0.0.1:8751/"),
+            (true, "debug page: http://127.0.0.1:8751/debug"),
+        ] {
+            assert_eq!(startup_line(addr, debug, &auth, false), expected);
+            assert_eq!(
+                startup_line(addr, debug, &auth, true),
+                format!("{expected}#token={}", auth.token())
+            );
+            assert_eq!(
+                startup_line(addr, debug, &Auth::disabled(), true),
+                format!("{expected} (NO AUTHENTICATION)")
+            );
+        }
+    }
 
     #[test]
     fn explicit_directory_detects_a_forwarded_socket_only_when_core_would_use_it() {

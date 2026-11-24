@@ -138,7 +138,7 @@ async fn http_guards_host_origin_token_and_debug_route() {
         StatusCode::FORBIDDEN,
         "cross-origin exchange is refused even with the right token"
     );
-    let ok = post(off, &good, Some("http://127.0.0.1:8751")).await;
+    let ok = post(off.clone(), &good, Some("http://127.0.0.1:8751")).await;
     assert_eq!(ok.status(), StatusCode::NO_CONTENT);
     let cookie = ok.headers()[header::SET_COOKIE]
         .to_str()
@@ -148,6 +148,11 @@ async fn http_guards_host_origin_token_and_debug_route() {
         cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"),
         "{cookie}"
     );
+    assert!(!cookie.split("; ").any(|part| part == "Secure"));
+    let https = post(off, &good, Some("https://127.0.0.1:8751")).await;
+    assert_eq!(https.status(), StatusCode::NO_CONTENT);
+    let cookie = https.headers()[header::SET_COOKIE].to_str().unwrap();
+    assert!(cookie.split("; ").any(|part| part == "Secure"));
 }
 
 #[tokio::test]
@@ -700,17 +705,21 @@ async fn pairing_link_exchanges_once_for_session_cookie() {
     assert!(url.starts_with("https://mac.tail123.ts.net/#pair="));
     assert!(!url.contains(&"ab".repeat(32)));
     let code = url.split_once("#pair=").unwrap().1;
-    let exchanged = app
-        .clone()
-        .oneshot(send("/pairing/exchange", json!({"code":code}), None))
-        .await
-        .unwrap();
+    let exchange = || {
+        let mut req = send("/pairing/exchange", json!({"code":code}), None);
+        req.headers_mut()
+            .insert(header::HOST, "mac.tail123.ts.net".parse().unwrap());
+        req.headers_mut().insert(
+            header::ORIGIN,
+            "https://mac.tail123.ts.net".parse().unwrap(),
+        );
+        req
+    };
+    let exchanged = app.clone().oneshot(exchange()).await.unwrap();
     assert_eq!(exchanged.status(), StatusCode::NO_CONTENT);
-    assert!(exchanged.headers().contains_key(header::SET_COOKIE));
-    let again = app
-        .oneshot(send("/pairing/exchange", json!({"code":code}), None))
-        .await
-        .unwrap();
+    let cookie = exchanged.headers()[header::SET_COOKIE].to_str().unwrap();
+    assert!(cookie.split("; ").any(|part| part == "Secure"));
+    let again = app.oneshot(exchange()).await.unwrap();
     assert_eq!(again.status(), StatusCode::UNAUTHORIZED);
 }
 
