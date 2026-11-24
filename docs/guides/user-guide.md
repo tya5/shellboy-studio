@@ -50,7 +50,7 @@ In the sidebar use **Select Threads**, select the Threads, then choose **Delete*
 
 ## Inspect usage and cost
 
-Open the global **Analytics** screen and choose a **Period**. Under **By Thread**, choose **Show models** on a Thread to inspect its recorded conversation-token breakdown for that period. Summary usage is separate and is not attributed to models. **Show more usage rows** reveals more rows already read. Incomplete totals can be lower bounds; a missing value is not zero. **Cache rate** is the cached share of conversation input where the counters support a comparison. **Effective tokens** uses editable cached-input and output weights stored in this browser. Neither that value nor **Summary cost** is a currency amount or a provider bill.
+Open the global **Analytics** screen and choose a **Period**. Under **By Thread**, compare **Excl. cached** (conversation other plus all summaries), **Total**, **Cached input** (conversation only), or **Summary tokens**. The bars and shares follow the selected metric. An incomplete scan does not show rankings. Open a Thread row for its exact breakdown and model usage in the same period; **Back to ranking** returns to that row. Summary usage is separate and is not attributed to models. **Show more usage rows** reveals more rows already read. Incomplete totals can be lower bounds; a missing value is not zero. **Cache rate** is the cached share of conversation input where the counters support a comparison. **Effective tokens** uses editable cached-input and output weights stored in this browser. Neither that value nor **Summary cost** is a currency amount or a provider bill.
 
 
 For v0.4.2, pending landing: **By Thread** adds **Comparison metric**: **Excl. cached** (default; other conversation tokens plus all summary tokens), **Total**, **Cached input** (conversation only), and **Summary tokens**. Rank, bars, exact counts and shares follow the selected metric. An incomplete scan does not show a ranking. Open a Thread's breakdown for the same **Period**, then use **Back to ranking**. The older counters and model breakdowns remain under **Detailed usage table**.
@@ -146,7 +146,7 @@ v0.4.2 向け（反映待ち）：**要返信** や **返信待ち** などの�
 
 ### 使用量とコストを確認する
 
-全体の **分析** で **期間** を選び、**スレッド別** の **モデル別の内訳を表示** で、その期間に記録された会話トークンを確認します。要約は別集計で、モデル別には配分しません。**使用量の続きを表示** は読み込み済みの行を追加で表示します。集計が不完全な場合は下限になり、値がない場合はゼロとは限りません。**キャッシュ率** は比較できる会話入力のうちキャッシュを使った割合です。**実効トークン** のキャッシュ入力と出力の重みはブラウザに保存されます。実効トークンも **要約コスト** も金額ではありません。
+全体の **分析** で **期間** を選び、**スレッド別** で **キャッシュを除く**（会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を比較できます。棒と割合は選択項目に対応し、集計が不完全なときは順位を表示しません。行を開くと同じ期間の内訳とモデル別使用量を確認でき、**順位に戻る** で元の行に戻ります。要約は別集計で、モデル別には配分しません。**使用量の続きを表示** は読み込み済みの行を追加で表示します。集計が不完全な場合は下限になり、値がない場合はゼロとは限りません。**キャッシュ率** は比較できる会話入力のうちキャッシュを使った割合です。**実効トークン** のキャッシュ入力と出力の重みはブラウザに保存されます。実効トークンも **要約コスト** も金額ではありません。
 
 
 v0.4.2 向け（反映待ち）：**スレッド別** の **比較する項目** で **キャッシュを除く**（既定。会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を選べます。順位、棒、件数、割合は選んだ項目に対応します。集計が不完全な場合は順位を表示しません。行を開くと同じ **期間** の内訳を確認でき、**順位に戻る** で元の行に戻ります。従来の使用量やモデル別の内訳は **詳細な使用量の表** にあります。

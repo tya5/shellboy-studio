@@ -2,6 +2,7 @@
 .tbl{width:100%;border-collapse:collapse;font:var(--type-label)}
 .tbl th{padding:var(--space-4) var(--space-8);border-bottom:1px solid var(--line-strong);color:var(--muted);font:var(--type-caption);text-align:left;white-space:nowrap}
 .tbl td{padding:var(--space-8);border-bottom:1px solid var(--line);vertical-align:top}
+.tbl[data-center-rows="true"] td{vertical-align:middle}
 .tbl tr:last-child td{border-bottom:0}
 .tbl .cell{min-width:0;overflow-wrap:anywhere}
 .tbl .num{text-align:right;font:var(--type-code);font-size:var(--size-label);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -19,4 +20,14 @@
   .tbl.tbl-stack td::before{content:attr(data-label);color:var(--muted);font:var(--type-caption)}
   .tbl.tbl-stack td[data-label=""]{grid-template-columns:minmax(0,1fr)}
   .tbl.tbl-stack td[data-label=""]::before{display:none}
+}
+
+.tbl[data-compact="true"]{table-layout:fixed}
+.tbl[data-compact="true"] th.num:first-child{inline-size:5ch}
+.tbl[data-compact="true"] th.num:not(:first-child){inline-size:11ch}
+.tbl[data-compact="true"] .cell>button{display:grid;inline-size:100%;min-inline-size:0;min-block-size:var(--size-touch)}
+.tbl[data-compact="true"] td.num{white-space:normal;overflow-wrap:anywhere}
+@container app (max-width:899px){
+  .tbl[data-compact="true"] :is(th,td){padding-inline:var(--space-4)}
+  .tbl[data-compact="true"] th.num:not(:first-child){inline-size:8ch}
 }

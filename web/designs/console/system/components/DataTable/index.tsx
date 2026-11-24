@@ -6,10 +6,10 @@ export interface DataColumn {
   numeric?: boolean;
 }
 
-export function DataTable({ caption, columns, rows, flat }: { caption: string; columns: DataColumn[]; rows: { key: string; cells: ComponentChildren[] }[]; /** Keep columns on a phone: only for tables known to fit. */ flat?: boolean }) {
+export function DataTable({ caption, columns, rows, flat, centerRows, compact }: { caption: string; columns: DataColumn[]; rows: { key: string; cells: ComponentChildren[] }[]; /** Keep columns on a phone: only for tables known to fit. */ flat?: boolean; /** Center cells in rows with taller interactive content. */ centerRows?: boolean; /** Fit action rows and exact values into a narrow flat table. */ compact?: boolean }) {
   return (
     <div class="tbl-wrap">
-      <table class={flat ? "tbl" : "tbl tbl-stack"}>
+      <table class={flat ? "tbl" : "tbl tbl-stack"} data-center-rows={centerRows || undefined} data-compact={compact || undefined}>
         <caption class="vh">{caption}</caption>
         <thead>
           <tr>

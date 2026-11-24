@@ -131,6 +131,7 @@ export class UsageWalk {
       const more = page.more === true && next !== undefined;
       this.cursor = more ? next : undefined;
       const coverage = addCoverage(this.state.peek().coverage, page);
+      if (page.more === true && !more) coverage.scopeIncomplete = true;
       if (groups.size >= MAX_GROUPS && more) {
         this.cursor = undefined;
         this.state.value = { status: "stopped", groups, coverage, error: undefined, canContinue: false, capped: true };
