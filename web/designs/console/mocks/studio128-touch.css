@@ -1,0 +1,27 @@
+/* Mock-only geometry. Studio components and tokens retain their own styles. */
+body { margin:0; color:var(--fg); background:var(--stage); font:var(--type-body); }
+.mock-page { max-width:54rem; margin:auto; padding:var(--space-16); }
+.mock-intro { padding-block:var(--space-16); border-block-end:1px solid var(--line); }
+.mock-intro h1 { font:var(--type-heading); }
+.mock-intro nav { display:flex; flex-wrap:wrap; gap:var(--space-12); }
+.mock-intro a { color:var(--accent); }
+.mock-case { padding-block:var(--space-16); border-block-end:1px solid var(--line); }
+.mock-case h2 { font:var(--type-heading); }
+.mock-compare { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr)); gap:var(--space-16); }
+.mock-variant { min-inline-size:0; }
+.mock-caption { color:var(--muted); font:var(--type-label); }
+.mock-phone { position:relative; inline-size:min(100%,390px); block-size:18rem; border:1px solid var(--line-strong); border-radius:var(--radius); box-sizing:border-box; }
+.mock-header { display:flex; flex:none; justify-content:space-between; align-items:center; gap:var(--space-8); min-block-size:var(--size-touch); padding:0 var(--space-12); border-block-end:1px solid var(--line); background:var(--panel); font:var(--type-label); }
+.mock-header h3 { margin:0; font:var(--type-label); }
+.mock-body { padding:var(--space-12); min-inline-size:0; min-block-size:0; }
+.mock-scroll { overflow:auto; }
+.mock-scrim { position:absolute; inset:0; background:var(--scrim); }
+.mock-bottom-sheet { position:absolute; inset:auto 0 0; display:flex; flex-direction:column; max-block-size:75%; background:var(--panel); border-block-start:1px solid var(--line-strong); }
+.mock-dialog { margin:auto var(--space-12); border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); }
+.mock-dialog-before { max-block-size:60%; overflow:auto; }
+.mock-dialog-before .mock-body { max-block-size:10rem; }
+.mock-dialog-after { display:flex; flex-direction:column; overflow:hidden; max-block-size:90%; }
+.mock-dialog li { margin-block:var(--space-8); }
+.mock-wrap .log { white-space:pre-wrap; overflow-wrap:anywhere; }
+.mock-phone:has(.mock-wrap) .log, .mock-phone:has([aria-pressed]) .log { max-height:none; }
+.mock-message { padding:var(--space-8); background:var(--raised); border-radius:var(--radius); }
