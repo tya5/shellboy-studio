@@ -18,7 +18,7 @@ use axum::{
 };
 use serde::Deserialize;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 /// Global bound on proxied owner calls (the long-poll is separate). A limit, not a
@@ -48,6 +48,7 @@ pub struct Shared<O> {
     pub apps: Option<Arc<Apps<O>>>,
     pub cancel: CancellationToken,
     pub launcher: Option<crate::launcher::Control>,
+    login_startup_requests: Arc<Mutex<()>>,
 }
 
 pub type AppState<O> = Arc<Shared<O>>;
@@ -85,6 +86,7 @@ impl<O: Owner> Shared<O> {
             apps,
             cancel,
             launcher: None,
+            login_startup_requests: Arc::new(Mutex::new(())),
         })
     }
 }
@@ -113,6 +115,10 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
         .route(
             "/artifact-content",
             post(crate::artifact_content::content::<O>),
+        )
+        .route(
+            "/login-startup",
+            get(login_startup_get::<O>).post(login_startup_set::<O>),
         )
         .route("/ws", get(ws_upgrade::<O>));
     if state.config.debug {
@@ -364,6 +370,78 @@ async fn guide_preference_set<O: Owner>(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
+}
+
+async fn login_startup_get<O: Owner>(
+    State(state): State<AppState<O>>,
+    headers: HeaderMap,
+) -> Response {
+    login_startup_request(&state, &headers, None).await
+}
+
+async fn login_startup_set<O: Owner>(
+    State(state): State<AppState<O>>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<LoginStartupChange>,
+) -> Response {
+    login_startup_request(&state, &headers, Some(body.enabled)).await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LoginStartupChange {
+    enabled: bool,
+}
+
+async fn login_startup_request<O: Owner>(
+    state: &AppState<O>,
+    headers: &HeaderMap,
+    enabled: Option<bool>,
+) -> Response {
+    use crate::login_startup::{Readback, State as StartupState};
+    let authority = state.config.listen.to_string();
+    if !authorized(state, headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let local = !state.auth.is_disabled()
+        && state.config.listen.ip().is_loopback()
+        && state.config.extra_hosts.is_empty()
+        && state.launcher.is_some()
+        && header_str(headers, header::HOST) == Some(authority.as_str());
+    if enabled.is_some()
+        && (!local
+            || header_str(headers, header::ORIGIN) != Some(format!("http://{authority}").as_str()))
+    {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let result = if local {
+        let Ok(guard) = state.login_startup_requests.clone().try_lock_owned() else {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        };
+        tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            crate::login_startup::desktop(enabled)
+        })
+        .await
+        .unwrap_or(Readback {
+            state: StartupState::Unknown,
+            refused: enabled.is_some(),
+        })
+    } else {
+        let status = if cfg!(target_os = "linux")
+            && state.config.listen.ip().is_loopback()
+            && header_str(headers, header::HOST) == Some(authority.as_str())
+        {
+            StartupState::NoDesktopLauncher
+        } else {
+            StartupState::Unavailable
+        };
+        Readback {
+            state: status,
+            refused: false,
+        }
+    };
+    ([(header::CACHE_CONTROL, "no-store")], axum::Json(result)).into_response()
 }
 
 async fn ws_upgrade<O: Owner>(

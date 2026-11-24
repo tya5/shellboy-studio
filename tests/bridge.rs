@@ -1004,3 +1004,66 @@ async fn desktop_restart_follows_owner_transition_for_each_instance() {
         .unwrap();
     assert!(cancel.is_cancelled());
 }
+
+#[tokio::test]
+async fn login_startup_is_unavailable_to_an_authenticated_remote_browser() {
+    use shellboy_studio::{
+        auth::Auth,
+        hub::Hub,
+        server::{ServerConfig, Shared, router},
+    };
+    for disabled in [false, true] {
+        let dir = SyntheticDir::new();
+        let (owner, _tx) = mock(list_handler);
+        let auth = if disabled {
+            Auth::disabled()
+        } else {
+            Auth::new("ab".repeat(32))
+        };
+        let cookie = if disabled {
+            String::new()
+        } else {
+            format!(
+                "{}={}",
+                shellboy_studio::auth::cookie_name(8751),
+                auth.issue_session().unwrap()
+            )
+        };
+        let app = router(Shared::new(
+            owner,
+            Hub::new(),
+            auth,
+            ServerConfig {
+                listen: "127.0.0.1:8751".parse().unwrap(),
+                extra_hosts: vec!["studio.example.ts.net".into()],
+                debug: false,
+                data_dir: dir.path().into(),
+                config_dir: dir.path().into(),
+            },
+        ));
+        let request = |method, body| {
+            Request::builder()
+                .method(method)
+                .uri("/login-startup")
+                .header(header::HOST, "studio.example.ts.net")
+                .header(header::ORIGIN, "https://studio.example.ts.net")
+                .header(header::COOKIE, &cookie)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .unwrap()
+        };
+        let read = app.clone().oneshot(request("GET", "")).await.unwrap();
+        assert_eq!(read.status(), StatusCode::OK);
+        assert_eq!(read.headers()[header::CACHE_CONTROL], "no-store");
+        let read = axum::body::to_bytes(read.into_body(), 1024).await.unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&read).unwrap(),
+            json!({"state":"unavailable", "refused":false})
+        );
+        let write = app
+            .oneshot(request("POST", r#"{"enabled":true}"#))
+            .await
+            .unwrap();
+        assert_eq!(write.status(), StatusCode::FORBIDDEN);
+    }
+}

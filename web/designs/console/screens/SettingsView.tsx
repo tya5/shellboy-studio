@@ -3,6 +3,7 @@ import { GuideRegistrationView, guideSearchRows } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, fieldOf, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, translator, type ConfigKey, type MessageKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
 import { Button, EffortControl, FactList, Notice, PageHeader, PairingQr, Section, SubView, type Fact, type IconRole } from "../system/components";
 import { AppearanceChoices, appearanceSearchRows } from "./Appearance";
+import { LoginStartup } from "./LoginStartup";
 import { SettingsShare } from "./SettingsShare";
 import { connectionCards, ConnectionModelRow, ConfigControl, ConfigPanel, SettingFeedback, configRowValue } from "./SettingsConfig";
 
@@ -106,7 +107,9 @@ export function SettingsView({ context }: { context: DesignContext }) {
         rows.set(section, appearanceSearchRows(context));
         return <Section title={t("set.section.appearance")}><AppearanceChoices context={context} searchable /></Section>;
       case "studio":
+        search("studio.startup", "studio.startup.open", ["studio.startup.hint"]);
         return <>
+          {section === "studio" ? <LoginStartup t={t} /> : null}
           <Section settingId={search("studio.pair", "pair.title", ["pair.help"]).settingId} title={t("pair.title")} sub={t("pair.help")}>
             {model.pairing.value.error ? <Notice tone="bad">{t("pair.error")}</Notice> : null}
             {!model.pairing.value.hosts.length ? <p>{t("pair.noHosts")}</p> : model.pairing.value.hosts.map(host => {

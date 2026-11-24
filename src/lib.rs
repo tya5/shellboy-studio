@@ -18,6 +18,7 @@ pub mod hub;
 pub mod launcher;
 
 pub mod live;
+mod login_startup;
 pub mod owner;
 pub mod process;
 pub mod seam;

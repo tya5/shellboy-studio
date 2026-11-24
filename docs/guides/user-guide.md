@@ -53,6 +53,12 @@ Open the global **Analytics** screen and choose a **Period**. Under **By Thread*
 2. Open **Import settings** on the first-run screen, or find **Import settings** under **Share settings** and choose **Change**. Choose or drop the TOML file. Review the connections, same-name overwrites, new defaults and any credential routing warnings, including the old and new endpoint, format, and key header. Confirm the routing changes only if you trust them, then choose **Apply settings**.
 3. Enter your own key where needed and choose **Save key**, or choose **This connection does not need a key** only when that's true. On first run, continue with **Start a conversation**. If a restart is required, use **Restart owner** for the desktop-managed Core or restart the independently started owner yourself when safe to do so.
 
+## Open Studio at login
+
+In authenticated desktop Studio, go to **Settings > Studio > Startup** and choose **Open Studio at login**. It is off by default and Studio does not prompt during setup. This opens Studio as if you opened the app normally, with the default launch arguments. It does not register Core as an OS service.
+
+On macOS, manage or approve the app in **System Settings > General > Login Items & Extensions > Open at Login**. macOS may refuse registration, including for a bundle that does not meet its code-signing requirements. On Windows, Studio creates one shortcut for your account in `shell:startup`. If Studio cannot verify if Windows will launch it, check **Settings > Apps > Startup**; if it is not listed there, remove the **Shellboy Studio** shortcut from `shell:startup` to turn it off. Changes made outside Studio aren't undone. This option is unavailable on Linux (no desktop launcher) and in remote browsers.
+
 ## Stop or restart the desktop app
 
 Closing the browser tab does not stop Studio. Use **Quit Studio** to stop the bridge and request a normal shutdown of the Core child it started. Studio force-terminates that child only if shutdown fails or it does not exit within the grace period. An independently started Core keeps running.
@@ -134,6 +140,12 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 1. 全体の **設定 > 接続 > 設定を共有** で **ファイルに書き出す** を選びます。`shellboy-settings.toml` には移せる接続設定、モデルの絞り込み、既定値が入ります。API キーの値、カスタムヘッダーやリクエスト本文、端末固有のパスは入りません。対象外の接続は Studio が表示します。
 2. 初期設定の **設定を取り込む** を選ぶか、**設定を共有** 内の **設定を取り込む** の行で **変更** を選びます。TOML を選択またはドロップし、接続、同名項目の上書き、既定値、キーの送信先変更の警告を確認します。変更前後の接続先、形式、キーヘッダーを信頼できる場合のみ確認して **設定を適用** を押します。
 3. 必要な接続ごとに自分のキーを入力して **キーを保存** を押します。不要な接続に限り **この接続にはキーが不要** を選びます。初期設定では **会話を始める** で進みます。再起動が必要な場合、デスクトップ版が起動した Core には **再起動** を使い、別途起動した Core は作業を止めてよいときに自分で起動し直してください。
+
+### ログイン時に Studio を開く
+
+認証付きのデスクトップ版で **設定 > Studio > 起動 > ログイン時に Studio を開く** を選びます。既定はオフで、初期設定時に確認は出ません。通常どおり既定の起動引数で Studio を開きます。Core を OS のサービスとして登録することはありません。
+
+macOS では **システム設定 > 一般 > ログイン項目と機能拡張 > ログイン時に開く** で管理・承認できます。署名の要件を満たさない場合など、macOS が登録を拒否することがあります。Windows では自分の `shell:startup` にショートカットを 1 つ作ります。Studio で起動状態を確認できない場合は **設定 > アプリ > スタートアップ** を確認してください。そこに表示されない場合は、`shell:startup` から **Shellboy Studio** のショートカットを削除すると無効にできます。Studio が外部での変更を元に戻すことはありません。Linux（デスクトップランチャー未提供）とリモートブラウザでは利用できません。
 
 ### デスクトップ版の終了と再起動
 

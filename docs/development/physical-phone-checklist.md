@@ -112,3 +112,11 @@ Physical Safari/Firefox, assistive technology, PWA installation, remote HTTPS an
 upgrade behavior need their own explicit records; this short table does not
 claim they are covered. Any future synthetic regression candidates remain
 separate from the physical result column and do not close #10 by themselves.
+
+## #85 Desktop Login Startup (Unverified)
+
+Record exact Studio SHA/tree, OS version, package and signing status, and the account/fixture cleanup. Use a disposable profile only after separate authorization. Synthetic adapter/UI tests are not OS registration evidence.
+
+- macOS: verify initial Off, enable and compare with Login Items, approval/refusal (including unsigned package behavior), sign out/in and confirm Studio opens once, disable inside Studio, and remove/disable from System Settings. Return to Studio Settings and verify readback with no re-registration.
+- Windows x64: verify initial Off, one per-user shortcut targeting the desktop executable, actual login launch, whether the ZIP shortcut appears in Settings > Apps > Startup, and whether disabling there keeps the shortcut. Studio must not show On based on shortcut presence. Remove the shortcut and verify Off after returning to Studio.
+- Both: verify ordinary attach/start behavior is unchanged and no OS registration targets Core. Verify an authenticated remote browser cannot change the host setting. Linux shows unavailable (no desktop launcher; #129); no XDG registration is performed.
