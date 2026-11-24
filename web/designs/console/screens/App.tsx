@@ -305,10 +305,10 @@ export function App({ context }: { context: DesignContext }) {
                       menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary,
                         target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), canTag ? { onEditTags: () => editThreadTags(id, r.summary.archived_at !== undefined) } : undefined)] }} />;
                   }) : null}
-                  {/* Each paged band ends with its own Show more, so All's does not sit under Archive. */}
-                  {open && group.key !== "pins" ? ((group.key === "archive" ? model.data.canLoadMoreArchived() : model.data.canLoadMoreThreads())
+                  {/* Each paged band ends with its own Show more, so All's does not sit under Archive; `.side-note` gives it the rows' space-8 inset. */}
+                  {open && group.key !== "pins" && pages.nextCursor ? <div class="side-note">{(group.key === "archive" ? model.data.canLoadMoreArchived() : model.data.canLoadMoreThreads())
                     ? <Button disabled={pages.loadingMore} onClick={() => void (group.key === "archive" ? model.data.loadMoreArchived() : model.data.loadMoreThreads())}>{t("threads.more")}</Button>
-                    : pages.nextCursor ? <div class="side-note">{t("threads.capped")}</div> : null) : null}
+                    : t("threads.capped")}</div> : null}
                 </ThreadGroup>;
               })}
             </div>
