@@ -191,30 +191,27 @@ fn core_schedule_and_service_reads_require_a_thread() {
 }
 
 #[test]
-fn core_v016_intervention_commands_stay_out_of_browser_until_studio_surfaces_them() {
-    use shellboy::protocol::{ExecutionTarget, TurnTarget};
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 26);
-    for command in [
-        Command::ShellBackground(ExecutionTarget { execution_id: "shell".into() }),
-        Command::ShellStop(ExecutionTarget { execution_id: "shell".into() }),
-        Command::ShellWrite(shellboy::protocol::ShellWriteArgs { execution_id: "shell".into(), text: "x".into(), encoding: "utf-8".into() }),
-        Command::ShellEof(ExecutionTarget { execution_id: "shell".into() }),
-        Command::TurnInterrupt(TurnTarget { turn_id: "turn".into() }),
-    ] {
-        assert_eq!(access(&command), Access::Denied, "{command:?}");
-    }
-}
-
-#[test]
 fn intervention_commands_are_mutations_on_the_exact_core_pair() {
     use shellboy::protocol::{ExecutionTarget, ShellWriteArgs, TurnTarget};
     assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 26);
     let commands = [
-        Command::ShellBackground(ExecutionTarget { execution_id: "shell".into() }),
-        Command::ShellStop(ExecutionTarget { execution_id: "shell".into() }),
-        Command::ShellWrite(ShellWriteArgs { execution_id: "shell".into(), text: "input".into(), encoding: "UTF-8".into() }),
-        Command::ShellEof(ExecutionTarget { execution_id: "shell".into() }),
-        Command::TurnInterrupt(TurnTarget { turn_id: "turn".into() }),
+        Command::ShellBackground(ExecutionTarget {
+            execution_id: "shell".into(),
+        }),
+        Command::ShellStop(ExecutionTarget {
+            execution_id: "shell".into(),
+        }),
+        Command::ShellWrite(ShellWriteArgs {
+            execution_id: "shell".into(),
+            text: "input".into(),
+            encoding: "UTF-8".into(),
+        }),
+        Command::ShellEof(ExecutionTarget {
+            execution_id: "shell".into(),
+        }),
+        Command::TurnInterrupt(TurnTarget {
+            turn_id: "turn".into(),
+        }),
     ];
     for command in commands {
         assert_eq!(access(&command), Access::Mutation, "{command:?}");

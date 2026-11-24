@@ -79,7 +79,12 @@ pub fn access(command: &Command) -> Access {
         // The key is write-only: the owner never returns it. Nothing here logs arguments.
         #[cfg(feature = "next-connection-setup")]
         Command::CredentialsSet(..) | Command::CredentialsClear(..) => Access::Mutation,
-        Command::MessageReply(..) => Access::Mutation,
+        Command::MessageReply(..)
+        | Command::ShellWrite(..)
+        | Command::ShellEof(..)
+        | Command::ShellStop(..)
+        | Command::ShellBackground(..)
+        | Command::TurnInterrupt(..) => Access::Mutation,
         Command::ThreadDeletePreview(args) if !args.thread_id.is_empty() && !args.descendants && args.preview_marker.is_none() => Access::Read,
         Command::ThreadDelete(args) if !args.thread_id.is_empty() && !args.descendants && args.preview_marker.as_ref().is_some_and(|m| m.thread_count == 1 && m.ids_hash.len() == 64 && m.ids_hash.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())) => Access::Mutation,
         Command::ThreadDeleteSetPreview(..) => Access::Read,
@@ -98,11 +103,6 @@ pub fn access(command: &Command) -> Access {
         | Command::EventsWait(..)
         | Command::HistorySearch(..)
         | Command::HistoryRelations(..)
-        | Command::ShellWrite(..)
-        | Command::ShellEof(..)
-        | Command::ShellStop(..)
-        | Command::ShellBackground(..)
-        | Command::TurnInterrupt(..)
         | Command::ArtifactAdd(..)
         | Command::ArtifactUpdate(..)
         | Command::ArtifactRemove(..)
