@@ -308,7 +308,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const errorActivity = status === "error" && (activity === "recovery" || activity === "failed") ? activity : undefined;
   const character = errorActivity ?? status;
   const label = errorActivity ? t(`status.${errorActivity}`) : status === "running" && activity ? activityLabel(model.lang.value, activity) : status ? activityStatusLabel(t, status) : "";
-  const line = <div key="conversation-status" class="work-row conversation-status" role="status">{status === "idle" ? <StatusMark status="idle" label={statusLabel(t, "idle")} /> : status ? <><ConversationCharacter name={statusCharacter(character ?? "neutral")} running={status === "running"} /><span>{label}</span>
+  const line = <div key="conversation-status" class="work-row conversation-status">{status === "idle" ? <StatusMark status="idle" label={statusLabel(t, "idle")} /> : status ? <><ConversationCharacter name={statusCharacter(character ?? "neutral")} running={status === "running"} /><span>{label}</span>
     {running ? <>
       <span data-status-description>{running.label}</span>
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
@@ -317,7 +317,11 @@ export function ConversationStatus({ model }: { model: AppModel }) {
     {recovery ? <><span data-status-description>{recovery.message ?? recovery.hint}</span>{model.canRetry.value ? <Button aria-describedby="conversation-retry-note" onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
   </> : " "}</div>;
   // Supporting text under the one-line status (Material 3 supporting text): it wraps in full, never ellipsized.
-  return recovery && model.canRetry.value ? <>{line}<div key="conversation-retry-note" id="conversation-retry-note" class="conversation-retry-note muted" data-retry-note>{t("recovery.body")}</div></> : line;
+  return <>{line}{recovery && model.canRetry.value ? <div key="conversation-retry-note" id="conversation-retry-note" class="conversation-retry-note muted" data-retry-note>{t("recovery.body")}</div> : null}
+    <span key="conversation-announcement" class="conversation-announcement" data-conversation-announcement role="status" aria-live="polite" aria-atomic="true">
+      {status === "idle" ? statusLabel(t, "idle") : label}
+    </span>
+  </>;
 }
 
 export function Output({ model, id, command, complete, boxed }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean }) {
