@@ -23,4 +23,4 @@ The Possessions section uses these rows for attachment metadata. Its loaded list
 retains at most 1,000 rows (shared with the Thread list) to bound memory and
 change-hint refresh work. An incomplete cut reports unloaded detail as such.
 
-All rows reserve the same 24px trailing action column as their section-band chevron. On phone widths the 44px menu hit area is centered over that column without widening it. Sidebar rows keep the full touch target in-flow. See patterns/thread-list.md; this is not a list-level control.
+Align row action icons with the 24px section-band chevron column. Sidebar rows reserve the full 44px touch target in normal flow and reduce the end inset by half the difference to keep the icon centered on the same axis. See patterns/thread-list.md; this is not a list-level control.

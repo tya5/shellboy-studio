@@ -142,10 +142,14 @@ describe("Thread row menu and delete", () => {
       expect(link.contains(trigger)).toBe(false);
       // Happy DOM cannot do container-query hit testing. Check the sizing rules
       // for the mounted target separately from its click behavior.
-      expect(listRowCss).toMatch(/\[data-sidebar-row\] > \.list-row-action\{width:var\(--size-touch\);visibility:visible\}/);
-      expect(listRowCss).toMatch(/\[data-sidebar-row\] \.list-row-action \.row-menu-trigger\{margin-inline:0\}/);
-      expect(rowActionCss).toMatch(/\[data-sidebar-row\] \.row-menu-trigger>\.btn\{width:var\(--size-touch\);height:var\(--size-touch\)/);
-      expect(rowActionCss).toMatch(/\[data-sidebar-row\] \.row-menu-trigger>\.btn::after\{inset:0\}/);
+      for (const breakpoint of ["@media (hover:none)", "@container app (max-width:899px)"]) {
+        const scope = listRowCss.slice(listRowCss.indexOf(breakpoint));
+        expect(scope.slice(0, scope.indexOf("\n}") + 2)).toMatch(/--sidebar-action-size:\s*var\(--size-touch\);\s*--sidebar-action-hit-inset:\s*0/);
+      }
+      expect(listRowCss).toContain("padding-inline-end:calc(var(--space-row-inset) - (var(--sidebar-action-size, var(--size-row-action)) - var(--size-row-action))/2)");
+      expect(listRowCss).toContain("width:var(--sidebar-action-size, var(--size-row-action))");
+      expect(rowActionCss).toContain("[data-sidebar-row] .row-menu-trigger>.btn{width:var(--sidebar-action-size,var(--size-row-action));height:var(--sidebar-action-size,var(--size-row-action))");
+      expect(rowActionCss).toContain("inset:var(--sidebar-action-hit-inset,calc(-1 * var(--space-8)))");
       expect(readSystemCss("tokens/console.css")).toMatch(/--size-touch:\s*44px;/);
       const hash = location.hash;
       await act(async () => { trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); });
@@ -315,7 +319,7 @@ describe("Thread row menu and delete", () => {
     act(() => render(<>{treeRow("One")}{treeRow("Two")}{selectRow("Three")}{selectRow("Four")}</>, host));
     expect(window.matchMedia("(hover: none)").matches).toBe(true);
     expect(window.matchMedia("(hover: hover)").matches).toBe(false);
-    expect(listRowCss).toMatch(/@media \(hover:none\)[^\n]*\.list-row-action \{[^}]*width:var\(--size-row-action\); visibility:visible/);
+    expect(listRowCss).toMatch(/@media \(hover:none\)\s*\{[^]*?\.list-row-action \{\s*visibility:visible/);
     expect(listRowCss).toMatch(/\[data-menu-open="true"\] > \.list-row-action \{ visibility:visible/);
     expect(listRowCss).toMatch(/\[data-row-selected="true"\] > \.list-row-action/);
     const rows = [...host.querySelectorAll<HTMLElement>("[data-thread-row]")];

@@ -10,16 +10,17 @@
 .list-row[data-thread-row] > .list-row-action { margin-left:auto; }
 .list-row[data-row-selected="true"] > .list-row-action,.list-row[data-menu-open="true"] > .list-row-action { visibility:visible; }
 @media (hover:hover) { .list-row:hover > .list-row-action,.list-row:focus-within > .list-row-action { visibility:visible; } }
-@media (hover:none) { .panel-list-main { min-height:var(--size-touch); } .list-row-action { width:var(--size-row-action); visibility:visible; } }
-
+/* Take the extra target width from the row inset, preserving the band chevron's center. */
+.list-row[data-sidebar-row]:has(> .list-row-action) { padding-inline-end:calc(var(--space-row-inset) - (var(--sidebar-action-size, var(--size-row-action)) - var(--size-row-action))/2); }
+.list-row[data-sidebar-row] > .list-row-action { width:var(--sidebar-action-size, var(--size-row-action)); }
+@media (hover:none) {
+  .panel-list-main { min-height:var(--size-touch); }
+  .list-row-action { visibility:visible; }
+  .list-row[data-sidebar-row] { --sidebar-action-size:var(--size-touch); --sidebar-action-hit-inset:0; }
+}
 @container app (max-width:899px){
   .panel-list-main{min-height:var(--size-touch)}
-  .list-row[data-sidebar-row] > .list-row-action{width:var(--size-touch);visibility:visible}
-}
-@container app (max-width:899px){
-  .list-row-action .row-menu-trigger{margin-inline:calc((var(--size-row-action) - var(--size-row-action-touch))/2)}
-  [data-sidebar-row] .list-row-action .row-menu-trigger{margin-inline:0}
-}
-@media (hover:none){
-  .list-row[data-sidebar-row] > .list-row-action{width:var(--size-touch)}
+  .list-row[data-sidebar-row]{--sidebar-action-size:var(--size-touch);--sidebar-action-hit-inset:0}
+  .list-row[data-sidebar-row] > .list-row-action{visibility:visible}
+  .list-row:not([data-sidebar-row]) .list-row-action .row-menu-trigger{margin-inline:calc((var(--size-row-action) - var(--size-row-action-touch))/2)}
 }

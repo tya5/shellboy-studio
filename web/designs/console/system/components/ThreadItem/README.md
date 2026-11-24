@@ -30,7 +30,7 @@ In the sidebar only, unread completion is shown by a bold title, not a badge or 
 The sidebar supplies the unread presentation from `AppModel`; clicking the link does not mark it read until the conversation route and its detail are available. Read/unread menu actions are unavailable when the list row has no answer ID.
 
 
-List containers have no inline padding. Row hover and selected backgrounds fill their container width, with square ends; rows own their shared-token insets and nested title indentation does not narrow the highlight. Keep trailing row actions in the shared 24px `size-row-action` column; phone hit areas are centered on this column without widening it. References: shadcn/ui SidebarMenuItem/SidebarMenuAction (`showOnHover`), Orca sidebar rows, and approved Studio sidebar mock v8, section 1a B1.
+List containers have no inline padding. Row hover and selected backgrounds fill their container width, with square ends; rows own their shared-token insets and nested title indentation does not narrow the highlight. Align trailing row action icons with the shared 24px `size-row-action` column. On phones and non-hover devices, the 44px action column uses part of the sidebar row end inset to keep the icon centered on that same axis. References: shadcn/ui SidebarMenuItem/SidebarMenuAction (`showOnHover`), Orca sidebar rows, and approved Studio sidebar mock v8, section 1a B1.
 
 In sidebar selection mode (#36), place the shared RowCheckbox before the link.
 The checkbox toggles inclusion without navigating; pinned and ordinary copies
