@@ -40,17 +40,8 @@ const RESULT_CHANNEL: usize = SESSION_IN_FLIGHT + SESSION_QUEUE + APP_CALLS + 4;
 /// label `web` (architecture 4.4).
 pub fn build_command(command: &str, args: Option<Value>) -> Result<Command, BridgeError> {
     let value = json!({"command": command, "args": args.unwrap_or_else(|| json!({}))});
-    let mut parsed: Command = serde_json::from_value(value).map_err(|e| {
-        // A decode error can quote the offending value, and these calls carry a key.
-        if carries_credential(command) {
-            BridgeError::new(
-                "invalid_call",
-                "cannot decode call (details withheld: it may carry a credential)",
-            )
-        } else {
-            BridgeError::new("invalid_call", format!("cannot decode call: {e}"))
-        }
-    })?;
+    let mut parsed: Command = serde_json::from_value(value)
+        .map_err(|_| BridgeError::new("invalid_call", "cannot decode call (command or args)"))?;
     match access(&parsed) {
         Access::Denied => {
             return Err(BridgeError::new(
@@ -65,11 +56,6 @@ pub fn build_command(command: &str, args: Option<Value>) -> Result<Command, Brid
         send.sender_label = Some("web".into());
     }
     Ok(parsed)
-}
-
-/// Calls whose arguments can hold an API key: their errors never repeat the arguments.
-fn carries_credential(command: &str) -> bool {
-    command.starts_with("credentials.") || command == "connection.test"
 }
 
 struct Outstanding(Arc<AtomicUsize>);
@@ -257,10 +243,16 @@ fn handle_frame<O: Owner>(
     let frame: ClientFrame = match serde_json::from_str(text) {
         Ok(frame) => frame,
         Err(e) => {
-            return Some(error_frame(
-                "invalid_frame",
-                &format!("cannot decode frame: {e}"),
-            ));
+            let message = if e.line() == 0 {
+                "cannot decode frame".to_owned()
+            } else {
+                format!(
+                    "cannot decode frame at line {}, column {}",
+                    e.line(),
+                    e.column()
+                )
+            };
+            return Some(error_frame("invalid_frame", &message));
         }
     };
     match frame {
