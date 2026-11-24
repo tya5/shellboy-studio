@@ -217,12 +217,12 @@
   .details{display:none}
   .phone-panel-footer{display:block;flex:none}
 }
-.work-sheet{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);color:var(--fg);width:min(100%,var(--size-work-sheet-width));max-height:80dvh;padding:var(--space-16)}
+.work-sheet{display:flex;flex-direction:column;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);color:var(--fg);width:min(100%,var(--size-work-sheet-width));max-height:80dvh;padding:var(--space-16)}
 .work-sheet::backdrop{background:var(--scrim)}
 html:has(dialog:modal){overflow:hidden}
-.work-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8)}
+.work-sheet-head{display:flex;flex:none;align-items:center;justify-content:space-between;gap:var(--space-8)}
 .work-sheet-head h2{font:var(--type-heading);margin:0}
-.work-sheet-body{display:flex;flex-direction:column;gap:var(--space-12);max-height:65dvh;overflow:auto}
+.work-sheet-body{display:flex;flex:1;flex-direction:column;gap:var(--space-12);min-height:0;overflow:auto}
 .work-sheet-body [data-phone-panel]{display:flex;width:100%;min-height:0}
 
 /* Padding is included in the virtual row height measured by ResizeObserver. */

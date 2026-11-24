@@ -28,7 +28,9 @@ it("locks app scroll panes and only dismisses on a genuine primary backdrop clic
   expect(dialog.open).toBe(true);
   expect(showModal).toHaveBeenCalledTimes(1);
   expect(layoutCss).toMatch(/html:has\(dialog:modal\)\{overflow:hidden\}/);
-  expect(layoutCss).toMatch(/\.work-sheet-body\{[^}]*overflow:auto/);
+  expect(layoutCss).toMatch(/\.work-sheet\{[^}]*display:flex;flex-direction:column[^}]*max-height:80dvh/);
+  expect(layoutCss).toMatch(/\.work-sheet-body\{[^}]*flex:1[^}]*min-height:0;overflow:auto/);
+  expect(layoutCss).not.toContain("max-height:65dvh");
   expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)?.textContent).toBe("Work");
   expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toBe("Details");
 
@@ -92,7 +94,9 @@ it.each([390, 1280])("keeps title and Close outside the single scrolling body at
   expect(dialog.querySelector(".work-sheet-head h2")?.textContent).toBe("Long selection");
   expect(dialog.querySelector(".work-sheet-head button")?.textContent).toBe("Close");
   expect(dialog.querySelectorAll(".work-sheet-body")).toHaveLength(1);
-  expect(layoutCss).toMatch(/\.work-sheet-body\{[^}]*overflow:auto/);
+  expect(layoutCss).toMatch(/\.work-sheet\{[^}]*display:flex;flex-direction:column[^}]*max-height:80dvh/);
+  expect(layoutCss).toMatch(/\.work-sheet-body\{[^}]*flex:1[^}]*min-height:0;overflow:auto/);
+  expect(layoutCss).not.toContain("max-height:65dvh");
   expect(layoutCss).not.toMatch(/\.work-sheet-body \[data-phone-panel\]\{[^}]*overflow:auto/);
   render(null, host); host.remove();
 });

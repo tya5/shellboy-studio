@@ -58,5 +58,7 @@ it.each([390, 1280])("mounts the section picker and preserves tab semantics at %
   const css = readFileSync("designs/console/system/components/PanelTabs/style.css", "utf8");
   expect(css).toContain("@container app (max-width:899px)");
   expect(css).toContain(".panel-tabs-control > .panel-tabs:not(.panel-tabs-rail) { display:none; }");
+  expect(css).toContain(".panel-tabs-phone-picker { display:block; }");
+  expect(css).not.toContain(".panel-tabs-phone-picker { display:block; padding:");
   render(null, host);
 });

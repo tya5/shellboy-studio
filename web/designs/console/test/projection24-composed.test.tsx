@@ -104,10 +104,12 @@ it.each([390, 1280])('#13 real FakeTransport Output wraps by default only at pho
   const initiallyWrapped = width <= 899;
   const wrap = host.querySelector<HTMLButtonElement>(`button[aria-pressed="${initiallyWrapped}"]`)!;
   expect(wrap.textContent).toContain('Wrap lines');
-  expect(host.querySelector('.output-actions')?.className.includes('output-wrapped')).toBe(initiallyWrapped);
+  expect(host.querySelector('.output-log')?.className.includes('output-wrapped')).toBe(initiallyWrapped);
+  expect(host.querySelector('.output-actions .log')).toBeNull();
+  expect(host.querySelector('.output-log .log')).toBeTruthy();
   await act(async () => { wrap.click(); });
   expect(host.querySelector<HTMLButtonElement>(`button[aria-pressed="${!initiallyWrapped}"]`)).toBeTruthy();
-  expect(host.querySelector('.output-actions')?.className.includes('output-wrapped')).toBe(!initiallyWrapped);
+  expect(host.querySelector('.output-log')?.className.includes('output-wrapped')).toBe(!initiallyWrapped);
   const copied = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copied } });
   host.querySelector<HTMLButtonElement>('button')!.click();
   expect(copied).toHaveBeenCalledWith('SYNTHETIC_CHANGED_OUTPUT');

@@ -25,6 +25,6 @@
 
 .panel-tabs-phone-picker { display:none; }
 @container app (max-width:899px){
-  .panel-tabs-phone-picker { display:block; padding:var(--space-8) var(--space-12); }
+  .panel-tabs-phone-picker { display:block; }
   .panel-tabs-control > .panel-tabs:not(.panel-tabs-rail) { display:none; }
 }
