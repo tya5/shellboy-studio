@@ -1,10 +1,12 @@
 # Studio v0.4.2 pairing
 
-Draft: confirm the pending changes below and the final Core pairing before publishing.
+Studio v0.4.2 release preparation is on hold for the stable Core v0.16.0 tag.
 
-- Studio main has moved off Core v0.15.0 to the Core v0.16.0 preparation build (`0.16.0-dev`, commit `62023b082a181e71b77400fa90b5a551acba4a2e`, protocol 22).
-- The stable Core v0.16.0 tag is not published yet; desktop ZIPs must wait for a published stable Core tag matching Studio's exact pin.
-- Before upgrading, quit Studio and Core and back up the entire Core data directory and any settings files stored outside it; see [v0.4.0](release-v0.4.0.md) for backup and phone-pairing guidance, not the Core version to install for this release.
+- Studio package version: 0.4.2.
+- Core pairing: **TODO — repoint to the published Core v0.16.0 tag** (#111). Do not release or build desktop archives from this preparation branch before the exact tagged pairing is recorded.
+- Until that tag exists, this branch retains the existing Core v0.16.0-dev pin. Once available, repoint `Cargo.toml`'s Core `rev` and `Cargo.lock`, update `tools/exact-owner.py`'s `VERSION`, the `0.16.0-dev` fixtures in `tools/test-exact-owner.py`, `tests/protocol_pair.rs`'s expected `PROTOCOL_VERSION`, and the guide URL in `web/designs/console/screens/SetupParts.tsx` to the v0.16.0 tag. Verify manifest, lock, owner identity and protocol all match that exact tag commit. Then grep `TODO` in `README.md`, `docs/guides/`, and `docs/design/` and replace every release-preparation placeholder with the verified pairing.
+- macOS and Windows desktop package versions are generated from the Cargo package version; there are no independent checked-in product-version literals for those bundles.
+- Before upgrading, quit Studio and Core and back up the entire Core data directory and any settings files stored outside it; see [v0.4.0](release-v0.4.0.md) for backup and phone-pairing guidance. This supersedes the [previous v0.4.1 pairing](release-v0.4.1.md) only after the Core tag is finalized.
 
 ## Changes on main since v0.4.1
 
@@ -28,7 +30,6 @@ Draft: confirm the pending changes below and the final Core pairing before publi
 ## Pending landing
 
 - The sidebar exposes its tree structure to assistive technology, and a focused conversation row stays mounted when the window moves. Studio announces **Reply is arriving.** and **Reply saved.**, not each chunk. The page cannot guarantee an independent screen-reader browse cursor (#130 follow-up).
-- Right-panel count badges, such as those on **Reply needed** and **Awaiting reply**, use higher-contrast text (#133).
 - In **Analytics > By Thread**, compare **Excl. cached**, **Total**, **Cached input**, or **Summary tokens** over the chosen **Period**. Bars and shares follow the selected metric; open a row for the same-period breakdown. Counts are recorded tokens, not prices, and incomplete scans do not show a ranking (#132).
 
 ## Check on a device

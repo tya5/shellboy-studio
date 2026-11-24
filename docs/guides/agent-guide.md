@@ -22,8 +22,8 @@ not the owner database or data-directory internals.
 
 ## Protocol compatibility
 
-Studio v0.4.1 pairs with Core v0.15.0 using protocol 18; use the exact pairing
-in the [release notes](../release-v0.4.1.md). There is no protocol downgrade or
+Studio v0.4.2 is being prepared for Core v0.16.0; the exact stable tag, commit,
+and protocol are TODO until that tag exists. See the [release notes](../release-v0.4.2.md). There is no protocol downgrade or
 ownership alias. Never restart a working owner or change its data to resolve a
 version mismatch without explicit approval.
 
