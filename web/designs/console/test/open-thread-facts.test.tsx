@@ -57,6 +57,35 @@ async function headerMenu(el: HTMLElement): Promise<string[]> {
 }
 
 describe("Open Thread facts (#103)", () => {
+  it("announces the state once, without announcing clock ticks", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {
+      db.threads.lead = summary("lead", { ...db.threads.lead, activity: "tools" });
+      db.work.lead = [{ kind: "shell", id: "inspect", thread_id: "lead", run_id: "run-1", execution_id: "inspect", state: "running", started_at: new Date(Date.now() - 5000).toISOString() }];
+    } });
+    const announcements: MutationRecord[] = [];
+    const observer = new MutationObserver(records => { announcements.push(...records); });
+    try {
+      const el = draw(model);
+      const region = el.querySelector<HTMLElement>('[role="status"][aria-live="polite"][aria-atomic="true"]')!;
+      expect(region.textContent).toBeTruthy();
+      expect(region.getAttribute("role")).toBe("status");
+      expect(region.getAttribute("aria-live")).toBe("polite");
+      expect(region.getAttribute("aria-atomic")).toBe("true");
+      act(() => { model.now.value = Date.parse(db.work.lead![0]!.started_at!) + 5000; });
+      const previous = footer(el).textContent;
+      observer.observe(region, { childList: true, characterData: true, subtree: true });
+      act(() => { model.now.value += 1000; });
+      act(() => { model.now.value += 1000; });
+      expect(footer(el).textContent).not.toBe(previous);
+      expect([...announcements, ...observer.takeRecords()]).toHaveLength(0);
+      db.threads.lead = summary("lead", { ...db.threads.lead, activity: "completed" });
+      await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await settle(t, db); });
+      expect(region.textContent).toBe("No activity");
+      expect(el.querySelector("[data-conversation-announcement]")).toBe(region);
+      expect([...announcements, ...observer.takeRecords()]).toHaveLength(1);
+    } finally { observer.disconnect(); model.dispose(); model.data.stop(); }
+  });
+
   it("shows the recovery reason, one Retry, the header mark and the full menu for a Thread opened by link outside the list", async () => {
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "broken", configure: db => outsideList(db) });
     try {
