@@ -6,11 +6,15 @@ on:
       studio_ref:
         required: true
         type: string
+      runner_os:
+        required: false
+        default: ubuntu-22.04
+        type: string
 permissions:
   contents: read
 jobs:
   owner:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ inputs.runner_os }}
     timeout-minutes: 60
     defaults:
       run:
@@ -32,21 +36,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify the official peeled tag against the Studio lock before build
+      - name: Verify the official manifest revision against the Studio lock before build
         run: |
           git init "$RUNNER_TEMP/exact-owner-source"
           git -C "$RUNNER_TEMP/exact-owner-source" remote add origin https://github.com/tya5/shellboy
-          git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin refs/tags/v0.13.1:refs/tags/v0.13.1
-          git -C "$RUNNER_TEMP/exact-owner-source" checkout --detach 'refs/tags/v0.13.1^{commit}'
+          CORE_REV=$(python3 - <<'PY'
+          import tomllib
+          print(tomllib.load(open("Cargo.toml", "rb"))["dependencies"]["shellboy"]["rev"])
+          PY
+          )
+          git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin "$CORE_REV"
+          git -C "$RUNNER_TEMP/exact-owner-source" checkout --detach "$CORE_REV"
           python3 tools/exact-owner.py --studio . --owner "$RUNNER_TEMP/exact-owner-source"
       - name: Build the verified source and assert package and binary version
         run: |
           cargo +1.99.1 install --locked --path "$RUNNER_TEMP/exact-owner-source" --root "$RUNNER_TEMP/exact-owner"
-          "$RUNNER_TEMP/exact-owner/bin/shellboy" --version > "$RUNNER_TEMP/exact-owner-version.txt"
+          if [ "$RUNNER_OS" = "Windows" ]; then OWNER_BIN="$RUNNER_TEMP/exact-owner/bin/shellboy.exe"; else OWNER_BIN="$RUNNER_TEMP/exact-owner/bin/shellboy"; fi
+          test -x "$OWNER_BIN" || test -f "$OWNER_BIN"
+          "$OWNER_BIN" --version > "$RUNNER_TEMP/exact-owner-version.txt"
           python3 tools/exact-owner.py --studio . --owner "$RUNNER_TEMP/exact-owner-source" --binary-version "$RUNNER_TEMP/exact-owner-version.txt"
       - name: Run explicit exact-pair integration suite (temporary data and local mock)
         env:
           SHELLBOY_BIN: ${{ runner.temp }}/exact-owner/bin/shellboy
         run: |
-          test -x "$SHELLBOY_BIN"
+          if [ "$RUNNER_OS" = "Windows" ]; then export SHELLBOY_BIN="$RUNNER_TEMP/exact-owner/bin/shellboy.exe"; fi
+          test -x "$SHELLBOY_BIN" || test -f "$SHELLBOY_BIN"
           cargo +1.99.1 test --locked --features real-owner-tests --test real_owner -- --nocapture
