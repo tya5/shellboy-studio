@@ -8,7 +8,7 @@
 The message box with a target chip and model-delivery row, Send, and while active Interrupt Turn and Stop. The target defaults to Model; running shells are ordered with the current Turn’s foreground shell first. Shell input preserves whitespace and EOF stays on the selected target chip. Enter sends, Shift+Enter makes a new line, and Enter during IME conversion never sends. The text stays until the owner accepts it. Unsent drafts stay with their Thread
 and are restored when you return to it.
 
-`ComposerRouting` owns target/timing controls and their classes. Place it immediately above the text area, with EOF inside the selected shell chip. Model sends expose Next boundary and Now; shell targets disable timing.
+`ComposerRouting` owns target/timing controls and their classes. Place it immediately above the text area, with EOF inside the selected shell chip. Model timing uses the shared ButtonGroup segmented pattern: Next boundary is default, Now is explained as releasing the foreground wait, and each mode shows its effect beside the choice. Shell targets disable model timing. Native target selects meet `size-touch` at phone widths. An unavailable selected shell blocks the draft until the user explicitly chooses Model or another shell; never fall back to Model implicitly.
 
 Styles are colocated in `system/components/Composer/style.css`.
 

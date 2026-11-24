@@ -1914,6 +1914,77 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
     std::fs::remove_dir_all(&root).unwrap();
 }
 
+/// First model response invokes a real long-lived shell; the next one waits on a
+/// test-controlled gate so the owner remains in a live Turn during intervention calls.
+async fn intervention_provider(gate: Arc<tokio::sync::Notify>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let gate = gate.clone();
+            let requests = requests.clone();
+            tokio::spawn(async move {
+                let mut seen = Vec::new();
+                let mut chunk = [0u8; 8192];
+                loop {
+                    let Ok(n) = socket.read(&mut chunk).await else {
+                        return;
+                    };
+                    if n == 0 {
+                        return;
+                    }
+                    seen.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&seen);
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let length = text[..end]
+                            .lines()
+                            .find_map(|line| {
+                                line.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|value| value.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if seen.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let request = String::from_utf8_lossy(&seen);
+                let (content_type, body) = if request.starts_with("GET ") {
+                    (
+                        "application/json".to_owned(),
+                        r#"{"object":"list","data":[{"id":"mock-model","object":"model"}]}"#
+                            .to_owned(),
+                    )
+                } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                    let args = json!({"command":if cfg!(windows){"Read-Host; Start-Sleep -Seconds 300"}else{"cat; sleep 300"},"description":"intervention fixture","stdin_open":true});
+                    let call = json!({"type":"function_call","id":"intervention-shell","call_id":"intervention-shell","name":"shell","arguments":args.to_string()});
+                    let reply = json!({"id":"intervention-tool","status":"completed","output":[call],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
+                    ("application/json".to_owned(), reply.to_string())
+                } else {
+                    gate.notified().await;
+                    let item = json!({"id":"done","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]});
+                    let reply = json!({"id":"intervention-done","status":"completed","output":[item],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
+                    ("application/json".to_owned(), reply.to_string())
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket.write_all(body.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+    format!("http://{addr}/v1")
+}
+
 #[tokio::test]
 async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let bin = PathBuf::from(
@@ -1921,7 +1992,9 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     );
     let root = temp_root();
     let data = root.join("data");
-    let serve = start_owner(&bin, &root, &data);
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let url = intervention_provider(gate.clone()).await;
+    let serve = start_owner_with(&bin, &root, &data, &url);
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner, true).await;
     let cookie = login(addr, &state).await;
@@ -1935,48 +2008,76 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     let mut client = Client { ws, next: 0 };
     next_t(&mut client.ws, "hello").await;
-
     let thread = client
         .ok(
             "thread.create",
             json!({"cwd":root.to_str().unwrap()}),
             Some(format!("{}:intervene-thread", serve.instance)),
         )
-        .await;
-    let thread_id = thread["thread_id"].as_str().unwrap();
-    let listed = client
+        .await["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    client
         .ok(
-            "shell.list",
-            json!({"thread_id":thread_id,"limit":10}),
+            "message.send",
+            json!({"thread_id":thread,"text":"start shell"}),
+            Some(format!("{}:intervene-send", serve.instance)),
+        )
+        .await;
+    let mut shell = None;
+    for _ in 0..200 {
+        let listed = client
+            .ok("shell.list", json!({"thread_id":thread,"limit":10}), None)
+            .await;
+        if let Some(item) = listed["items"]
+            .as_array()
+            .and_then(|items| items.iter().find(|item| item["state"] == "running"))
+        {
+            shell = item["execution_id"].as_str().map(str::to_owned);
+            if shell.is_some() {
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let execution = shell.expect("model tool call must create a live shell");
+    let wrote = client
+        .ok(
+            "shell.write",
+            json!({"execution_id":execution,"text":"studio-input\\n","encoding":"UTF-8"}),
             None,
         )
         .await;
-    assert_eq!(listed["items"], json!([]));
-    let commands = [
-        (
-            "shell.background",
-            json!({"execution_id":"synthetic-execution"}),
-        ),
-        ("shell.stop", json!({"execution_id":"synthetic-execution"})),
-        (
-            "shell.write",
-            json!({"execution_id":"synthetic-execution","text":"input","encoding":"utf8"}),
-        ),
-        ("shell.eof", json!({"execution_id":"synthetic-execution"})),
-        ("turn.interrupt", json!({"turn_id":"synthetic-turn"})),
-    ];
-    for (command, args) in commands {
-        let reply = client.call(command, args, None).await;
-        assert_eq!(
-            reply["response"]["ok"], false,
-            "{command} was not handled by the pinned owner: {reply}"
-        );
-        assert!(
-            reply["response"]["error"]["code"].is_string(),
-            "{command}: {reply}"
-        );
-    }
-    drop(client);
+    assert_eq!(wrote["status"], "complete", "{wrote}");
+    assert!(wrote["bytes_written"].as_u64().unwrap() > 0, "{wrote}");
+    let eof = client
+        .ok("shell.eof", json!({"execution_id":execution}), None)
+        .await;
+    assert_eq!(eof["accepted"], true, "{eof}");
+    let background = client
+        .ok("shell.background", json!({"execution_id":execution}), None)
+        .await;
+    assert_eq!(background["execution_id"], execution);
+    assert_eq!(background["requested"], true, "{background}");
+    let live = client
+        .ok("thread.get", json!({"thread_id":thread}), None)
+        .await;
+    let turn = live["turn_id"]
+        .as_str()
+        .expect("foreground live turn")
+        .to_owned();
+    let interrupted = client
+        .ok("turn.interrupt", json!({"turn_id":turn}), None)
+        .await;
+    assert_eq!(interrupted["requested"], true, "{interrupted}");
+    assert_eq!(interrupted["turn_id"], turn);
+    let stopped = client
+        .ok("shell.stop", json!({"execution_id":execution}), None)
+        .await;
+    assert_eq!(stopped["accepted"], true, "{stopped}");
+    gate.notify_waiters();
     cancel.cancel();
-    stop_owner(&bin, &data, serve).await;
+    drop(serve);
+    let _ = std::fs::remove_dir_all(&root);
 }

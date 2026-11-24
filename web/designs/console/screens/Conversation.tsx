@@ -472,7 +472,7 @@ export function OutputLines({ lines, boxed }: { lines: readonly OutputLine[]; bo
 }
 
 const OpenPhonePanelIfHidden = createContext<(() => void) | undefined>(undefined);
-const RequestShellStop = createContext<(executionId: string) => void>(() => {});
+const RequestShellStop = createContext<(target: { executionId: string; command: string }) => void>(() => {});
 
 export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.toolCall.openPolicy }: { model: AppModel; step: Step; display: WorkElementDisplay; openPolicy?: CanonicalCase["openPolicy"] }) {
   const t = model.t.value;
@@ -515,7 +515,6 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
         {typeof step.exitCode === "number" ? <span class="mono">{t("details.exit")} {step.exitCode}</span> : null}
         {duration ? <span class="mono" aria-label={`${t("details.duration")}: ${duration}`}>{duration}</span> : null}
         {step.cwd ? <span class="mono" aria-label={`${t("details.directory")}: ${step.cwd}`}>{step.cwd}</span> : null}
-        {model.shells.value.get(step.executionId)?.state === "running" ? <ShellActionMenu model={model} executionId={step.executionId} /> : null}
       </div>
       <InlineShellOutput model={model} id={step.executionId} command={command} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"} boxed onDetails={opener => {
         model.openInPanel({ kind: "step", id: step.executionId }, panelFocusReturn(opener), true);
@@ -603,9 +602,8 @@ const possessionsSections = [
   { label: "panel.attachments", kind: "attachment", icon: "panel.attachment" },
 ] as const;
 
-function PanelPossessions({ model }: { model: AppModel }) {
+function PanelPossessions({ model, platform }: { model: AppModel; platform: ReturnType<typeof useArtifactReveal> }) {
   const t = model.t.value;
-  const platform = useArtifactReveal(true, model.data.owner.value);
   const state = model.attachmentSection.state.value;
   return <div class="panel-list" data-panel-list="possessions">
     {model.data.capabilities.value.includes(CAPABILITY_ARTIFACTS) ? <ArtifactList model={model} platform={platform} onSelect={(id, opener) => model.openInPanel({ kind: "artifact", id }, panelFocusReturn(opener), true)} /> : null}
@@ -681,7 +679,7 @@ function PanelActivity({ model }: { model: AppModel }) {
           subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
           onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener), true)} menuLabel={t("panel.rowActions")}
-          actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, requestStop) : undefined} error={panelOperationError(model, row.id)} />;
+          actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, command ?? row.label, requestStop) : undefined} error={panelOperationError(model, row.id)} />;
       })}</section> : null;
     })}
     {model.handle.value ? (["schedule", "service"] as const).map(kind => <SchedulePanel key={`${model.handle.value!.threadId}:${kind}`} model={model} kind={kind} open={(id, opener) => model.openInPanel({ kind, id }, panelFocusReturn(opener), true)} />) : null}
@@ -769,23 +767,22 @@ function deliveryStateLabel(t: AppModel["t"]["value"], state: string): string {
     : state === "applied" ? t("work.applied") : state === "cancelled" ? t("work.cancelled") : state;
 }
 
-function shellActionEntries(model: AppModel, executionId: string, requestStop: (id: string) => void) {
+function shellActionEntries(model: AppModel, executionId: string, command: string, requestStop: (target: { executionId: string; command: string }) => void) {
   const t=model.t.value;
   return [
-    {key:"background",label:t("action.shellBackground"),icon:"action.shellBackground" as const,onSelect:()=>void model.backgroundShell(executionId)},
-    {key:"stop",label:t("action.shellStop"),icon:"action.stop" as const,destructive:true,onSelect:()=>requestStop(executionId)},
+    {key:"background",label:t("action.shellBackground"),icon:"action.shellBackground" as const,run:()=>void model.backgroundShell(executionId)},
+    {key:"stop",label:t("action.shellStop"),icon:"action.stop" as const,destructive:true,run:()=>requestStop({executionId,command})},
   ];
 }
-function ShellActionMenu({ model, executionId }: { model: AppModel; executionId: string }) {
+function ShellActionMenu({ model, executionId, command }: { model: AppModel; executionId: string; command: string }) {
   const requestStop=useContext(RequestShellStop);
-  const menu=useRowMenu({label:model.t.value("action.shellMenu"),entries:shellActionEntries(model,executionId,requestStop)});
+  const menu=useRowMenu({label:model.t.value("action.shellMenu"),entries:shellActionEntries(model,executionId,command,requestStop).map(({run,...entry})=>({...entry,onSelect:run}))});
   return <span class="shell-action-menu">{menu.trigger}{menu.menu}</span>;
 }
 
-function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: string; onBack: () => void }) {
+function PanelDetail({ model, tabLabel, onBack, artifactPlatform }: { model: AppModel; tabLabel: string; onBack: () => void; artifactPlatform: ReturnType<typeof useArtifactReveal> }) {
   const t = model.t.value;
   const detail = model.panelDetail.value;
-  const artifactPlatform = useArtifactReveal(detail?.kind === "artifact", model.data.owner.value);
   const step = model.selectedStep.value;
   const running = detail?.kind === "step" ? model.work.value.running.find(row => row.id === detail.id) : undefined;
   const started = formatClock(step?.startedAt ?? running?.startedAt, true);
@@ -805,6 +802,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
     const command = step?.command ?? running?.command;
     const description = step?.description?.trim() || (running?.label !== running?.command?.trim() ? running?.label : undefined);
     const label = toolLabel(description, command, t("work.textUnavailable"));
+    const shellCommand = command ?? running?.command ?? model.shells.value.get(detail.id)?.command_excerpt ?? label;
     const elapsed = step ? stepDuration(step, model.now.value) : undefined;
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("details.title")}</h3></div>
       {step || running ? <><div class="cmd"><Icon role="work.command" />{description ? <span class="stack"><span>{label}</span>{command && command.trim() !== label ? <span class="mono muted caption">{command}</span> : null}</span> : <span>{label}</span>}</div>
@@ -815,7 +813,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
           ...(started ? [{ key: t("details.started"), value: started, mono: true }] : []),
           ...(step?.cwd ? [{ key: t("details.directory"), value: step.cwd, mono: true }] : []),
         ]} />
-        {model.shells.value.get(detail.id)?.state === "running" ? <ShellActionMenu model={model} executionId={detail.id} /> : null}
+        {model.shells.value.get(detail.id)?.state === "running" ? <ShellActionMenu model={model} executionId={detail.id} command={shellCommand} /> : null}
         <Output model={model} id={detail.id} command={command ?? ""} complete={step?.status === "completed" || step?.status === "failed" || step?.state === "exited"} boxed />
       </> : <p class="muted caption">{t("work.textUnavailable")}</p>}
     </section>;
@@ -908,6 +906,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
   useEffect(() => scheduleShown ? scheduleHandle?.observeDefinitions() : undefined, [scheduleShown, scheduleHandle]);
   const artifactId = detail?.kind === "artifact" ? detail.id : undefined;
   const artifactsShown = supportsArtifacts && (phone || panelVisible) && !panelCollapsed && model.panelTab.value === "possessions";
+  const artifactPlatform = useArtifactReveal(artifactsShown, owner);
   useEffect(() => artifactsShown && owner.state === "connected" && threadId
     ? model.artifacts.observeList(threadId) : undefined, [model, artifactsShown, owner, threadId]);
   useEffect(() => artifactsShown && owner.state === "connected" && threadId && artifactId
@@ -936,8 +935,8 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
         const active = tab.id === selectedTab;
         const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment" || detail.kind === "artifact");
         return <PanelPage key={tab.id} id={tab.id} hidden={!active || panelCollapsed}>
-          {tab.id === "settings" ? (active && !panelCollapsed && model.details.value ? <ThreadSettingsPanel key={owner.state === "connected" ? owner.info.instance_id ?? "connected" : owner.state} model={model} details={model.details.value} destination={destination} /> : null) : <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? (usageThread ? <ThreadAnalytics key={usageKey} model={model} threadId={usageThread} /> : null) : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>}
-          {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}
+          {tab.id === "settings" ? (active && !panelCollapsed && model.details.value ? <ThreadSettingsPanel key={owner.state === "connected" ? owner.info.instance_id ?? "connected" : owner.state} model={model} details={model.details.value} destination={destination} /> : null) : <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? (usageThread ? <ThreadAnalytics key={usageKey} model={model} threadId={usageThread} /> : null) : tab.id === "possessions" ? <PanelPossessions model={model} platform={artifactPlatform} /> : <PanelReplies model={model} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>}
+          {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} artifactPlatform={artifactPlatform} /> : null}
         </PanelPage>;
       })}
     </div>
@@ -979,17 +978,16 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
   });
   const [shellTarget, setShellTarget] = useState<string | "model" | undefined>(undefined);
   const [delivery, setDelivery] = useState<"next" | "now">("next");
-  const [shellStopTarget, setShellStopTarget] = useState<string>();
+  const [shellStopTarget, setShellStopTarget] = useState<{ executionId: string; command: string }>();
   const shellStopReturnFocus = useRef<HTMLElement | null>(null);
-  const requestShellStop = (executionId: string) => {
+  const requestShellStop = (target: { executionId: string; command: string }) => {
     shellStopReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setShellStopTarget(executionId);
+    setShellStopTarget(target);
   };
   useEffect(() => setShellTarget(undefined), [handle?.threadId]);
-  const activeShellKey = activeShells.map(shell => shell.execution_id).join("\0");
-  useEffect(() => { if (shellTarget && !activeShells.some(shell => shell.execution_id === shellTarget)) setShellTarget(undefined); }, [activeShellKey, shellTarget]);
-  const currentTarget = shellTarget && activeShells.some(shell => shell.execution_id === shellTarget) ? shellTarget : undefined;
-  const selectedShell = activeShells.find(shell => shell.execution_id === currentTarget);
+  const currentTarget = shellTarget;
+  const selectedShell = typeof currentTarget === "string" && currentTarget !== "model" ? activeShells.find(shell => shell.execution_id === currentTarget) : undefined;
+  const unavailableShellTarget = typeof currentTarget === "string" && currentTarget !== "model" && selectedShell === undefined;
   useLayoutEffect(() => {
     const frame = root.current?.closest<HTMLElement>(".app");
     const viewport = window.visualViewport;
@@ -1061,21 +1059,22 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
             hint={pendingOwn ? t(`composer.pending.${pendingOwn.phase}`) : t("composer.hint")}
-            draftStatus={text=>{if(selectedShell)return {blocked:false,hint:t("composer.hint")};const admission=model.localSendAdmission(text);return {blocked:admission!=="ready",hint:admission==="slotsfull"?t("composer.pending.slotsfull"):admission==="bytesfull"?t("composer.pending.bytesfull"):pendingOwn?t(`composer.pending.${pendingOwn.phase}`):t("composer.hint")};}}
+            draftStatus={text=>{if(selectedShell)return {blocked:false,hint:t("composer.hint")};if(unavailableShellTarget)return {blocked:true,hint:t("composer.shellUnavailable")};const admission=model.localSendAdmission(text);return {blocked:admission!=="ready",hint:admission==="slotsfull"?t("composer.pending.slotsfull"):admission==="bytesfull"?t("composer.pending.bytesfull"):pendingOwn?t(`composer.pending.${pendingOwn.phase}`):t("composer.hint")};}}
             start={details ? <ModelPicker model={model} details={details} onThreadSettings={() => openThreadPanel("settings")} /> : undefined}
             context={context ? <ContextRing fill={context.fill} state={context.state} label={t("context.title")} stateLabel={t(`context.state.${context.state}`)} onOpen={() => openThreadPanel("info")} /> : undefined}
             sendLabel={t("composer.send")}
-            canSend={conn === "connected" && (selectedShell !== undefined || !sendBlocked)}
+            canSend={conn === "connected" && !unavailableShellTarget && (selectedShell !== undefined || !sendBlocked)}
             busy={send.kind === "sending"}
             allowWhitespace={selectedShell !== undefined}
             draftScope={handle.threadId}
             above={<ComposerRouting label={t("composer.sendInputTo")} modelLabel={t("composer.modelTarget")} target={currentTarget ?? "model"}
               shells={activeShells.map(shell => ({ id: shell.execution_id, command: shell.command_excerpt || t("composer.shellTarget") }))}
-              onTarget={value => setShellTarget(value === "model" ? undefined : value)}
+              unavailableTarget={unavailableShellTarget ? t("composer.shellUnavailable") : undefined}
+              onTarget={value => setShellTarget(value === "model" ? "model" : value)}
               eof={selectedShell ? { label: `${t("composer.sendEof")}: ${selectedShell.command_excerpt || t("composer.shellTarget")}`, run: () => void model.sendShellEof(selectedShell.execution_id) } : undefined}
               timingLabel={t("composer.sendTiming")} timing={delivery} timingDisabled={selectedShell !== undefined}
-              onTiming={setDelivery} nextLabel={t("composer.nextBoundary")} nowLabel={t("composer.now")} />}
-            onSend={(text,onReserved) => selectedShell ? model.sendShellInput(selectedShell.execution_id,text) : model.send(text,onReserved,delivery)}
+              onTiming={setDelivery} nextLabel={t("composer.nextBoundary")} nowLabel={t("composer.now")} nextExplanation={t("composer.nextBoundaryHelp")} nowExplanation={t("composer.nowHelp")} />}
+            onSend={(text,onReserved) => selectedShell ? model.sendShellInput(selectedShell.execution_id,text) : unavailableShellTarget ? Promise.resolve(false) : model.send(text,onReserved,delivery)}
             interrupt={model.details.value?.turn_id ? { label: t("composer.interruptTurn"), run: () => void model.interruptTurn() } : undefined}
             stop={model.canStop.value ? { label: t("composer.stop"), run: () => void model.stop() } : undefined}
           />
@@ -1088,7 +1087,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
       {handle && !phonePanel ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} destination={destination} clearDestination={clearDestination} /> : null}
       {handle && phonePanel ? <WorkSheet open title={t("panel.title")} closeLabel={t("common.close")} onClose={() => onClosePhonePanel?.()} getReturnFocusTarget={() => root.current?.querySelector<HTMLElement>(".phone-panel-footer .shell-toggle-panel") ?? null}><RightPanel key={handle.threadId} model={model} phone destination={destination} clearDestination={clearDestination} /></WorkSheet> : null}
       {shellStopTarget ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("action.shellStop")} closeLabel={t("thread.deleteCancel")} describedBy="shell-stop-description" onClose={() => setShellStopTarget(undefined)} getReturnFocusTarget={() => shellStopReturnFocus.current}>
-        <div class="shell-stop-confirmation"><p id="shell-stop-description">{t("action.shellStopConfirm")}</p><Button variant="stop" onClick={() => { const id=shellStopTarget; setShellStopTarget(undefined); void model.stopShell(id); }}>{t("action.shellStop")}</Button></div>
+        <div class="shell-stop-confirmation"><p id="shell-stop-description">{t("action.shellStopConfirmCommand", { command: shellStopTarget.command })}</p><Button variant="stop" onClick={() => { const {executionId}=shellStopTarget; setShellStopTarget(undefined); void model.stopShell(executionId); }}>{t("action.shellStop")}</Button></div>
       </WorkSheet> : null}
     </></RequestShellStop.Provider>
   );

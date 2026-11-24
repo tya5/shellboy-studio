@@ -13,3 +13,7 @@
 
 .composer-target-chip{display:flex;align-items:center;gap:var(--space-4)}
 .composer-routing{display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap}
+.composer-routing select{min-height:var(--size-control);max-width:100%}
+.composer-timing{display:grid;gap:var(--space-4)}
+.composer-timing-explanation{margin:0;font:var(--type-caption);color:var(--muted)}
+@container app (max-width:899px){.composer-routing select{min-height:var(--size-touch)}}

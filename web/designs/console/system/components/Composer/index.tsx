@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { composerAction } from "../../../../../ui-core/src";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
+import { ButtonGroup } from "../ButtonGroup";
 
 export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; allowWhitespace?: boolean; above?: ComponentChildren; interrupt?: { label: string; run: () => void }; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
   const [, renderDraft] = useState(0);
@@ -94,13 +95,14 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
 }
 
 
-export function ComposerRouting(props: { label: string; modelLabel: string; target: string; shells: readonly { id: string; command: string }[]; onTarget: (id: string) => void; eof?: { label: string; run: () => void }; timingLabel: string; timing: "next" | "now"; onTiming: (timing: "next" | "now") => void; timingDisabled?: boolean; nextLabel: string; nowLabel: string }) {
+export function ComposerRouting(props: { label: string; modelLabel: string; target: string; shells: readonly { id: string; command: string }[]; onTarget: (id: string) => void; unavailableTarget?: string; eof?: { label: string; run: () => void }; timingLabel: string; timing: "next" | "now"; onTiming: (timing: "next" | "now") => void; timingDisabled?: boolean; nextLabel: string; nowLabel: string; nextExplanation: string; nowExplanation: string }) {
   return <div class="composer-routing">
     <div class="composer-target-chip"><label>{props.label} <select aria-label={props.label} value={props.target} onChange={event => props.onTarget(event.currentTarget.value)}>
-      <option value="model">{props.modelLabel}</option>{props.shells.map(shell => <option value={shell.id} key={shell.id}>{shell.command}</option>)}
+      <option value="model">{props.modelLabel}</option>{props.unavailableTarget ? <option value={props.target}>{props.unavailableTarget}</option> : null}{props.shells.map(shell => <option value={shell.id} key={shell.id}>{shell.command}</option>)}
     </select></label>{props.eof ? <Button variant="ghost" icon label={props.eof.label} onClick={props.eof.run}><Icon role="action.shellEof" size="small" /></Button> : null}</div>
-    <label>{props.timingLabel} <select aria-label={props.timingLabel} value={props.timing} disabled={props.timingDisabled} onChange={event => props.onTiming(event.currentTarget.value as "next" | "now")}>
-      <option value="next">{props.nextLabel}</option><option value="now">{props.nowLabel}</option>
-    </select></label>
+    <div class="composer-timing"><span>{props.timingLabel}</span><ButtonGroup label={props.timingLabel}>
+      <Button variant="ghost" aria-pressed={props.timing === "next"} disabled={props.timingDisabled} onClick={() => props.onTiming("next")}>{props.nextLabel}</Button>
+      <Button variant="ghost" aria-pressed={props.timing === "now"} disabled={props.timingDisabled} onClick={() => props.onTiming("now")}>{props.nowLabel}</Button>
+    </ButtonGroup><p class="composer-timing-explanation">{props.timing === "now" ? props.nowExplanation : props.nextExplanation}</p></div>
   </div>;
 }

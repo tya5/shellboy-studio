@@ -707,19 +707,6 @@ it('places a live row after the preceding emitted item when its input emitted no
  } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
 });
 
-it('renders accessible shell target, EOF, timing, interruption and Stop controls', async () => {
- const host=document.createElement('div');document.body.append(host);let writes=0,interrupts=0,stops=0;
- const above=<div><label>Send input to: <select aria-label="Send input to:"><option>Model</option><option>npm run verify</option></select></label><button aria-label="Send EOF" onClick={()=>writes++}>EOF</button><label>Send timing <select aria-label="Send timing"><option>Next boundary</option><option>Now</option></select></label></div>;
- try {
-  await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} above={above} interrupt={{label:"Interrupt Turn",run:()=>interrupts++}} stop={{label:"Stop",run:()=>stops++}} onSend={async()=>true}/>,host));
-  expect(host.querySelector('[aria-label="Send input to:"]')).not.toBeNull();
-  expect(host.querySelector('[aria-label="Send timing"]')).not.toBeNull();
-  await act(async()=>{host.querySelector<HTMLButtonElement>('[aria-label="Send EOF"]')!.click();host.querySelector<HTMLButtonElement>('[aria-label="Interrupt Turn"]')!.click();host.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!.click();});
-  expect([writes,interrupts,stops]).toEqual([1,1,1]);
- } finally {render(null,host);host.remove();}
-});
-
-
 it("Studio #134: composer targets, timing, interrupt and Activity shell controls are mounted", async () => {
  const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["history.window"],configure(db){
   db.details.lead=details("lead",{run_id:"run-1",turn_id:"turn-1"});
@@ -734,11 +721,13 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
   const target=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;
   expect([...target.options].map(option=>option.textContent)).toEqual(["Model","python -m http.server","sleep 30"]);
   expect(target.value).toBe("model");
-  const timing=host.querySelector<HTMLSelectElement>('select[aria-label="Send timing"]')!;
-  expect(timing.value).toBe("next");
+  const timingGroup=host.querySelector('[role="group"][aria-label="Send timing"]')!;
+  const nextButton=timingGroup.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')!;
+  expect(nextButton.textContent).toContain("Next boundary");
+  expect(host.textContent).toContain("Hold this message until the current turn reaches its next boundary.");
   await act(async()=>{target.value="exec-2";target.dispatchEvent(new Event("change",{bubbles:true}));});
   expect(host.querySelector('button[aria-label="Send EOF: python -m http.server"]')).not.toBeNull();
-  expect(timing.disabled).toBe(true);
+  expect(timingGroup.querySelectorAll('button:disabled')).toHaveLength(2);
   const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
   await act(async()=>{composer.value="printf hello\\n";composer.dispatchEvent(new Event("input",{bubbles:true}));composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
   const write=f.t.calls("shell.write").at(-1)!;expect(write.args).toMatchObject({execution_id:"exec-2",text:"printf hello\\n",encoding:"UTF-8"});
@@ -746,7 +735,8 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
   await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Send EOF: python -m http.server"]')!.click();await flush(8);});
   const eof=f.t.calls("shell.eof").at(-1)!;expect(eof.args).toMatchObject({execution_id:"exec-2"});
   f.db.answered.add(eof.id);await act(async()=>{f.t.ok(eof.id,{});await flush(8);});
-  await act(async()=>{target.value="model";target.dispatchEvent(new Event("change",{bubbles:true}));timing.value="now";timing.dispatchEvent(new Event("change",{bubbles:true}));await flush();});
+  await act(async()=>{target.value="model";target.dispatchEvent(new Event("change",{bubbles:true}));await flush();});
+  await act(async()=>{timingGroup.querySelector<HTMLButtonElement>('button[aria-pressed="false"]')!.click();await flush();});
   await act(async()=>{composer.value="deliver-now";composer.dispatchEvent(new Event("input",{bubbles:true}));composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
   const nowSend=f.t.calls("message.send").at(-1)!;expect(nowSend.args).toMatchObject({deliver:"now",text:"deliver-now"});
   f.db.answered.add(nowSend.id);await act(async()=>{f.t.ok(nowSend.id,{message_id:"msg-now",thread_id:"lead"});await flush(8);});
@@ -757,6 +747,10 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
   const activity=host.querySelector<HTMLButtonElement>('[role="tab"][data-panel-tab="work"]')!;
   expect(activity).toBeDefined();
   const shellRow=host.querySelector('[data-panel-row-id="exec-2"]')!;
+  await act(async()=>{shellRow.querySelector<HTMLButtonElement>(".list-row-action button")!.click();await flush();});
+  expect(document.body.querySelector('[role="menuitem"]')?.textContent).toContain("Move to background");
+  await act(async()=>{document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();await flush(8);await settle(f.t,f.db);});
+  expect(f.t.calls("shell.background").at(-1)?.args).toMatchObject({execution_id:"exec-2"});
   await act(async()=>{shellRow.querySelector<HTMLButtonElement>(".panel-list-main")!.click();await flush(8);});
   expect(host.querySelector('[data-panel-detail]')).not.toBeNull();
   const detailMenu=host.querySelector<HTMLButtonElement>('[data-panel-detail] button[aria-label="Shell actions"]')!;
@@ -768,9 +762,40 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
   await act(async()=>{host.querySelector<HTMLButtonElement>('[data-panel-detail] button[aria-label="Shell actions"]')!.click();await flush();});
   const stopEntry=[...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button=>button.textContent?.includes("Stop this shell"))!;
   await act(async()=>{stopEntry.click();await flush();});
-  expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain("Stop this shell?");
+  expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain("Stop python -m http.server?");
   expect(f.t.calls("shell.stop")).toHaveLength(0);
   await act(async()=>{host.querySelector<HTMLButtonElement>('[role="alertdialog"] .shell-stop-confirmation button')!.click();await flush(8);await settle(f.t,f.db);});
   expect(f.t.calls("shell.stop").at(-1)?.args).toMatchObject({execution_id:"exec-2"});
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+
+it("keeps a shell draft blocked when its owner fact disappears until explicit retarget", async () => {
+ const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["history.window"],configure(db){
+  db.details.lead=details("lead");
+  db.work.lead=[{kind:"shell",id:"exec-stale",thread_id:"lead",run_id:"run-old",execution_id:"exec-stale",state:"running",turn_id:"turn-old",started_at:"2026-11-07T10:20:00Z"}];
+  db.shells.lead=[{execution_id:"exec-stale",thread_id:"lead",run_id:"run-old",turn_id:"turn-old",state:"running",started_at:"2026-11-07T10:20:00Z",command_excerpt:"python worker.py"}];
+ }});
+ const host=document.createElement("div");document.body.append(host);
+ try{
+  await act(async()=>{render(<Conversation model={f.model}/>,host);await settle(f.t,f.db);});
+  const target=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;
+  target.value="exec-stale";target.dispatchEvent(new Event("change",{bubbles:true}));
+  const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
+  composer.value="do not send to a different recipient";composer.dispatchEvent(new Event("input",{bubbles:true}));
+  await act(async()=>{await flush(4);});
+  f.db.shells.lead=[];
+  f.db.work.lead=[];
+  f.db.details.lead=details("lead",{run_id:"run-next",turn_id:"turn-next"});
+  await act(async()=>{f.model.shells.value=new Map();await flush(4);});
+  expect(composer.value).toBe("do not send to a different recipient");
+  expect(target.value).toBe("exec-stale");
+  expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(true);
+  expect(host.textContent).toContain("Selected shell unavailable");
+  target.value="model";target.dispatchEvent(new Event("change",{bubbles:true}));
+  await act(async()=>{await flush(4);});
+  expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(false);
+  await act(async()=>{composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
+  expect(f.t.calls("message.send").at(-1)?.args).toMatchObject({text:"do not send to a different recipient"});
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
