@@ -1,6 +1,6 @@
 # ThreadGroup
 
-- **Use for:** A band over a long group of Threads that can collapse: the sidebar Pinned and All bands, and the Threads page groups; use the checkbox variant only where the group is selectable.
+- **Use for:** A band over a long group of Threads that can collapse: the sidebar Pinned, All and Archive bands, and the Threads page groups; use the checkbox variant only where the group is selectable.
 - **Do not use for:** Use ThreadItem or SelectRow for a Thread, ListDivider (`.group-label`) for a static group label that does not collapse, and Section for a subject card.
 - **Why:** Design system v2 structure levels: a band is a group label with a surface. The inset surface between two lines shows where a group starts without looking like a row, and the whole band is one disclosure button.
 - **Source:** [Apple HIG Lists and tables (section headers)](https://developer.apple.com/design/human-interface-guidelines/lists-and-tables), [Material 3 Lists](https://m3.material.io/components/lists/overview), [Material 3 Divider](https://m3.material.io/components/divider/overview), [shadcn/ui Sidebar (SidebarGroupLabel)](https://ui.shadcn.com/docs/components/sidebar), [WAI-ARIA APG Disclosure](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/), [Studio Thread list](../../patterns/thread-list.md)

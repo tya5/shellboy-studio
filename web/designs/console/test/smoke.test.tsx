@@ -1392,6 +1392,8 @@ describe("Threads", () => {
   });
   it("Archived offers Unarchive with one press", async () => {
     const { el, t, db } = await open();
+    // The fake owner, like Core, lists only archived Threads in Archived.
+    for (const row of Object.values(db.threads)) (row as { archived_at?: string }).archived_at = "2026-01-01T00:00:00Z";
     await act(async () => {
       [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === "Archived")!.click();
       await settle(t, db);

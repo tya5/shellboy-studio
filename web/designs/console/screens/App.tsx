@@ -125,15 +125,21 @@ export function App({ context }: { context: DesignContext }) {
     || appliedFilter?.awaiting || (appliedFilter?.archived && appliedFilter.archived !== "exclude"));
   const pinned = appliedFilter?.awaiting ? [] : model.data.pinnedThreads.value;
   const pinnedIds = appliedFilter?.awaiting ? [] : model.data.pinnedThreadIds.value;
+  // Like Pinned, the Archive band is hidden while Needs-you is on.
+  const archive = model.data.archivedList.value;
+  const archived = appliedFilter?.awaiting ? [] : archive.items;
   const sidebarRows = useMemo(() => {
     const exact = model.data.threadRows.value;
     const rows = new Map(list.items.map(row => [row.thread_id, exact.get(row.thread_id) ?? row]));
-    for (const row of pinned) rows.set(row.thread_id, exact.get(row.thread_id) ?? row);
+    for (const row of [...archived, ...pinned]) rows.set(row.thread_id, exact.get(row.thread_id) ?? row);
     return [...rows.values()];
-  }, [list.items, pinned, model.data.threadRows.value]);
-  const groups = useMemo(() => sidebarGroups(sidebarRows, pinnedIds, sidebarSelected, flat, list.items.map(row => model.data.threadRows.value.get(row.thread_id) ?? row)), [sidebarRows, pinnedIds, sidebarSelected, flat, list.items, model.data.threadRows.value]);
+  }, [list.items, archived, pinned, model.data.threadRows.value]);
+  const groups = useMemo(() => sidebarGroups(sidebarRows, pinnedIds, sidebarSelected, flat, list.items.map(row => model.data.threadRows.value.get(row.thread_id) ?? row), archived),
+    [sidebarRows, pinnedIds, sidebarSelected, flat, list.items, archived, model.data.threadRows.value]);
   // Core's continuation facts: more listed pages, or a pinned read stopped at its bound.
-  const lowerBound = { pins: model.data.pinnedMore.value, all: list.nextCursor !== undefined };
+  const lowerBound = { pins: model.data.pinnedMore.value, all: list.nextCursor !== undefined, archive: archive.nextCursor !== undefined };
+  // Pinned and All start open and remember a close; Archive starts closed and remembers an open.
+  const startsClosed = (key: string) => key === "archive";
   const revealGroups = JSON.stringify(groups.filter(group => group.rows.some(row => row.summary.thread_id === sidebarSelected)).map(group => group.key));
   const revealParents = JSON.stringify(groups.flatMap(group => group.rows.filter(row => row.reveal).map(row => row.key)));
   // Selection writes the same preferences as explicit disclosure; subsequent user folds win.
@@ -142,17 +148,20 @@ export function App({ context }: { context: DesignContext }) {
     if (!selectedGroups.length) return;
     const prefs = context.prefs.peek();
     const closed = prefs.sidebarClosedGroups ?? [];
+    const openGroups = prefs.sidebarOpenGroups ?? [];
     const parents = prefs.sidebarOpenParents ?? [];
     const selectedParents = JSON.parse(revealParents) as string[];
     const nextOpen = [...new Set([...parents, ...selectedParents])].slice(-1000);
     const nextClosed = closed.filter(key => !selectedGroups.includes(key));
-    if (nextClosed.length !== closed.length || nextOpen.length !== parents.length || nextOpen.some((id, i) => parents[i] !== id)) {
-      context.setPrefs({ sidebarClosedGroups: nextClosed, sidebarOpenParents: nextOpen });
+    const nextOpenGroups = [...new Set([...openGroups, ...selectedGroups.filter(startsClosed)])];
+    if (nextClosed.length !== closed.length || nextOpenGroups.length !== openGroups.length || nextOpen.length !== parents.length || nextOpen.some((id, i) => parents[i] !== id)) {
+      context.setPrefs({ sidebarClosedGroups: nextClosed, sidebarOpenGroups: nextOpenGroups, sidebarOpenParents: nextOpen });
     }
   }, [context, sidebarSelected, revealGroups, revealParents]);
   const closedGroups = context.prefs.value.sidebarClosedGroups ?? [];
+  const openGroups = context.prefs.value.sidebarOpenGroups ?? [];
   const openParents = context.prefs.value.sidebarOpenParents ?? [];
-  const setFold = (field: "sidebarClosedGroups" | "sidebarOpenParents", id: string, add: boolean) => {
+  const setFold = (field: "sidebarClosedGroups" | "sidebarOpenGroups" | "sidebarOpenParents", id: string, add: boolean) => {
     const keys = (context.prefs.peek()[field] ?? []).filter(key => key !== id);
     context.setPrefs({ [field]: add ? [...keys, id].slice(-1000) : keys });
   };
@@ -171,13 +180,11 @@ export function App({ context }: { context: DesignContext }) {
   };
   const activeFilters = [
     ...(filters.awaiting ? [{ key: "awaiting", label: t("sidebar.needsYou"), remove: () => changeFilters({ awaiting: undefined }) }] : []),
-    ...(filters.archived ? [{ key: "archived", label: t("sidebar.archived"), remove: () => changeFilters({ archived: undefined }) }] : []),
     ...(filters.cwd ? [{ key: "cwd", label: filters.cwd, remove: () => changeFilters({ cwd: undefined }) }] : []),
     ...(filters.tags ?? []).map(tag => ({ key: `tag:${tag}`, label: tag, remove: () => changeFilters({ tags: filters.tags?.length === 1 ? undefined : filters.tags?.filter(value => value !== tag) }) })),
   ];
   const filterEntries = ({ tags, directories, moreTags, moreDirectories }: Parameters<Parameters<typeof FilterMenu>[0]["entries"]>[0]) => [
     { key: "awaiting", label: t("sidebar.needsYou"), onSelect: () => changeFilters({ awaiting: filters.awaiting ? undefined : "human" }) },
-    { key: "archived", label: t("sidebar.archived"), onSelect: () => changeFilters({ archived: filters.archived ? undefined : "include" }) },
     ...(canCwd ? directories.map(cwd => ({ key: `cwd:${cwd}`, label: t("sidebar.directory", { name: cwd }), onSelect: () => changeFilters({ cwd }) })) : []),
     ...(canTag ? tags.map(tag => ({ key: `tag:${tag}`, label: t("sidebar.tag", { name: tag }), onSelect: () => {
       const tags = filters.tags ?? [];
@@ -266,11 +273,13 @@ export function App({ context }: { context: DesignContext }) {
             {!appliedFilter?.awaiting && model.data.pinnedError.value ? <div class="side-search"><Notice tone="bad">{t("common.readError", { message: model.data.pinnedError.value.message })}</Notice></div> : null}
             <div class="tree">
               {groups.map(group => {
-                const label = t(group.key === "pins" ? "sidebar.pinned" : "sidebar.all");
-                const open = !closedGroups.includes(group.key);
-                const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }), onToggle: () => setFold("sidebarClosedGroups", group.key, open) };
+                const label = t(group.key === "pins" ? "sidebar.pinned" : group.key === "archive" ? "sidebar.archive" : "sidebar.all");
+                const open = startsClosed(group.key) ? openGroups.includes(group.key) : !closedGroups.includes(group.key);
+                const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }),
+                  onToggle: () => startsClosed(group.key) ? setFold("sidebarOpenGroups", group.key, !open) : setFold("sidebarClosedGroups", group.key, open) };
+                const pages = group.key === "archive" ? archive : list;
                 let hiddenBelow: number | undefined;
-                return <ThreadGroup key={group.key} label={label} count={list.loaded ? t("org.bandCount", { n: `${group.count}${lowerBound[group.key] ? "+" : ""}` }) : list.loading ? <LoadingCount /> : ""} countLoading={!list.loaded && list.loading} fold={fold}>
+                return <ThreadGroup key={group.key} label={label} count={pages.loaded ? t("org.bandCount", { n: `${group.count}${lowerBound[group.key] ? "+" : ""}` }) : pages.loading ? <LoadingCount /> : ""} countLoading={!pages.loaded && pages.loading} fold={fold}>
                   {open ? group.rows.map((r, index) => {
                     if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
                     const id = r.summary.thread_id;
@@ -296,12 +305,15 @@ export function App({ context }: { context: DesignContext }) {
                       menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary,
                         target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), canTag ? { onEditTags: () => editThreadTags(id, r.summary.archived_at !== undefined) } : undefined)] }} />;
                   }) : null}
+                  {/* Each paged band ends with its own Show more, so All's does not sit under Archive. */}
+                  {open && group.key !== "pins" ? ((group.key === "archive" ? model.data.canLoadMoreArchived() : model.data.canLoadMoreThreads())
+                    ? <Button disabled={pages.loadingMore} onClick={() => void (group.key === "archive" ? model.data.loadMoreArchived() : model.data.loadMoreThreads())}>{t("threads.more")}</Button>
+                    : pages.nextCursor ? <div class="side-note">{t("threads.capped")}</div> : null) : null}
                 </ThreadGroup>;
               })}
             </div>
             {!list.loaded && list.loading ? <LoadingRows label={t("common.loading")} rows={2} /> : null}
             {list.loaded && list.items.length === 0 ? <div class="side-note">{query || activeFilters.length ? t("threads.noMatch") : t("threads.empty")}</div> : null}
-            {model.data.canLoadMoreThreads() ? <Button disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button> : list.nextCursor ? <div class="side-note">{t("threads.capped")}</div> : null}
           </div>
           </div>
           <ShellFooter side="left"><ShellToggle panel={false} expanded={!context.prefs.value.navCollapsed} label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={`${context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} (Cmd/Ctrl+B)`} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })} /></ShellFooter>

@@ -81,6 +81,7 @@ export const flush = async (n = 8): Promise<void> => {
 };
 
 const tagsOf = (t: unknown): string[] => (t as { tags?: string[] }).tags ?? [];
+const isArchived = (t: unknown): boolean => (t as { archived_at?: string }).archived_at !== undefined;
 
 export function pendingReply(id: string, from: string, to: { kind: "name"; name: string } | { kind: "thread"; thread_id: string }, excerpt: string): PendingReply {
   return { message_id: id, asked_by: from, sender: { kind: "model", thread_id: from },
@@ -122,12 +123,15 @@ export class FakeOwnerDb {
         return this.page(rows, Number(a.limit), a.cursor);
       }
       case "thread.list": {
-        const f = c.args as { thread_ids?: string[]; tags?: string[]; cwd?: string; limit?: number; cursor?: string; state?: string };
+        const f = c.args as { thread_ids?: string[]; tags?: string[]; cwd?: string; limit?: number; cursor?: string; state?: string; archived?: "exclude" | "include" | "only" };
         if (f.thread_ids !== undefined) return { ok: true, result: { items: f.thread_ids.flatMap(id => this.threads[id] ? [this.threads[id]] : []) } };
-        if (f.state !== undefined) return this.page(Object.values(this.threads).filter(row => row.state === f.state), f.limit, f.cursor);
-        if (f.tags === undefined && f.cwd === undefined) return { ok: true, result: { items: Object.values(this.threads) } };
+        // Like the owner: archived Threads are excluded unless asked for (by-ID reads above include them).
+        const archived = f.archived ?? "exclude";
+        const scoped = Object.values(this.threads).filter(row => archived === "include" || (archived === "only") === isArchived(row));
+        if (f.state !== undefined) return this.page(scoped.filter(row => row.state === f.state), f.limit, f.cursor);
+        if (f.tags === undefined && f.cwd === undefined) return { ok: true, result: { items: scoped } };
         // Like the owner: every tag must match (AND), the cwd is exact, a cursor continues one filter.
-        const matching = Object.values(this.threads).filter((t) => (f.tags ?? []).every((tag) => tagsOf(t).includes(tag)) && (f.cwd === undefined || t.cwd === f.cwd));
+        const matching = scoped.filter((t) => (f.tags ?? []).every((tag) => tagsOf(t).includes(tag)) && (f.cwd === undefined || t.cwd === f.cwd));
         return this.page(matching, f.limit, f.cursor);
       }
       case "thread.tags":

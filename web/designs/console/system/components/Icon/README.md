@@ -118,8 +118,8 @@ Sidebar and shared state roles (Orca sidebar and Lucide semantics):
 - `sidebar.filter`: opens list filter controls.
 `settings.close` identifies the action to leave Settings; it is rendered as `cross`.
 
-- `group.expand`: expand one sidebar band (Pinned or All); right-facing chevron.
-- `group.collapse`: collapse one sidebar band (Pinned or All); down-facing chevron.
+- `group.expand`: expand one sidebar band (Pinned, All or Archive); right-facing chevron.
+- `group.collapse`: collapse one sidebar band (Pinned, All or Archive); down-facing chevron.
 
 | `thread.rename` | Edit a Thread title. | `pencil` |
 

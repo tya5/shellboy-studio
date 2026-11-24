@@ -64,7 +64,8 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 | Item | Bound | Released |
 |---|---|---|
 | Thread list rows (`threadList`, sidebar, Monitor) | 1000 (`MAX_LIST_ROWS`), 50 per press of Show more; past it, search | Replaced by a changed search; a hint re-reads one page and keeps rows further down, which can stay stale until the next full read |
-| Sidebar pinned set (`pinnedThreadIds`) | 1000 (`MAX_LIST_ROWS`), pages of 50 of `thread.list` with the `pin` tag, walked on list hints and resync; `pinnedMore` says a continuation was left | Replaced by the next complete walk; cleared on owner change |
+| Sidebar pinned set (`pinnedThreadIds`) | 1000 (`MAX_LIST_ROWS`), pages of 50 of `thread.list` with the `pin` tag and `archived: "include"`, walked on list hints and resync; `pinnedMore` says a continuation was left | Replaced by the next complete walk; cleared on owner change |
+| Sidebar Archive band (`archivedList`, `archivedThreadIds`) | Like the list: `thread.list` with `archived: "only"` and the list's filter, pages of 50 up to 1000 IDs (`loadMoreArchived`), rows in the one row cache; re-read (loaded page count) on resync, filter change and list hints that change archive state, parent or a filtered field; not read while Needs-you is on (#126) | Replaced by a changed filter; rows with the cache |
 | `rows`, `rowById` | Derived once per list change, from those rows | With the list |
 | An open Thread's row | Read by ID (`thread.list.thread_ids`, archived included) when it opens, on each `hello`/`resync`/restart (one coalesced `open-rows` read) and on its own hints; never dropped at the 1000-row bound while open (at most 64). The conversation status line, recovery, Retry and header take it from here, not from a list page (#103) | Like any row, once closed |
 | Threads view | 5 pages of 200 (`ORG_MAX_PAGES`), re-read on a list change, one read at a time and one trailing; grouping is memoized | Mode or filter change |
@@ -139,6 +140,7 @@ data.connection  // 'connecting' | 'open' | 'closed'      data.failedAttempts
 data.owner       // {state:'unknown'} | {state:'connected', info} | {state:'unreachable'}
 data.capabilities, data.bridgeVersion, data.invalidFrames, data.bridgeError
 data.threadList  // PagedState<ThreadSummary>              data.listFilter
+data.archivedList; data.loadMoreArchived()   // the sidebar's Archive band (archived: "only", same filter)
 data.trackThreadList(): Handle; data.setListFilter({query?, archived?, awaiting?, tags?, cwd?}); Needs-you is exclusive with query, tags and cwd: enabling it clears them, and changing any of them clears Needs-you. data.loadMoreThreads(); data.refreshThreadList()
 const h = data.openThread(id)   // ThreadHandle; h.detail, h.history, h.preview (signals)
 h.refresh(); h.loadOlderHistory(); h.close()

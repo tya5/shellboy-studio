@@ -875,3 +875,11 @@ state on close or owner change. Paths and
 metadata are display-only; reading attachment bodies is outside this section.
 The pinned Core includes #327. The bridge only accepts Thread-scoped bounded
 reads; the legacy bare-array response is not accepted.
+
+### Sidebar Archive band (Studio #126)
+
+| Decision | Reason and impact | Revisit when |
+|---|---|---|
+| The sidebar's Include archived filter is removed; archived Threads are reached through the Archive band, which applies the same query, tag and directory filters | The user asked that All never show archived Threads; keeping the filter would put them back into All | Someone needs archived and listed results merged in one band |
+| An archived pin keeps its copy in Archive as a pin keeps its copy in All | One rule for every band (`patterns/thread-list.md`); no client-side filtering of either read | The user prefers a pin to appear only in Pinned |
+| Archive's open state is a separate preference (`sidebarOpenGroups`) because it starts closed | The existing `sidebarClosedGroups` can only record a close of a band that starts open | Another band needs a different default |

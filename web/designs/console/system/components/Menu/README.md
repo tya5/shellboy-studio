@@ -42,6 +42,6 @@ When live entries change, focus stays on the current item if it survives, or mov
 ## Icon and check column (design system v2)
 
 - When any item has an `icon` or a `checked` value, every item gets a `size-icon-menu` column (`space-8` to its label), empty where the item has no icon. Labels then share one left edge. Give every action item a semantic icon where one exists, for example `action.editTags` for Edit tags.
-- An item with `checked` is a `menuitemcheckbox` with `aria-checked`; when true, its column shows the `menu.checked` mark in `fg`. Use it for filter toggles such as Awaiting you and Include archived.
+- An item with `checked` is a `menuitemcheckbox` with `aria-checked`; when true, its column shows the `menu.checked` mark in `fg`. Use it for filter toggles such as Awaiting you.
 - The panel is `panel` (not `raised`), so the `hover` surface of the item under the pointer or keyboard focus is visible. Corners `radius-m`, `shadow-popover`, minimum width `size-menu-min`. Items are `size-control` high with `space-6` / `space-8` padding and `radius-s`; destructive items use `bad` and `bad-soft`.
 - The trigger is a ghost icon Button with `aria-haspopup="menu"`, which keeps its `hover` surface while the menu is open.

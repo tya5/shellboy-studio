@@ -479,7 +479,8 @@ it("shows every pinned Thread older than the loaded page and marks lower-bound c
     const answer = db.answer.bind(db);
     db.answer = call => {
       const args = (call.args ?? {}) as { thread_ids?: string[]; tags?: string[]; limit?: number; cursor?: string };
-      if (call.command !== "thread.list" || args.thread_ids || args.tags) return answer(call);
+      const archivedRead = (call.args as { archived?: string } | undefined)?.archived !== undefined;
+      if (call.command !== "thread.list" || args.thread_ids || args.tags || archivedRead) return answer(call);
       const all = Object.values(db.threads), start = Number(args.cursor ?? 0), end = start + (args.limit ?? 50);
       return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
     };
@@ -498,5 +499,87 @@ it("shows every pinned Thread older than the loaded page and marks lower-bound c
     expect(count("All")).toBe("Threads: 50+");
     expect(row("new0").querySelector(".count")?.textContent).toBe("17+");
     expect(row("new1").querySelector(".count")?.textContent).toBe("2");
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("keeps archived Threads out of All and shows them with their children in a closed Archive band (#126)", async () => {
+  const archivedAt = { archived_at: "2026-01-02T00:00:00Z" };
+  const f = await fixtureModel({ route: "conversation", threadId: "live", capabilities: ["thread.tags"], configure(db) {
+    db.threads = {
+      live: summary("live"),
+      arch: summary("arch", archivedAt),
+      archKid: summary("archKid", { ...archivedAt, parent_id: "arch" }),
+      // An archived child whose parent is listed: a root in Archive, absent from All.
+      stray: summary("stray", { ...archivedAt, parent_id: "live" }),
+    };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const band = (name: string) => host.querySelector<HTMLElement>(`.side-list section[aria-label="${name}"]`);
+  const links = (name: string) => [...band(name)?.querySelectorAll<HTMLAnchorElement>("a.tree-link") ?? []].map(link => link.getAttribute("href")!.replace("#/conversation/", ""));
+  const toggle = (name: string) => band(name)!.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
+  try {
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    expect(f.t.calls("thread.list").map(call => call.args)).toContainEqual({ archived: "only", order: "created", limit: 50 });
+    // All is Core's default (archived excluded): no archived Thread and no child chip for the archived child.
+    expect(links("All")).toEqual(["live"]);
+    expect(band("All")!.querySelector(".children-chip")).toBeNull();
+    // Archive is the last band, closed by default, with its count.
+    expect([...host.querySelectorAll(".side-list section")].map(section => section.getAttribute("aria-label")).at(-1)).toBe("Archived");
+    expect(toggle("Archived").getAttribute("aria-expanded")).toBe("false");
+    expect(band("Archived")!.querySelector(".tgroup-count")?.textContent).toBe("Threads: 3");
+    expect(links("Archived")).toEqual([]);
+    await act(async () => { toggle("Archived").click(); });
+    expect(prefs.peek().sidebarOpenGroups).toEqual(["archive"]);
+    expect(toggle("Archived").getAttribute("aria-expanded")).toBe("true");
+    // Children start collapsed under their archived parent; the stray child is a root.
+    expect(links("Archived")).toEqual(["arch", "stray"]);
+    const chip = band("Archived")!.querySelector<HTMLButtonElement>('a[href="#/conversation/arch"]')!.parentElement!.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    expect(chip.getAttribute("aria-label")).toContain("1 children");
+    await act(async () => { chip.click(); });
+    expect(links("Archived")).toEqual(["arch", "archKid", "stray"]);
+    expect(prefs.peek().sidebarOpenParents).toContain(JSON.stringify(["archive", "arch"]));
+    expect(band("Archived")!.querySelector('a[href="#/conversation/archKid"]')!.closest(".thread-item-child")).not.toBeNull();
+    expect(band("Archived")!.querySelector('a[href="#/conversation/stray"]')!.closest(".thread-item-child")).toBeNull();
+    await act(async () => { toggle("Archived").click(); });
+    expect(prefs.peek().sidebarOpenGroups).toEqual([]);
+    expect(links("Archived")).toEqual([]);
+    // Archiving moves a Thread on the owner's hint: out of All, into Archive.
+    f.db.threads.live = { ...f.db.threads.live!, archived_at: "2026-01-03T00:00:00Z" } as ReturnType<typeof summary>;
+    await act(async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["live"], list: true }); await settle(f.t, f.db); });
+    expect(links("All")).toEqual([]);
+    expect(band("Archived")!.querySelector(".tgroup-count")?.textContent).toBe("Threads: 4");
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("keeps an archived pin in Pinned, copies it into Archive as All does, and hides Archive with Needs-you (#126)", async () => {
+  const f = await fixtureModel({ route: "conversation", threadId: "live", capabilities: ["thread.tags"], configure(db) {
+    db.threads = {
+      live: summary("live"),
+      kept: summary("kept", { archived_at: "2026-01-02T00:00:00Z", tags: ["pin"] }),
+      keptKid: summary("keptKid", { archived_at: "2026-01-02T00:00:00Z", parent_id: "kept" }),
+    };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const band = (name: string) => host.querySelector<HTMLElement>(`.side-list section[aria-label="${name}"]`);
+  const links = (name: string) => [...band(name)?.querySelectorAll<HTMLAnchorElement>("a.tree-link") ?? []].map(link => link.getAttribute("href")!.replace("#/conversation/", ""));
+  try {
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    expect(f.t.calls("thread.list").map(call => call.args)).toContainEqual({ archived: "include", tags: ["pin"], limit: 50 });
+    expect(links("Pinned")).toEqual(["kept"]);
+    expect(band("Pinned")!.querySelector('a[href="#/conversation/kept"]')!.parentElement!.querySelector("button[aria-expanded]")?.getAttribute("aria-label")).toContain("1 children");
+    expect(links("All")).toEqual(["live"]);
+    expect(band("Archived")!.querySelector(".tgroup-count")?.textContent).toBe("Threads: 2");
+    await act(async () => { band("Archived")!.querySelector<HTMLButtonElement>(".tgroup-toggle")!.click(); });
+    expect(links("Archived")).toEqual(["kept"]);
+    // Needs-you hides Pinned and Archive alike; no archived read is sent for it.
+    const reads = f.t.calls("thread.list").length;
+    await act(async () => { f.data.setListFilter({ awaiting: "human" }); await settle(f.t, f.db); });
+    expect(band("Pinned")).toBeNull();
+    expect(band("Archived")).toBeNull();
+    expect(f.t.calls("thread.list").slice(reads).map(call => call.args)).not.toContainEqual(expect.objectContaining({ archived: "only" }));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });

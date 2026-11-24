@@ -232,7 +232,7 @@ describe("approved list section and status rules", () => {
     expect(threads).toContain('leading={<Icon role="organization.search" size="small" />}');
     expect(threads).toContain("moveAction={canMove ? <button");
     const app = screenSources["../screens/App.tsx"] ?? "";
-    expect(app).toContain("list.loaded ? t(\"org.bandCount\"");
+    expect(app).toContain("pages.loaded ? t(\"org.bandCount\"");
     expect(app).toContain("LoadingRows label={t(\"common.loading\")}");
     expect(app).toContain('leading={<Icon role="thread.search" size="small" />}');
     expect(source).toContain('class="tgroup-chevron"');
