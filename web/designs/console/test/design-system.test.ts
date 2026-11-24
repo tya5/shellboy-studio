@@ -201,7 +201,7 @@ describe("shell footer toggles", () => {
     expect(toggle).toContain("panel ? \"M20");
     expect(toggle).toContain("panel ? \" right\" : \"\"");
     expect(rail).toContain(".panel-tab-count { display:grid; place-items:center;");
-    expect(rail).toContain("border-radius:calc(var(--size-icon-small) / 2); background:var(--wait); color:var(--fg)");
+    expect(rail).toContain("border-radius:calc(var(--size-icon-small) / 2); background:var(--wait); color:var(--on-wait)");
     expect(rail).toContain(".panel-tabs:not(.panel-tabs-rail) .panel-tab-count { position:absolute;");
     expect(rail).toContain(".panel-tabs-rail .panel-tab-count { position:absolute; inset-block-start:var(--space-2); inset-inline-end:var(--space-2); }");
     expect(rail).not.toContain(".panel-tabs-rail .panel-tab-count { background:");
@@ -273,5 +273,31 @@ describe("approved list section and status rules", () => {
     expect(mark).not.toMatch(/\.st\.run \.i\{[^}]*transform:scale/);
     expect(mark).toContain(".st.idle .i{width:var(--size-icon-small);height:var(--size-icon-small)}");
     expect(mark).toContain(".st.halt .dot{background:var(--muted);border-radius:2px");
+  });
+});
+
+
+describe("solid status foreground contrast", () => {
+  it.each(["console", "light", "terminal"])("pairs solid text fills at 4.5:1 in %s", (theme) => {
+    const css = readFileSync(new URL(`../system/tokens/${theme}.css`, import.meta.url), "utf8");
+    const values = new Map([...css.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(m => [m[1]!, m[2]!.trim()]));
+    const luminance = (hex: string) => {
+      const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+      return .2126 * c[0]! + .7152 * c[1]! + .0722 * c[2]!;
+    };
+    for (const [fill, foreground] of [["accent", "on-accent"], ["wait", "on-wait"]]) {
+      const a = luminance(values.get(fill)!); const b = luminance(values.get(foreground)!);
+      expect((Math.max(a, b) + .05) / (Math.min(a, b) + .05), `${foreground} on ${fill}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("does not put normal foreground text on a solid status fill in a component rule", () => {
+    for (const [path, source] of Object.entries(componentStyleFiles)) {
+      for (const rule of source.matchAll(/[^{}]+\{([^{}]+)\}/g)) {
+        if (/background:\s*var\(--(?:accent|wait|bad|ok)\)/.test(rule[1]!)) {
+          expect(rule[1], path).not.toMatch(/color:\s*var\(--fg\)/);
+        }
+      }
+    }
   });
 });
