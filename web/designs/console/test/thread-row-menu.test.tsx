@@ -148,7 +148,7 @@ describe("Thread row menu and delete", () => {
       expect(rowActionCss).toMatch(/\[data-sidebar-row\] \.row-menu-trigger>\.btn::after\{inset:0\}/);
       expect(readSystemCss("tokens/console.css")).toMatch(/--size-touch:\s*44px;/);
       const hash = location.hash;
-      await act(async () => trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })));
+      await act(async () => { trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); });
       expectVisibleMenu();
       expect(select).not.toHaveBeenCalled();
       expect(location.hash).toBe(hash);
