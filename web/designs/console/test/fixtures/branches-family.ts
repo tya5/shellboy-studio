@@ -66,7 +66,11 @@ export function branchesFamily(db: FakeOwnerDb, options: { running?: boolean } =
     titles: {},
     forks: 0,
     revisions: {},
-    append(threadId, node) { this.paths[threadId]!.push(node); },
+    append(threadId, node) {
+      const path = this.paths[threadId]!;
+      this.revisions[threadId] = (this.revisions[threadId] ?? path.length) + 1;
+      path.push(node);
+    },
   };
   db.threads.rel = summary("rel", { title: "Release notes", state: "idle", activity: "idle", updated_at: AT });
   db.threads.stream = summary("stream", { title: "Streaming output", parent_id: "rel", state: options.running === false ? "idle" : "running", activity: "tools", updated_at: AT });
@@ -131,6 +135,7 @@ export function branchesFamily(db: FakeOwnerDb, options: { running?: boolean } =
       const kept = `${id}-rewound`;
       fixture.paths[kept] = [...path];
       fixture.extra.push({ thread_id: kept, parent: id, at: String(a.node_id), title: `${db.threads[id]?.title} · rewound` });
+      fixture.revisions[id] = (fixture.revisions[id] ?? path.length) + 1;
       fixture.paths[id] = path.slice(0, at + 1);
       return { ok: true, result: { ...facts, branch_thread_id: kept } };
     }

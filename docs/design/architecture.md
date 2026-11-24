@@ -654,14 +654,16 @@ node ID (node text is immutable), at most 2048, oldest out first, so a family
 re-read does not bulk reload or clear them. An owner change clears everything and
 cancels reads in flight; leaving the view drops queued reads and positions;
 late results never publish. A shorter path or a non-growing new tip drops that
-lane's positions. Because the family read has no path revision, each successful
-family refresh checks at most the one open action point with a node-scoped
-`history.window`. An unchanged revision preserves the open actions and focus;
-a new revision re-keys the action subtree and withdraws a stale preview, even
-if the graph cache already saw a newer window. On revision advance the graph
-keeps only positions proved by the new window; immutable excerpts stay cached.
-Owner refusal of membership drops that lane's cached positions and closes the
-point. The model's mutation receipts survive these projection changes. The
+lane's positions. Because the family read has no path revision,
+refresh checks the one selected action point and re-reads disclosed coordinates
+on changed lanes or the selected lane, in bounded windows. Disclosure is not
+membership: older positions are discarded on revision advance, but immutable
+excerpts are cached by node ID. The refreshed graph publishes as a batch, so
+surviving rows keep their keys and focus. Branches accepts the point's membership
+and revision from one targeted owner reply. A newer observed revision invalidates
+standalone old proof; it never approves an action. An unchanged point preserves
+open actions; a new valid revision re-keys actions and withdraws a stale preview.
+Mutation receipts survive these projection changes. The
 two-line comparison keeps its own bounded reads
 (`branch-compare.ts`: one anchor read and one 50-row page per side, four pages
 held, one page per explicit Show more).

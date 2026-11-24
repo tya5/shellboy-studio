@@ -172,8 +172,8 @@ const excerptOf = (i: HistoryItem): NodeExcerpt => ({ kind: i.kind, excerpt: i.e
 
 /**
  * Bounded reads behind the lane rows. Only rows on screen ask (`want`), the queue and concurrency are fixed,
- * and results are kept by node ID. Nothing is cleared by a family re-read, so rows keep their text; an owner
- * change or leaving the view (`reset`) drops everything in flight and the position maps.
+ * and immutable excerpts are kept by node ID. A path revision replaces positional membership, not
+ * disclosure. Leaving the view or changing owners resets the bounded projection.
  */
 export class LaneReader {
   /** Bumped when read results land, so rows re-render with them. */
@@ -193,14 +193,37 @@ export class LaneReader {
   private cancel = new Cancel();
   private epoch = 0;
 
-  constructor(private readonly ops: Operations, private readonly supported: () => boolean) {}
+  constructor(private readonly ops: Operations, private readonly supported: () => boolean, private readonly observeRevision?: (threadId: string, revision: number) => void) {}
 
   revision(threadId: string): number | undefined { return this.revisions.get(threadId); }
   node(nodeId: string | undefined): NodeExcerpt | undefined { return nodeId === undefined ? undefined : this.nodes.get(nodeId); }
   /** The read for this need ended without text: show it as unknown, do not retry until reset. */
   failedFor(need: LaneNeed): boolean { return this.failed.has(needKey(need)); }
   nodeAt(threadId: string, ordinal: number): string | undefined { return this.positions.get(threadId)?.get(ordinal); }
-  opened(threadId: string): Iterable<number> { return this.openedAt.get(threadId) ?? []; }
+  opened(threadId: string): Iterable<number> {
+    return [...(this.openedAt.get(threadId) ?? [])].filter(o => this.nodeAt(threadId, o) !== undefined);
+  }
+
+  /** Refresh disclosed coordinates only; callers publish them together with the family. */
+  async readDisclosed(family: BranchFamily, targetThread: string | undefined, cancel: Cancel): Promise<{ threadId: string; window: HistoryWindowResult }[]> {
+    const results: { threadId: string; window: HistoryWindowResult }[] = [];
+    if (!this.supported()) return results;
+    for (const item of family.items) {
+      const { threadId, tipNodeId, pathNodes } = item;
+      const prior = this.sizes.get(threadId);
+      if (threadId !== targetThread && prior?.tip === tipNodeId && prior?.path === pathNodes) continue;
+      const ordinals = [...(this.openedAt.get(threadId) ?? [])].filter(o => pathNodes === undefined || o < pathNodes).sort((a, b) => a - b);
+      for (let i = 0; i < ordinals.length && !cancel.cancelled;) {
+        const from = ordinals[i++]!;
+        let to = from;
+        while (ordinals[i] === to + 1 && to - from + 1 < LANE_PAGE) to = ordinals[i++]!;
+        const out = await this.ops.historyWindow({ thread_id: threadId, ordinal: from, before: 0, after: to - from,
+          excerpt_chars: LANE_EXCERPT_CHARS }, { cancel });
+        if (out.ok && out.value.thread_id === threadId) results.push({ threadId, window: out.value });
+      }
+    }
+    return results;
+  }
   canOpenMore(): boolean { return this.openedCount < LANE_OPENED_MAX; }
 
   /** A row came on screen. */
@@ -224,22 +247,9 @@ export class LaneReader {
   private remember(threadId: string, { revision, items }: HistoryWindowResult): boolean {
     const previous = this.revision(threadId);
     if (previous !== undefined && revision < previous) return false;
-    if (previous !== undefined && revision > previous) {
-      const opened = this.openedAt.get(threadId);
-      const positions = this.positions.get(threadId);
-      // A growing path may have rewound first. Carry forward only positions proved here.
-      const confirmed = new Set<number>();
-      for (const item of items) {
-        const ordinal = item.selection?.ordinal;
-        if (ordinal !== undefined && item.node_id && opened?.has(ordinal) && positions?.get(ordinal) === item.node_id) confirmed.add(ordinal);
-      }
-      this.dropPositions(threadId);
-      if (confirmed.size) {
-        this.openedAt.set(threadId, confirmed);
-        this.openedCount += confirmed.size;
-      }
-    }
+    if (previous !== undefined && revision > previous) this.positions.delete(threadId);
     this.revisions.set(threadId, revision);
+    if (previous !== revision) this.observeRevision?.(threadId, revision);
     let at = this.positions.get(threadId);
     if (!at) this.positions.set(threadId, at = new Map());
     for (const i of items) {
@@ -316,29 +326,22 @@ export class LaneReader {
   invalidatePath(threadId: string, revision?: number): void {
     if (revision !== undefined && revision < (this.revision(threadId) ?? 0)) return;
     if (revision !== undefined) this.revisions.set(threadId, revision);
-    this.dropPositions(threadId);
+    this.positions.delete(threadId);
     this.version.value = this.version.peek() + 1;
   }
 
-  private dropPositions(threadId: string): void {
-    const opened = this.openedAt.get(threadId);
-    this.openedCount -= opened?.size ?? 0;
-    this.openedAt.delete(threadId);
-    this.positions.delete(threadId);
-  }
-
   /**
-   * Without a path revision in the family read, a shorter path or replacement tip without growth
-   * invalidates positions immediately. Window admission handles observed revision changes.
+   * Disclosed lanes swap their positional evidence with the refreshed family, including on growth.
+   * For other lanes, window admission handles revision changes; a shrink also invalidates positions.
    */
   familyChanged(family: BranchFamily): void {
     let dropped = false;
     for (const i of family.items) {
       const had = this.sizes.get(i.threadId);
       this.sizes.set(i.threadId, { tip: i.tipNodeId, path: i.pathNodes });
-      if (!had || had.tip === i.tipNodeId) continue;
-      if (i.pathNodes === undefined || had.path === undefined || i.pathNodes <= had.path) {
-        this.dropPositions(i.threadId);
+      if (!had || (had.tip === i.tipNodeId && had.path === i.pathNodes)) continue;
+      if (this.openedAt.has(i.threadId) || i.pathNodes === undefined || had.path === undefined || i.pathNodes <= had.path) {
+        this.positions.delete(i.threadId);
         dropped = true;
       }
     }

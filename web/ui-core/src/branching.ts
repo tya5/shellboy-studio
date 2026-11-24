@@ -171,7 +171,10 @@ export class Branches {
   readonly lanes: LaneReader;
 
   constructor(private readonly ops: Operations, private readonly owner: () => string | undefined = () => "synthetic-owner", private readonly view?: () => string | undefined, private readonly historyWindow: () => boolean = () => true) {
-    this.lanes = new LaneReader(ops, historyWindow);
+    this.lanes = new LaneReader(ops, historyWindow, (threadId, revision) => {
+      const current = this.targetRevision.peek();
+      if (this.target.peek()?.threadId === threadId && current !== undefined && revision > current) this.choose(undefined);
+    });
   }
   private currentView(): string | undefined { return this.view ? this.view() : this.state.peek().threadId; }
 
@@ -228,8 +231,9 @@ export class Branches {
           continue;
         }
         const target = this.target.peek();
-        // Family summaries do not carry selection_revision. Verify only the open point.
-        const point = out.ok && target && this.historyWindow()
+        const disclosed = out.ok ? await this.lanes.readDisclosed(out.family, target?.threadId, this.cancel) : [];
+        // Membership and revision come from one targeted reply, never from the graph cache.
+        const point = out.ok && target && target === this.target.peek() && this.historyWindow()
           ? await this.ops.historyWindow({ thread_id: target.threadId, node_id: target.nodeId,
               before: 0, after: 0, excerpt_chars: LANE_EXCERPT_CHARS }, { cancel: this.cancel })
           : undefined;
@@ -237,20 +241,26 @@ export class Branches {
         batch(() => {
           if (out.ok) this.lanes.familyChanged(out.family);
           if (target && target === this.target.peek() && point) {
-            if (point.ok && point.value.thread_id === target.threadId && point.value.items.length === 1 && point.value.items[0]?.node_id === target.nodeId) {
-              this.lanes.refreshPoint(target.threadId, point.value);
+            const floor = Math.max(this.targetRevision.peek() ?? 0, this.lanes.revision(target.threadId) ?? 0,
+              ...disclosed.filter(d => d.threadId === target.threadId).map(d => d.window.revision));
+            if (point.ok && point.value.thread_id === target.threadId && point.value.revision >= floor
+              && point.value.items.length === 1 && point.value.items[0]?.node_id === target.nodeId) {
               if (this.targetRevision.peek() !== point.value.revision) {
                 this.targetRevision.value = point.value.revision;
                 const rewind = this.rewind.peek().kind;
                 if (rewind === "ready" || rewind === "previewing" || rewind === "refused") this.clearPreview();
               }
-            } else if (point.ok || (point.error.kind === "owner" && ["cursor_expired", "thread_not_found"].includes(point.error.code))) {
-              const details = !point.ok && point.error.kind === "owner" ? point.error.details : undefined;
-              const revision = details && typeof details === "object" && "revision" in details ? details.revision : undefined;
-              this.lanes.invalidatePath(target.threadId, typeof revision === "number" && Number.isSafeInteger(revision) ? revision : undefined);
+            } else {
               this.choose(undefined);
-            } else if (this.rewind.peek().kind === "ready" || this.rewind.peek().kind === "previewing") {
-              this.clearPreview();
+            }
+          }
+          for (const { threadId, window } of disclosed) this.lanes.refreshPoint(threadId, window);
+          if (target && point?.ok && point.value.thread_id === target.threadId) this.lanes.refreshPoint(target.threadId, point.value);
+          if (target && point && !point.ok && point.error.kind === "owner" && ["cursor_expired", "thread_not_found"].includes(point.error.code)) {
+            const details = point.error.details;
+            const revision = details && typeof details === "object" && "revision" in details ? details.revision : undefined;
+            if (typeof revision === "number" && Number.isSafeInteger(revision) && revision > (this.lanes.revision(target.threadId) ?? 0)) {
+              this.lanes.invalidatePath(target.threadId, revision);
             }
           }
           // A failed re-read keeps the last family, marked with the error.

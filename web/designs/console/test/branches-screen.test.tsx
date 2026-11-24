@@ -165,6 +165,24 @@ describe("Branches screen", () => {
     expect(rows().map((r) => r.dataset.key)).toEqual([...before.keys()]);
   });
 
+  it("keeps a focused row in an expanded run across an ordinary append", async () => {
+    const { row, point, refresh, flush, family, el } = await open();
+    await act(async () => { row("rel|run|6")!.querySelector<HTMLButtonElement>(".lanes-run")!.click(); });
+    await flush();
+    const before = row("rel|n|r9");
+    const focused = point("Add the upgrade notes")!;
+    focused.focus();
+    expect(document.activeElement).toBe(focused);
+    family.append("rel", { node_id: "r15", kind: "user", excerpt: "Ordinary append" });
+    await refresh();
+    expect(row("rel|n|r9")).toBe(before);
+    expect(point("Add the upgrade notes")).toBe(focused);
+    expect(document.activeElement).toBe(focused);
+    expect(row("rel|run|6")).toBeNull();
+    expect(text(row("rel|tip"))).toContain("Ordinary append");
+    expect(el.querySelector(".loadrows")).toBeNull();
+  });
+
   it("closes an opened message removed by a rewind and longer append in one refresh", async () => {
     const { el, row, point, refresh, flush, family, model } = await open();
     const unaffected = row("stream|tip");
@@ -224,13 +242,14 @@ describe("Branches screen", () => {
     expect(el.querySelector(".lanes-actions input")).not.toBeNull();
     expect(el.querySelector(".lanes-actions input")).not.toBe(input);
     expect(row("rel|n|r9")).toBeNull();
+    expect(point("Replacement 0")).toBeDefined();
     expect(point("Add the upgrade notes")).toBeUndefined();
     expect(model.branches.lanes.node("r9")?.excerpt).toBe("Add the upgrade notes.");
     expect(text(row("rel|tip"))).toContain("Replacement 7");
     expect(el.querySelector(".loadrows")).toBeNull();
   });
 
-  it("settles the open action revision even when a newer lane window arrives first", async () => {
+  it("does not authorize an action from a point reply superseded by a newer lane window", async () => {
     const { el, row, point, button, flush, model, t, db } = await open();
     await act(async () => { point("Compare provider behavior")!.click(); });
     await act(async () => { button("Rewind Release notes to here")!.click(); });
@@ -261,10 +280,11 @@ describe("Branches screen", () => {
       await refresh;
     });
     await flush();
-    expect(model.branches.targetRevision.value).toBe(19);
+    expect(model.branches.targetRevision.value).toBeUndefined();
+    expect(model.branches.target.value).toBeUndefined();
     expect(model.branches.lanes.revision("rel")).toBe(20);
     expect(model.branches.rewind.value.kind).toBe("idle");
-    expect(el.querySelector(".lanes-actions input")).not.toBeNull();
+    expect(el.querySelector(".lanes-actions input")).toBeNull();
     expect(el.querySelector("[data-leaving]")).toBeNull();
     expect(t.calls("thread.rewind")).toHaveLength(1);
   });

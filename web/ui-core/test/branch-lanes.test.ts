@@ -2,7 +2,7 @@
 // ordinals, columns reused once a lane ends, and reads that a re-read never repeats or clears.
 import { describe, expect, it } from "vitest";
 import { Link } from "../../data/src/link";
-import { Operations } from "../../data/src/operations";
+import { Cancel, Operations } from "../../data/src/operations";
 import { FakeTransport, flush } from "../../data/test/harness";
 import { LANE_CONCURRENCY, LANE_OPENED_MAX, LANE_QUEUE_MAX, LaneReader, headNeed, laneGraph, leavingRows } from "../src/branch-lanes";
 import { readFamily, type BranchFamily } from "../src/branches";
@@ -150,7 +150,7 @@ describe("lane reads", () => {
     expect(reader.nodeAt("fork-a", 101)).toBeUndefined();
   });
 
-  it("Show more reads one guarded page after the node before the run; appends keep it, a rewind drops it", async () => {
+  it("Show more opens one guarded page; refresh preserves disclosure but requires new membership", async () => {
     const { t, reader } = setup();
     reader.want(headNeed(laneGraph(family()).byId.get("fork-a")!));
     answer(t, t.calls("history.window")[0]!.id, "fork-a", [{ node_id: "n100", kind: "user", excerpt: "split", ordinal: 100 }, { node_id: "f101", kind: "user", excerpt: "first", ordinal: 101 }]);
@@ -166,7 +166,14 @@ describe("lane reads", () => {
     reader.familyChanged(f);
     const grown = family();
     grown.items[1]!.pathNodes = 114; grown.items[1]!.tipNodeId = "f113";
+    const revalidate = reader.readDisclosed(grown, undefined, new Cancel());
+    const request = t.calls("history.window").at(-1)!;
+    expect(request.args).toEqual({ thread_id: "fork-a", ordinal: 102, before: 0, after: 9, excerpt_chars: 160 });
+    answer(t, request.id, "fork-a", Array.from({ length: 10 }, (_, k) => ({ node_id: `f${102 + k}`, kind: "user", excerpt: `m${102 + k}`, ordinal: 102 + k })));
+    const windows = await revalidate;
     reader.familyChanged(grown);
+    expect([...reader.opened("fork-a")]).toEqual([]);
+    for (const { threadId, window } of windows) reader.refreshPoint(threadId, window);
     expect([...reader.opened("fork-a")]).toHaveLength(10);
     const rewound = family();
     rewound.items[1]!.pathNodes = 105; rewound.items[1]!.tipNodeId = "f104";
