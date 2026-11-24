@@ -33,3 +33,7 @@ Thread Settings uses the selected handle’s existing `thread.get` read. A row p
 no mutation receipt value: it waits for the existing change/resync read, and Undo
 restores the observed raw field only while the saved value still matches. The title
 row cannot Undo because Core publishes the display title, not its raw override.
+
+## Conversation status announcements (#121)
+
+The visible conversation status keeps its live elapsed-time display, but is not itself a live region. A separate polite, atomic status announces only the current state/activity label; do not include elapsed time, running descriptions, or other ticking values in it. Follow the WAI-ARIA APG [Status Message Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/status/) and use it for meaningful state transitions, not continuously changing measurements.
