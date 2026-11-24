@@ -128,6 +128,33 @@ describe("Thread row menu and delete", () => {
     render(null, host); host.remove(); invokingControl.remove();
   });
 
+  it("reserves the full phone target away from the Thread link and activates only the menu", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const select = vi.fn();
+    try {
+      act(() => render(<ThreadItem href="#/conversation/t1" title="One" status={undefined} statusLabel=""
+        depth={0} current={false} pending={0} sidebar onSelect={select} menu={rowMenu} />, host));
+      const row = host.querySelector("[data-sidebar-row]")!;
+      const link = row.querySelector("a")!;
+      const trigger = row.querySelector<HTMLButtonElement>("button[aria-haspopup=menu]")!;
+      expect(trigger.closest("[data-row-action]")?.parentElement).toBe(link.parentElement);
+      expect(link.contains(trigger)).toBe(false);
+      // Happy DOM cannot do container-query hit testing. Check the sizing rules
+      // for the mounted target separately from its click behavior.
+      expect(listRowCss).toMatch(/\[data-sidebar-row\] > \.list-row-action\{width:var\(--size-touch\);visibility:visible\}/);
+      expect(listRowCss).toMatch(/\[data-sidebar-row\] \.list-row-action \.row-menu-trigger\{margin-inline:0\}/);
+      expect(rowActionCss).toMatch(/\[data-sidebar-row\] \.row-menu-trigger>\.btn\{width:var\(--size-touch\);height:var\(--size-touch\)/);
+      expect(rowActionCss).toMatch(/\[data-sidebar-row\] \.row-menu-trigger>\.btn::after\{inset:0\}/);
+      expect(readSystemCss("tokens/console.css")).toMatch(/--size-touch:\s*44px;/);
+      const hash = location.hash;
+      await act(async () => trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })));
+      expectVisibleMenu();
+      expect(select).not.toHaveBeenCalled();
+      expect(location.hash).toBe(hash);
+    } finally { act(() => render(null, host)); host.remove(); }
+  });
+
   it("keeps the indented current thread as one link with a separate action button", () => {
     const host = document.createElement("div");
     document.body.append(host);

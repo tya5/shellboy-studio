@@ -5,7 +5,7 @@ import "@preact/signals";
 import { signal } from "@preact/signals-core";
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { settle, summary, type FakeOwnerDb } from "../../../data/test/harness";
 import type { AppModel, DesignContext, Prefs } from "../../../ui-core/src";
@@ -57,6 +57,48 @@ async function headerMenu(el: HTMLElement): Promise<string[]> {
 }
 
 describe("Open Thread facts (#103)", () => {
+  it("follows keyboard-sized visual viewport changes only in a narrow conversation", async () => {
+    const { model } = await fixtureModel({ route: "conversation", threadId: "lead" });
+    const viewport = Object.assign(new EventTarget(), { height: 790, offsetTop: 0, scale: 1 });
+    const phone = Object.assign(new EventTarget(), { matches: true });
+    const match = window.matchMedia.bind(window);
+    const media = vi.spyOn(window, "matchMedia").mockImplementation(query => query === "(max-width: 899px)" ? phone as MediaQueryList : match(query));
+    const original = Object.getOwnPropertyDescriptor(window, "visualViewport");
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    try {
+      const el = draw(model);
+      const frame = el.querySelector<HTMLElement>(".app")!;
+      const height = () => frame.style.getPropertyValue("--conversation-viewport-height");
+      expect(el.querySelector(".dock textarea")).not.toBeNull();
+      expect(height()).toBe("790px");
+      viewport.height = 380;
+      viewport.dispatchEvent(new Event("resize"));
+      expect(height()).toBe("380px");
+      viewport.offsetTop = 24;
+      viewport.dispatchEvent(new Event("scroll"));
+      expect(height()).toBe("404px");
+      viewport.scale = 2;
+      viewport.dispatchEvent(new Event("resize"));
+      expect(height()).toBe("");
+      viewport.scale = 1;
+      phone.matches = false;
+      phone.dispatchEvent(new Event("change"));
+      expect(height()).toBe("");
+      phone.matches = true;
+      phone.dispatchEvent(new Event("change"));
+      expect(height()).toBe("404px");
+      act(() => render(null, el));
+      viewport.dispatchEvent(new Event("resize"));
+      expect(height()).toBe("");
+    } finally {
+      if (host) act(() => render(null, host!));
+      if (original) Object.defineProperty(window, "visualViewport", original);
+      else Reflect.deleteProperty(window, "visualViewport");
+      media.mockRestore();
+      model.dispose(); model.data.stop();
+    }
+  });
+
   it("announces the state once, without announcing clock ticks", async () => {
     const startedAt = "2026-11-07T10:19:00Z";
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {

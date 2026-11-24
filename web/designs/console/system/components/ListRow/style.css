@@ -14,9 +14,12 @@
 
 @container app (max-width:899px){
   .panel-list-main{min-height:var(--size-touch)}
-  .list-row[data-sidebar-row] > .list-row-action{width:var(--size-row-action);visibility:visible}
+  .list-row[data-sidebar-row] > .list-row-action{width:var(--size-touch);visibility:visible}
 }
 @container app (max-width:899px){
   .list-row-action .row-menu-trigger{margin-inline:calc((var(--size-row-action) - var(--size-row-action-touch))/2)}
-  [data-sidebar-row] .list-row-action .row-menu-trigger{margin-inline:calc((var(--size-row-action) - var(--size-touch))/2)}
+  [data-sidebar-row] .list-row-action .row-menu-trigger{margin-inline:0}
+}
+@media (hover:none){
+  .list-row[data-sidebar-row] > .list-row-action{width:var(--size-touch)}
 }

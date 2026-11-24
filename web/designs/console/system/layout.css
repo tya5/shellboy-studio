@@ -2,6 +2,7 @@
    components work in any frame. Container queries can't read custom properties, so 899px and
    1179px are written here, once. */
 .app{container:app / inline-size;height:100dvh;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
+@media (max-width:899px){.app{height:min(100dvh,var(--conversation-viewport-height,100dvh))}}
 .shell{flex:1;min-height:0;display:grid;grid-template-columns:var(--size-sidebar) minmax(0,1fr)}
 
 .side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden}

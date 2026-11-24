@@ -6,6 +6,11 @@
   .row-menu-trigger>.btn::after{inset:calc((var(--size-row-action-touch) - var(--size-touch))/2 - var(--space-2))}
 }
 
+@media (hover:none){
+  [data-sidebar-row] .row-menu-trigger>.btn{width:var(--size-touch);height:var(--size-touch);min-width:var(--size-touch);min-height:var(--size-touch)}
+  [data-sidebar-row] .row-menu-trigger>.btn::after{inset:0}
+}
+
 @container app (max-width:899px){
   [data-sidebar-row] .row-menu-trigger>.btn{width:var(--size-touch);height:var(--size-touch);min-width:var(--size-touch);min-height:var(--size-touch)}
   [data-sidebar-row] .row-menu-trigger>.btn::after{inset:0}

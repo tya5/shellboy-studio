@@ -836,6 +836,31 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
   const details = model.details.value;
   const context = model.context.value;
   const root = useRef<HTMLDivElement>(null);
+  const hasComposer = !!handle;
+  useLayoutEffect(() => {
+    const frame = root.current?.closest<HTMLElement>(".app");
+    const viewport = window.visualViewport;
+    if (!hasComposer || !frame || !viewport || !window.matchMedia) return;
+    const phone = window.matchMedia("(max-width: 899px)");
+    const height = "--conversation-viewport-height";
+    const update = () => {
+      // Ignore pinch zoom: it should magnify the page without reflowing it.
+      if (phone.matches && viewport.scale === 1 && viewport.height > 0) {
+        const bottom = viewport.offsetTop + viewport.height;
+        frame.style.setProperty(height, `${Math.max(0, bottom - frame.getBoundingClientRect().top)}px`);
+      } else frame.style.removeProperty(height);
+    };
+    update();
+    phone.addEventListener("change", update);
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      phone.removeEventListener("change", update);
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+      frame.style.removeProperty(height);
+    };
+  }, [hasComposer]);
   const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>();
   const clearDestination = () => setSettingsDestination(undefined);
   const tab = model.panelTab.value;
