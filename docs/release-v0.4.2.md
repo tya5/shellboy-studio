@@ -1,6 +1,6 @@
 # Studio v0.4.2 pairing
 
-Draft: the changes under **Pending landing** are not on Studio main yet. Confirm them and the final Core pairing before publishing.
+Draft: the #130 keyboard fixes below are still pending. Confirm their landing and the final Core pairing before publishing.
 
 - Studio main has moved off Core v0.15.0 to the Core v0.16.0 preparation build (`0.16.0-dev`, commit `62023b082a181e71b77400fa90b5a551acba4a2e`, protocol 22).
 - The stable Core v0.16.0 tag is not published yet; desktop ZIPs must wait for a published stable Core tag matching Studio's exact pin.
@@ -16,11 +16,11 @@ Draft: the changes under **Pending landing** are not on Studio main yet. Confirm
 - On phones, the composer follows the space left by the keyboard so Send and Stop stay within reach (#128).
 - Sidebar row menus have a larger, separate touch target that does not overlap the Thread link (#128).
 - The README and bilingual [user guide](guides/user-guide.md) now match the current setup steps, screen labels, and upgrade and pairing guidance.
-
-## Pending landing
-
 - **Settings > Studio > Startup** lets authenticated local desktop users open Studio at sign-in on macOS and Windows; on Windows, use Windows Startup settings or remove the Startup shortcut to turn it off. Linux does not have this setting (#85).
 - Monitor can show archived Threads without adding them to **All** in the sidebar (#127).
+
+## Pending landing: Keyboard fixes (#130)
+
 - Global shortcuts stay out of dialogs, editable fields, Japanese text composition, and key events already handled by a control (#130).
 - Tab moves from a row menu to the next control after the row (#130).
 - Collapsed Work rows keep their keyboard focus outline (#130).
