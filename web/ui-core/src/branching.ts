@@ -1,14 +1,13 @@
-// Branch family reads and mutations are explicit and never optimistic.
 import { batch, signal, type Signal } from "@preact/signals-core";
 import { Cancel, type Operations, type OpError, type Outcome, type HistoryWindowArgs, type HistoryWindowResult } from "../../data/src";
 import { LANE_CONCURRENCY, LANE_EXCERPT_CHARS, LANE_OPENED_MAX, LANE_PAGE, LANE_QUEUE_MAX, LaneReader, laneGraph, needKey, type LaneNeed } from "./branch-lanes";
 import { readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
 import { CAPABILITY_TAGS, checkTag, TAGS_PER_CALL, type TagInvalid } from "./org";
 
-/** A family holds at most 256 Threads; 200 per page, so a walk needs 2. The extra allows for retries. */
 const BRANCH_PAGE = 200;
 const BRANCH_PAGES = 4;
 const BRANCH_RESTARTS = 3;
+const expired = (e: OpError): e is Extract<OpError, { kind: "owner" }> & { code: "cursor_expired" } => e.kind === "owner" && e.code === "cursor_expired";
 
 export interface FamilyState {
   threadId: string | undefined;
@@ -19,24 +18,20 @@ export interface FamilyState {
 
 /** One family read to its end. Also used for the marks in a conversation. */
 export async function readWholeFamily(ops: Operations, threadId: string, cancel?: Cancel): Promise<{ ok: true; family: BranchFamily } | { ok: false; error: OpError }> {
-  for (let attempt = 0; ; attempt++) {
+  restart: for (let attempt = 0; ; attempt++) {
     const pages: Record<string, unknown>[] = [];
     let cursor: string | undefined;
-    let expired = false;
     for (let n = 0; n < BRANCH_PAGES; n++) {
       const out = await ops.threadBranches({ thread_id: threadId, limit: BRANCH_PAGE, ...(cursor !== undefined && { cursor }) }, cancel ? { cancel } : undefined);
       if (!out.ok) {
-        if (out.error.kind === "owner" && out.error.code === "cursor_expired" && attempt < BRANCH_RESTARTS) {
-          expired = true;
-          break;
-        }
+        if (expired(out.error) && attempt < BRANCH_RESTARTS) continue restart;
         return { ok: false, error: out.error };
       }
       pages.push(out.value);
       cursor = typeof out.value.next_cursor === "string" ? out.value.next_cursor : undefined;
       if (cursor === undefined) break;
     }
-    if (!expired) return { ok: true, family: readFamily(pages) };
+    return { ok: true, family: readFamily(pages) };
   }
 }
 
@@ -75,21 +70,13 @@ interface BranchAttempt {
   key: string;
   uncertain: boolean;
   receipt: BranchReceipt<unknown>;
-}
-interface RewindAttempt extends BranchAttempt {
   target: BranchTarget;
-  facts: RewindFacts;
   text: string;
   send?: BranchReceipt<unknown>;
   running?: Promise<void>;
 }
-interface ForkAttempt extends BranchAttempt {
-  target: BranchTarget;
-  text: string;
-  child?: { threadId: string; title: string };
-  send?: BranchReceipt<unknown>;
-  running?: Promise<void>;
-}
+interface RewindAttempt extends BranchAttempt { facts: RewindFacts }
+interface ForkAttempt extends BranchAttempt { child?: { threadId: string; title: string } }
 const uncertainOutcome = (out: Outcome<unknown>): boolean => !out.ok && !["not_connected", "busy"].includes(out.error.kind);
 const outcomeMessage = (out: Outcome<unknown>): string | undefined => out.ok ? undefined :
   out.error.kind === "not_connected" || out.error.kind === "busy" ? `Not sent: ${out.error.message}` :
@@ -153,6 +140,14 @@ export class Branches {
     return pending;
   }
 
+  private runOnce(attempt: BranchAttempt, run: () => Promise<void>): Promise<void> {
+    if (attempt.running) return attempt.running;
+    let settle!: () => void;
+    const running = attempt.running = new Promise<void>(resolve => { settle = resolve; });
+    void run().finally(() => { attempt.running = undefined; settle(); });
+    return running;
+  }
+
   readonly fork: Signal<ForkState> = signal({ kind: "idle" });
   readonly target: Signal<BranchTarget | undefined> = signal(undefined);
   readonly targetRevision = signal<number | undefined>(undefined);
@@ -194,38 +189,45 @@ export class Branches {
     return this.ops.historyWindow({ before: 0, after: 0, excerpt_chars: LANE_EXCERPT_CHARS, ...args }, { cancel });
   }
 
-  private fits(family: BranchFamily, { thread_id, total, items }: HistoryWindowResult): boolean {
-    const item = family.items.find(i => i.threadId === thread_id);
-    return !!item && (item.pathNodes === undefined || item.pathNodes === total) &&
-      !items.some(i => i.selection?.ordinal === total - 1 && item.tipNodeId !== undefined && i.node_id !== item.tipNodeId);
-  }
-
   private observe({ thread_id: id, revision }: HistoryWindowResult): void {
     this.seen.set(id, Math.max(this.seen.get(id) ?? 0, revision));
   }
 
-  private tipCheck(threadId: string, pathNodes: number, tipNodeId: string, cancel: Cancel) {
-    return this.history({ thread_id: threadId, ordinal: pathNodes - 1, expect_node_id: tipNodeId, excerpt_chars: 0 }, cancel);
+  // A guarded tip and agreeing revisions do not prove the path interior (Core #418).
+  private async admit(family: BranchFamily, id: string, cancel: Cancel, s?: HistoryWindowResult, cut?: Map<string, number>) {
+    const lane = family.items.find(i => i.threadId === id);
+    if (!lane) return false;
+    const { pathNodes: size, tipNodeId: tip } = lane;
+    const paths = cut ?? this.revisions;
+    let guard: HistoryWindowResult | undefined;
+    if (!paths.has(id)) {
+      if (size && tip && !s?.items.some(i => i.selection?.ordinal === size - 1 && i.node_id === tip)) {
+        const out = await this.history({ thread_id: id, ordinal: size - 1, expect_node_id: tip, excerpt_chars: 0 }, cancel);
+        if (cancel.cancelled) return false;
+        if (!out.ok) return expired(out.error) ? false : out.error;
+        guard = out.value;
+      } else if (!cut && (!size || !tip)) return false;
+    }
+    if (cancel.cancelled || (!cut && (this.running || this.state.peek().family !== family))) return false;
+    let rev = paths.get(id);
+    for (const w of [guard, s]) {
+      if (!w) continue;
+      if (w.thread_id !== id) return false;
+      this.observe(w);
+      if ((rev ?? w.revision) !== w.revision || this.seen.get(id) !== w.revision ||
+          (size !== undefined && size !== w.total) ||
+          (tip !== undefined && w.items.some(i => i.selection?.ordinal === w.total - 1 && i.node_id !== tip))) return false;
+      rev = w.revision;
+    }
+    if (rev !== undefined) paths.set(id, rev);
+    if (!cut && s) this.lanes.project([s]);
+    return true;
   }
 
-  // An agreeing revision and the family tip/size checks do not prove the interior of the path.
   private async extend(s: HistoryWindowResult, family: BranchFamily, cancel: Cancel): Promise<void> {
-    const rev = this.revisions.get(s.thread_id);
-    const lane = family.items.find(i => i.threadId === s.thread_id);
-    if (!lane || cancel.cancelled) return;
-    let agrees = rev === s.revision;
-    if (rev === undefined && lane.tipNodeId !== undefined && lane.pathNodes && this.fits(family, s)) {
-      if (s.items.some(i => i.selection?.ordinal === s.total - 1 && i.node_id === lane.tipNodeId)) agrees = true;
-      else {
-        const tip = await this.tipCheck(s.thread_id, lane.pathNodes, lane.tipNodeId, cancel);
-        agrees = tip.ok && tip.value.thread_id === s.thread_id && tip.value.revision === s.revision && this.fits(family, tip.value);
-      }
-    }
-    if (cancel.cancelled || this.running || this.state.peek().family !== family) return;
-    if (agrees && (this.revisions.get(s.thread_id) ?? s.revision) === s.revision && this.seen.get(s.thread_id) === s.revision && this.fits(family, s)) {
-      this.revisions.set(s.thread_id, s.revision);
-      this.lanes.project([s]);
-    } else if (rev === undefined || s.revision > rev) void this.read(this.state.peek().threadId!);
+    const result = await this.admit(family, s.thread_id, cancel, s);
+    if (result !== true && !cancel.cancelled && !this.running && this.state.peek().family === family &&
+        s.revision > (this.revisions.get(s.thread_id) ?? -1)) void this.read(this.state.peek().threadId!);
   }
 
   want(need: LaneNeed): void {
@@ -281,46 +283,41 @@ export class Branches {
   private async readCut(family: BranchFamily, target: BranchTarget | undefined, cancel: Cancel) {
     const paths = new Map<string, number>();
     const snapshots: HistoryWindowResult[] = [];
-    const admit = (s: HistoryWindowResult, project = true) => {
-      this.observe(s);
-      if (!this.fits(family, s) || (paths.get(s.thread_id) ?? s.revision) !== s.revision) return false;
-      paths.set(s.thread_id, s.revision);
-      if (project) snapshots.push(s);
-      return true;
-    };
-    for (const lane of laneGraph(family, () => undefined, () => []).lanes) {
-      const { threadId, pathNodes, tipNodeId } = lane.item;
+    for (const { item: { threadId, pathNodes }, start } of laneGraph(family).lanes) {
       const ordinals = new Set(this.disclosed.get(threadId));
-      if (this.lanes.nodeAt(threadId, lane.start) !== undefined) ordinals.add(lane.start);
+      if (this.lanes.nodeAt(threadId, start) !== undefined) ordinals.add(start);
       const positions = [...ordinals].filter(o => pathNodes === undefined || o < pathNodes).sort((a, b) => a - b);
-      // One guarded tip read for a participating lane, not a bracket around the family read.
-      if ((positions.length || target?.threadId === threadId) && pathNodes && tipNodeId) {
-        const out = await this.tipCheck(threadId, pathNodes, tipNodeId, cancel);
-        if (!out.ok) return out.error.kind === "owner" && out.error.code === "cursor_expired" ? undefined : { error: out.error };
-        if (out.value.thread_id !== threadId || !admit(out.value, false)) return;
+      if (positions.length || target?.threadId === threadId) {
+        const result = await this.admit(family, threadId, cancel, undefined, paths);
+        if (result !== true) return result ? { error: result } : undefined;
       }
       for (let i = 0; i < positions.length;) {
         const from = positions[i++]!;
         let to = from;
         while (positions[i] === to + 1 && to - from + 1 < LANE_PAGE) to = positions[i++]!;
         const out = await this.history({ thread_id: threadId, ordinal: from, after: to - from }, cancel);
-        if (!out.ok) return out.error.kind === "owner" && out.error.code === "cursor_expired" ? undefined : { error: out.error };
-        if (out.value.thread_id !== threadId || !admit(out.value)) return;
+        if (!out.ok) return expired(out.error) ? undefined : { error: out.error };
+        if (await this.admit(family, threadId, cancel, out.value, paths) !== true) return;
+        snapshots.push(out.value);
       }
     }
     let point: number | undefined;
     if (target && family.items.some(i => i.threadId === target.threadId)) {
       const out = await this.history({ thread_id: target.threadId, node_id: target.nodeId }, cancel);
       if (cancel.cancelled) return;
+      let selected: HistoryWindowResult;
       if (out.ok) {
-        if (out.value.thread_id !== target.threadId || out.value.items[0]?.node_id !== target.nodeId || !admit(out.value)) return;
-        point = out.value.revision;
+        selected = out.value;
+        if (selected.items[0]?.node_id !== target.nodeId) return;
+        point = selected.revision;
       } else {
-        const error = out.error;
-        if (error.kind !== "owner" || error.code !== "cursor_expired") return { error };
-        const { revision, total } = (error.details ?? {}) as { revision?: number; total?: number };
-        if (!Number.isSafeInteger(revision) || !Number.isSafeInteger(total) || revision! < 0 || total! < 0 || !admit({ thread_id: target.threadId, revision: revision!, total: total!, items: [] })) return;
+        if (!expired(out.error)) return { error: out.error };
+        const { revision, total } = (out.error.details ?? {}) as Record<string, number>;
+        if (!Number.isSafeInteger(revision) || !Number.isSafeInteger(total) || revision! < 0 || total! < 0) return;
+        selected = { thread_id: target.threadId, revision: revision!, total: total!, items: [] };
       }
+      if (await this.admit(family, target.threadId, cancel, selected, paths) !== true) return;
+      if (out.ok) snapshots.push(selected);
     }
     if ([...paths].some(([id, revision]) => revision < (this.seen.get(id) ?? 0))) return;
     return { paths, snapshots, point };
@@ -470,13 +467,8 @@ export class Branches {
       this.rewindAttempt = attempt;
     }
     if (attempt.running) return attempt.running;
-    const active = attempt;
     const token = this.invocation(target);
-    let settle!: () => void;
-    const running = new Promise<void>(resolve => { settle = resolve; });
-    active.running = running;
-    void this.runRewind(active, token).finally(() => { active.running = undefined; settle(); });
-    return running;
+    return this.runOnce(attempt, () => this.runRewind(attempt, token));
   }
   canRetryRewind(): boolean { return !!this.rewindAttempt?.uncertain && !this.rewindAttempt.running && sameTarget(this.target.peek(), this.rewindAttempt.target); }
   private async runRewind(attempt: RewindAttempt, token: Invocation): Promise<void> {
@@ -517,8 +509,7 @@ export class Branches {
     text = text.trim();
     const key = JSON.stringify({ thread_id: target.threadId, node_id: target.nodeId, text });
     const original = this.forkAttempt;
-    const diagnostic = original && original.key === key && original.owner !== this.owner();
-    if (!diagnostic && !this.visible({ owner: this.owner() }, token)) return;
+    if (!(original?.key === key && original.owner !== this.owner()) && !this.visible({ owner: this.owner() }, token)) return;
     let attempt = this.forkAttempt;
     if (attempt && (attempt.uncertain || attempt.running) && attempt.key !== key) {
       this.refusal(`Resolve the original fork/request outcome (${attempt.send?.id ?? attempt.receipt.id}) before changing its target or text`);
@@ -531,13 +522,7 @@ export class Branches {
         uncertain: true, receipt: { id: this.ops.mutationId() } };
       this.forkAttempt = attempt;
     }
-    if (attempt.running) return attempt.running;
-    const active = attempt;
-    let settle!: () => void;
-    const running = new Promise<void>(resolve => { settle = resolve; });
-    active.running = running;
-    void this.runFork(active, token).finally(() => { active.running = undefined; settle(); });
-    return running;
+    return this.runOnce(attempt, () => this.runFork(attempt, token));
   }
   private async runFork(attempt: ForkAttempt, token: Invocation): Promise<void> {
     if (attempt.owner === this.owner() && !this.visible(attempt, token)) return;
@@ -558,7 +543,7 @@ export class Branches {
       }
       return;
     }
-    // Only a canonical thread.fork response can establish the immutable child.
+    // Only the fork receipt identifies the child.
     const child = out.value as { thread_id: string; title: string };
     attempt.child ??= { threadId: child.thread_id, title: child.title };
     if (!this.visible(attempt, token)) { attempt.uncertain = !!attempt.text && !attempt.send?.outcome?.ok; return; }
@@ -611,7 +596,6 @@ export class ThreadActions {
     this.move.value = { kind: "picking", threadId, title, parentId };
   }
 
-  /** From the picker or a drop. Nothing moves until `confirmMove`. */
   previewMove(threadId: string, parent: string): void {
     this.move.value = { kind: "preview", threadId, parent };
   }
@@ -632,8 +616,6 @@ export class ThreadActions {
     this.move.value = { kind: "moved", threadId: m.threadId, parent: m.parent };
   }
 
-  // ---- tags ----
-
   openTags(on: boolean): void {
     this.tagDraft.value = { ...this.tagDraft.peek(), open: on };
   }
@@ -647,7 +629,6 @@ export class ThreadActions {
     this.tagDraft.value = { id: draft.id + 1, action: { kind: "idle" }, open: true, target: threadId, add: [], remove: new Set() };
   }
 
-  /** Puts a tag on the list to add. Returns why it can't, or nothing. */
   addTag(raw: string): TagInvalid | undefined {
     const checked = checkTag(raw);
     if (!checked.ok) return checked.invalid;

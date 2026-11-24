@@ -6,20 +6,17 @@ import type { BranchFamily, BranchItem } from "./branches";
 export type LaneRowKind = "start" | "message" | "split" | "run" | "tip";
 
 export interface LaneRow {
-  /** Stable across re-reads: lane Thread ID plus a node ID, or a role (start, tip) or a run's first position. */
+  /** Stable lane + node, role, or run start. */
   key: string;
-  /** The Thread whose lane this row is on. Actions on the row act on this Thread. */
   lane: string;
   kind: LaneRowKind;
-  /** Position on the lane's path (0-based); absent only when the owner gave no size. */
+  /** Zero-based path position, when known. */
   ordinal: number | undefined;
   nodeId: string | undefined;
   /** A run: the first and last hidden positions, inclusive. */
   from?: number;
   to?: number;
-  /** Lanes that leave at this row's node. */
   branchTo: string[];
-  /** Lanes whose line only runs past this row. */
   pass: string[];
 }
 
@@ -139,24 +136,20 @@ export function leavingRows(graph: LaneGraph, threadId: string, ordinal: number)
   return out;
 }
 
-// ---- reads ----
-
 export interface NodeExcerpt { kind: string | undefined; excerpt: string | undefined; ordinal: number | undefined }
 /** A lane's first row (`start`, read after its split node when it has one), or one node. */
 export type LaneNeed = { kind: "head"; threadId: string; start: number; split: string | undefined } | { kind: "node"; threadId: string; nodeId: string };
 export const headNeed = (lane: Lane): LaneNeed => ({ kind: "head", threadId: lane.item.threadId, start: lane.start, split: lane.start > 0 ? lane.item.divergence?.nodeId : undefined });
 
-/** Excerpt length asked for; rows show one line. */
 export const LANE_EXCERPT_CHARS = 160;
-/** Messages one "Show more" on a run opens. */
+/** Positions per Show more. */
 export const LANE_PAGE = 24;
 /** Family-wide disclosure cap. */
 export const LANE_OPENED_MAX = 480;
 /** Immutable node excerpt LRU. */
 export const LANE_NODES_MAX = 2048;
-/** Reads waiting for a visible row; the oldest waiting one is dropped past this. */
+/** Visible-row queue cap; oldest drops first. */
 export const LANE_QUEUE_MAX = 48;
-/** Reads in flight at once. */
 export const LANE_CONCURRENCY = 2;
 
 export const needKey = (n: LaneNeed): string => n.kind === "head" ? `head:${n.threadId}:${n.start}:${n.split ?? ""}` : `node:${n.threadId}:${n.nodeId}`;
