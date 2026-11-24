@@ -700,7 +700,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   }, [model, detail]);
   const backRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
-  const back = <Button buttonRef={backRef} variant="ghost" data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;
+  const back = <Button buttonRef={backRef} variant="ghost" aria-label={t("panel.backToTab", { tab: tabLabel })} data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;
   if (!detail) return null;
   const error = panelOperationError(model, detail.id);
   if (detail.kind === "step") {
