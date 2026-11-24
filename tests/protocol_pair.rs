@@ -195,11 +195,23 @@ fn core_v016_intervention_commands_stay_out_of_browser_until_studio_surfaces_the
     use shellboy::protocol::{ExecutionTarget, TurnTarget};
     assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 26);
     for command in [
-        Command::ShellBackground(ExecutionTarget { execution_id: "shell".into() }),
-        Command::ShellStop(ExecutionTarget { execution_id: "shell".into() }),
-        Command::ShellWrite(shellboy::protocol::ShellWriteArgs { execution_id: "shell".into(), text: "x".into(), encoding: "utf-8".into() }),
-        Command::ShellEof(ExecutionTarget { execution_id: "shell".into() }),
-        Command::TurnInterrupt(TurnTarget { turn_id: "turn".into() }),
+        Command::ShellBackground(ExecutionTarget {
+            execution_id: "shell".into(),
+        }),
+        Command::ShellStop(ExecutionTarget {
+            execution_id: "shell".into(),
+        }),
+        Command::ShellWrite(shellboy::protocol::ShellWriteArgs {
+            execution_id: "shell".into(),
+            text: "x".into(),
+            encoding: "utf-8".into(),
+        }),
+        Command::ShellEof(ExecutionTarget {
+            execution_id: "shell".into(),
+        }),
+        Command::TurnInterrupt(TurnTarget {
+            turn_id: "turn".into(),
+        }),
     ] {
         assert_eq!(access(&command), Access::Denied, "{command:?}");
     }
