@@ -60,9 +60,8 @@ describe("Open Thread facts (#103)", () => {
   it("follows keyboard-sized visual viewport changes only in a narrow conversation", async () => {
     const { model } = await fixtureModel({ route: "conversation", threadId: "lead" });
     const viewport = Object.assign(new EventTarget(), { height: 790, offsetTop: 0, scale: 1 });
-    const phone = Object.assign(new EventTarget(), { matches: true });
-    const match = window.matchMedia.bind(window);
-    const media = vi.spyOn(window, "matchMedia").mockImplementation(query => query === "(max-width: 899px)" ? phone as MediaQueryList : match(query));
+    let frameWidth = 390;
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => frameWidth);
     const original = Object.getOwnPropertyDescriptor(window, "visualViewport");
     Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
     try {
@@ -81,11 +80,11 @@ describe("Open Thread facts (#103)", () => {
       viewport.dispatchEvent(new Event("resize"));
       expect(height()).toBe("");
       viewport.scale = 1;
-      phone.matches = false;
-      phone.dispatchEvent(new Event("change"));
+      frameWidth = 1100;
+      window.dispatchEvent(new Event("resize"));
       expect(height()).toBe("");
-      phone.matches = true;
-      phone.dispatchEvent(new Event("change"));
+      frameWidth = 390;
+      window.dispatchEvent(new Event("resize"));
       expect(height()).toBe("404px");
       act(() => render(null, el));
       viewport.dispatchEvent(new Event("resize"));
@@ -94,7 +93,7 @@ describe("Open Thread facts (#103)", () => {
       if (host) act(() => render(null, host!));
       if (original) Object.defineProperty(window, "visualViewport", original);
       else Reflect.deleteProperty(window, "visualViewport");
-      media.mockRestore();
+      width.mockRestore();
       model.dispose(); model.data.stop();
     }
   });
