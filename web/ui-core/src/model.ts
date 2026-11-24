@@ -514,7 +514,7 @@ export class AppModel {
       const pins = this.monitorPins.value;
       const rows = this.rows.value;
       const archive = this.monitorArchive.value;
-      untracked(() => { this.missingPins.sync(pins, [...rows, ...this.monitorArchiveRows.rows.value], active); this.monitorArchiveRows.sync(active, archive); });
+      untracked(() => { this.missingPins.sync(pins, rows, active); this.monitorArchiveRows.sync(active, archive); });
     }));
     this.monitorStableRows = stableRows;
     const selection = new MonitorSelection();

@@ -1,4 +1,4 @@
-import { Cancel, type Operations, type ThreadSummary } from "../../data/src";
+import { MAX_LIST_ROWS, PAGE_LIMIT, Cancel, type Operations, type ThreadSummary } from "../../data/src";
 
 import { signal } from "@preact/signals-core";
 
@@ -37,8 +37,6 @@ export class MonitorSelection {
   }
 }
 
-// Resolves pins outside the currently loaded list. Four reads run at once; the owner is the view model.
-
 export class MissingPins {
   readonly rows = signal<readonly ThreadRow[]>([]);
   readonly deleted = signal<readonly string[]>([]);
@@ -52,12 +50,12 @@ export class MissingPins {
   sync(pins: readonly string[], loaded: readonly ThreadRow[], active: boolean): void {
     this.present = new Set(loaded.map((r) => r.summary.thread_id));
     this.wanted = new Set(active ? pins : []);
-    for (const [id, cancel] of this.running) { if (!this.wanted.has(id) || this.present.has(id)) cancel.cancel(); else if (!cancel.cancelled) this.pending.add(id); }
-    for (const id of this.pending) if (!this.wanted.has(id) || this.present.has(id)) this.pending.delete(id);
+    for (const [id, cancel] of this.running) { if (!this.wanted.has(id)) cancel.cancel(); else if (!cancel.cancelled) this.pending.add(id); }
+    for (const id of this.pending) if (!this.wanted.has(id)) this.pending.delete(id);
     let changed = false;
-    for (const id of this.facts.keys()) if (!this.wanted.has(id) || this.present.has(id)) { this.facts.delete(id); changed = true; }
+    for (const id of this.facts.keys()) if (!this.wanted.has(id)) { this.facts.delete(id); changed = true; }
     if (changed || this.facts.size) this.publish();
-    for (const id of this.wanted) if (!this.present.has(id)) this.pending.add(id);
+    for (const id of this.wanted) this.pending.add(id);
     this.pump();
   }
   close(): void { this.closed = true; this.pending.clear(); for (const cancel of this.running.values()) cancel.cancel(); this.facts.clear(); this.publish(); }
@@ -81,7 +79,7 @@ export class MissingPins {
 }
 
 
-export const MAX_MONITOR_ARCHIVED_ROWS = 1000;
+export const MAX_MONITOR_ARCHIVED_ROWS = MAX_LIST_ROWS;
 
 /** Owns the optional archived-list read without changing the shared sidebar filter. */
 export class MonitorArchiveRows {
@@ -102,7 +100,7 @@ export class MonitorArchiveRows {
     const rows = new Map<string, ThreadSummary>();
     let cursor: string | undefined;
     while (!cancel.cancelled && rows.size < MAX_MONITOR_ARCHIVED_ROWS) {
-      const page = await this.ops.threadList({ archived: "only", limit: Math.min(50, MAX_MONITOR_ARCHIVED_ROWS - rows.size), ...(cursor ? { cursor } : {}) }, { cancel });
+      const page = await this.ops.threadList({ archived: "only", limit: Math.min(PAGE_LIMIT, MAX_MONITOR_ARCHIVED_ROWS - rows.size), ...(cursor ? { cursor } : {}) }, { cancel });
       if (!page.ok || cancel.cancelled || generation !== this.generation) return;
       for (const row of page.value.items) { rows.set(row.thread_id, row); if (rows.size >= MAX_MONITOR_ARCHIVED_ROWS) break; }
       cursor = page.value.next_cursor;
