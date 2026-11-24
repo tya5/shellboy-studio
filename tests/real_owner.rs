@@ -1558,8 +1558,7 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
 async fn core_management_status_and_shutdown_are_instance_bound() {
     use shellboy::protocol::{Command, ErrorCode, OwnerShutdownArgs};
     let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN"));
-    let root = tempfile::tempdir().unwrap();
-    let root = root.path().canonicalize().unwrap();
+    let root = temp_root();
     let data = root.join("data");
     let mut serve = start_owner(&bin, &root, &data);
     let owner = IpcOwner::new(data);
@@ -1616,4 +1615,6 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
     })
     .await
     .expect("isolated Core should exit after receipt");
+    drop(serve);
+    std::fs::remove_dir_all(&root).unwrap();
 }
