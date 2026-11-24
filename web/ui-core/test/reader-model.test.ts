@@ -19,7 +19,7 @@ describe("the long-thread reader in the model", () => {
 
   it("leaving the Conversation ends the reader and its reads", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["history.window"] });
-    model.showView("monitor");
+    model.showView("inbox");
     await settle(t, db);
     expect(model.longReader.value).toBeUndefined();
     const sent = t.sent.length;

@@ -213,7 +213,7 @@ describe("config editing", () => {
     const c = model.config;
     void c.configChanged();
     await Promise.resolve();
-    model.applyRoute({ view: "monitor" });
+    model.applyRoute({ view: "inbox" });
     await settle(t, db).catch(() => undefined);
     expect(c.read.value.loading).toBe(false);
   });

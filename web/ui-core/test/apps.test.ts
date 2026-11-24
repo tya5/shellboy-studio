@@ -89,7 +89,7 @@ describe("AppsModel over the fake transport", () => {
   });
 
   it("reads nothing until the view opens, and asks the gateway for one ticket per open", async () => {
-    const quiet = await fixtureModel({ route: "monitor" });
+    const quiet = await fixtureModel({ route: "inbox" });
     expect(quiet.t.calls("apps.list")).toHaveLength(0);
     const { t, db, model } = await fixtureModel({ route: "apps" });
     expect(t.calls("apps.list")).toHaveLength(1);
@@ -97,7 +97,7 @@ describe("AppsModel over the fake transport", () => {
     expect(model.apps.list.value.apps[1]!.problem).toContain("app.json");
     model.applyRoute({ view: "apps", appName: "board" });
     await settle(t, db);
-    model.applyRoute({ view: "monitor" });
+    model.applyRoute({ view: "inbox" });
     model.applyRoute({ view: "apps", appName: "board" });
     await settle(t, db);
     expect(t.calls("apps.open")).toHaveLength(1);

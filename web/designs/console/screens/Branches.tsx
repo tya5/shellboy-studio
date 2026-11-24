@@ -90,7 +90,7 @@ function PointPanel({ model, target, title, request, branches, ordinal }: { mode
         <Button variant="primary" disabled={fork.kind === "forking"} onClick={() => void b.forkAt(target, prompt)}>{t("branches.fork")}</Button>
       </div>
       {fork.kind === "failed" ? <Notice tone="bad">{t("branches.forkFailed", { message: fork.error.message })}</Notice> : null}
-      {fork.kind === "done" ? <Notice actions={<a class="nav-link" href={formatRoute({ view: "conversation", threadId: fork.threadId })}>{t("monitor.open")}</a>}>{t("branches.forked", { title: fork.title })}</Notice> : null}
+      {fork.kind === "done" ? <Notice actions={<a class="nav-link" href={formatRoute({ view: "conversation", threadId: fork.threadId })}>{t("common.openConversation")}</a>}>{t("branches.forked", { title: fork.title })}</Notice> : null}
 
       <h3>{t("branches.rewindTitle", { title })}</h3>
       {rewind.kind === "idle" || rewind.kind === "previewing" || rewind.kind === "refused" ? (

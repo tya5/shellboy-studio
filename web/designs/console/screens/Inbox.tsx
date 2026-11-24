@@ -69,7 +69,7 @@ export function Inbox({ model }: { model: AppModel }) {
             extra={<>
               {model.pending.cancel ? <Button variant="ghost" disabled={busy !== undefined} onClick={() => void actOn(current.id, () => model.pending.cancel!(current.id), "work.cancelFailed")}>{t("work.cancel")}</Button> : null}
               <a class="nav-link" href={formatRoute({ view: "conversation", threadId: current.threadId })}>
-                {t("monitor.open")}
+                {t("common.openConversation")}
                 <Icon role="inbox.openConversation" size="small" />
               </a>
             </>}

@@ -176,7 +176,7 @@ describe("Insights over the fake transport", () => {
     expect(s.groups.get("2026-11-06")?.conversation.input.known).toBe(3000000);
     expect(s.groups.get("2026-11-06")?.compactions).toBe(2);
     model.tick();
-    model.applyRoute({ view: "monitor" });
+    model.applyRoute({ view: "inbox" });
     model.applyRoute({ view: "analytics" });
     await settle(t, db);
     expect(t.calls("usage.get")).toHaveLength(2);
@@ -260,7 +260,7 @@ describe("Insights over the fake transport", () => {
     expect(model.insights.daily.state.value.coverage.windows).toBe(1);
     await settle(t, db);
     expect(t.calls("usage.get")).toHaveLength(2);
-    model.applyRoute({ view: "monitor" });
+    model.applyRoute({ view: "inbox" });
     model.applyRoute({ view: "analytics", section: "overview" });
     await settle(t, db);
     const cursors = t.calls("usage.get").map((c) => (c.args as { cursor?: string }).cursor);
@@ -382,7 +382,7 @@ describe("Insights over the fake transport", () => {
   });
 
   it("a by-Thread walk stops at its bound on groups and says so", async () => {
-    const { t, db, model } = await fixtureModel({ route: "monitor" });
+    const { t, db, model } = await fixtureModel({ route: "inbox" });
     const plain = db.answer;
     let n = 0;
     db.answer = (c) => {
