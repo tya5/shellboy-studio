@@ -1,39 +1,44 @@
 // @vitest-environment happy-dom
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import { MarkdownBlock } from "../system/components/Message";
-import { splitStableMarkdown } from "../system/components/Message";
+import { Markdown, splitStableMarkdown } from "../system/components/Message";
+import { createRenderer } from "../system/components/Message/markdown";
 
-it("keeps completed markdown blocks stable while only the open tail grows", () => {
-  const first = splitStableMarkdown("first paragraph\n\nsecond");
-  const next = splitStableMarkdown("first paragraph\n\nsecond paragraph\n\nthird");
-  expect(first.stable).toEqual(["first paragraph"]);
-  expect(next.stable.slice(0, first.stable.length)).toEqual(first.stable);
-  expect(next.stable).toEqual(["first paragraph", "second paragraph"]);
-  expect(next.tail).toBe("third");
-});
+const props = { copyLabel: "Copy", copiedLabel: "Copied" };
+const normalize = (node: Node): unknown => node.nodeType === Node.TEXT_NODE ? node.textContent : node instanceof Element ? [node.tagName, [...node.attributes].map(a => [a.name, a.value]).sort((left, right) => (left[0] ?? "").localeCompare(right[0] ?? "")), [...node.childNodes].map(normalize)] : null;
 
-it("does not split blank lines inside a fenced code block", () => {
-  const parsed = splitStableMarkdown("intro\n\n```ts\nconst a = 1;\n\nconst b = 2;\n```\n\ntrailing");
-  expect(parsed.stable).toEqual(["intro", "```ts\nconst a = 1;\n\nconst b = 2;\n```"]);
-  expect(parsed.tail).toBe("trailing");
-});
-
-it("parses only changed Markdown blocks when the answer grows", async () => {
+it("mounts Markdown with a counting renderer and reparses only a live tail", async () => {
   const host = document.createElement("div");
   let parsed = 0;
-  const create = () => (text: string) => { parsed++; return `<p>${text}</p>`; };
-  const draw = (tail: string, addNext = false) => render(<div>
-    <MarkdownBlock key="stable" text="stable" copyLabel="Copy" copiedLabel="Copied" create={create} />
-    <MarkdownBlock key={addNext ? "next" : "tail"} text={addNext ? "next tail" : tail} copyLabel="Copy" copiedLabel="Copied" create={create} />
-  </div>, host);
+  const base = createRenderer("Copy");
+  const renderer = (_copy: string) => (text: string) => { parsed++; return base(text); };
   try {
-    await act(async () => draw("tail"));
+    await act(async () => render(<Markdown {...props} text="First paragraph\n\nSecond" live renderer={renderer} />, host));
+    expect(parsed).toBe(1);
+    await act(async () => render(<Markdown {...props} text="First paragraph\n\nSecond grows" live renderer={renderer} />, host));
     expect(parsed).toBe(2);
-    await act(async () => draw("tail grows"));
+    await act(async () => render(<Markdown {...props} text="First paragraph\n\nSecond grows\n\nThird" live renderer={renderer} />, host));
     expect(parsed).toBe(3);
-    await act(async () => draw("tail grows", true));
-    expect(parsed).toBe(4);
   } finally { render(null, host); }
+});
+
+it.each([
+  ["continuation paragraph", "first paragraph\n\n    continuation\n    line"],
+  ["reference definition", "[guide]: https://example.test\n\n[guide]"],
+  ["loose list", "- first\n\n  second paragraph\n\n- next"],
+])("keeps saved %s Markdown byte-for-byte equivalent to the normal renderer", async (_name, text) => {
+  const host = document.createElement("div");
+  const expected = document.createElement("div");
+  expected.innerHTML = createRenderer("Copy")(text);
+  await act(async () => render(<Markdown {...props} text={text} renderer={() => createRenderer("Copy")} />, host));
+  expect(normalize(host.querySelector(".message-markdown")!)).toEqual(["DIV", [["class", "message-markdown"], ["data-reading-body", ""]], [...expected.childNodes].map(normalize)]);
+  render(null, host);
+});
+
+it("does not commit an uncertain paragraph, list, or reference block while streaming", () => {
+  expect(splitStableMarkdown("paragraph\n\n    continuation").stable).toEqual([]);
+  expect(splitStableMarkdown("[guide]: https://example.test\n\nUse [guide]").stable).toEqual([]);
+  expect(splitStableMarkdown("- one\n\n- two\n\nplain tail").stable).toEqual([]);
+  expect(splitStableMarkdown("plain one\n\nplain two\n\nopen").stable).toEqual(["plain one", "plain two"]);
 });

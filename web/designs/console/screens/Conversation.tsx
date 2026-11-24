@@ -198,11 +198,11 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           const source = item.source;
           const handle = model.handle.value;
           const record = source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-          return <div data-live-overlay={assistantTextMembership(item)==="live-presence" ? "" : undefined}><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+          return <div data-live-overlay={assistantTextMembership(item)==="live-presence" ? "" : undefined}><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} live={assistantTextMembership(item)==="live-presence" || displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial"}>
             {record ? <LiveRecordChrome model={model} record={record} /> : null}
           </Message></div>;
         }
-        if (!node) return <Markdown text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
+        if (!node) return <Markdown text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} live={item.source.kind === "text" && item.source.textComplete === false} />;
         const nodeAuthoritative = allProseNode(node);
         const firstProseItem = node.items?.find(item => item.kind === "text")?.item_identity;
         const body = nodeAuthoritative ? model.bodyState(node.node_id!) : undefined;

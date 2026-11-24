@@ -5,7 +5,7 @@
 - **Why:** The message can preserve readable formatting without rendering raw HTML or allowing arbitrary link schemes.
 - **Source:** [Studio Console decisions](../../../../../../docs/design/design-system.md#the-console-design)
 
-One saved message: who, when, and the text rendered from Markdown. Raw HTML in the text is not rendered and links only open http, https and mailto addresses. Code blocks have a copy button. During live answer growth, completed blank-line-delimited Markdown blocks stay rendered and only the open tail is reparsed; fenced code blocks are kept intact until closed.
+One saved message: who, when, and the text rendered from Markdown. Raw HTML in the text is not rendered and links only open http, https and mailto addresses. Code blocks have a copy button. Saved messages, artifacts, and completed answers always use the normal whole-message renderer. Only explicitly live streaming text may retain stable Markdown blocks and reparse its open tail; boundaries are withheld when continuation, reference, or list structure could change interpretation.
 
 Styles are colocated in `system/components/Message/style.css`.
 
