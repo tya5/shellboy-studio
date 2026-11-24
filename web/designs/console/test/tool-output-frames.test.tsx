@@ -127,14 +127,60 @@ it.each([false, true])('shows summary, full command once, output actions and exe
   expect(r.model.panelDetail.peek()?.id).toBe('exec-1');
 });
 
+it('tags Core stderr ranges across pages and keeps Raw as one exact text node', async () => {
+  const r = await toolFixture('exited');
+  const first = 'stdout stderr-looking text \u65e5\npre';
+  const tail = '\u{1f4a5}suffix\nlast';
+  const bytes = (s: string) => new TextEncoder().encode(s).length;
+  const answer = r.db.answer.bind(r.db);
+  r.db.answer = call => {
+    if (call.command !== 'shell.read') return answer(call);
+    if ((call.args as { cursor?: string }).cursor === 'next') return { ok: true, result: {
+      execution_id: 'exec-1', text: tail, output_complete: true, segments: [
+        { stream: 'stderr', start_byte: 0, end_byte: bytes('\u{1f4a5}') },
+        { stream: 'stdout', start_byte: bytes('\u{1f4a5}'), end_byte: bytes(tail) },
+      ],
+    } };
+    return { ok: true, result: { execution_id: 'exec-1', text: first, cursor: 'next',
+      segments: [{ stream: 'stdout', start_byte: 0, end_byte: bytes(first) }] } };
+  };
+  const row = await r.expand();
+  expect(r.t.calls('shell.read').map(call => call.args)).toEqual([
+    { execution_id: 'exec-1', segments: true }, { execution_id: 'exec-1', segments: true, cursor: 'next' },
+  ]);
+  const marked = row.querySelectorAll('[data-stream="stderr"]');
+  expect(marked).toHaveLength(1);
+  expect(marked[0]?.textContent).toBe('stderrpre\u{1f4a5}suffix\n');
+  const formatted = row.querySelector<HTMLButtonElement>('button[aria-label="Formatted"]')!;
+  await act(async () => formatted.click());
+  const raw = row.querySelector('.output-log pre')!;
+  expect(raw.childNodes).toHaveLength(1);
+  expect(raw.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+  expect(raw.textContent).toBe(first + tail);
+});
+
+it('does not guess stderr when the owner omits segments', async () => {
+  const r = await toolFixture('exited');
+  r.db.outputs['exec-1'] = 'stderr: this is only text';
+  const row = await r.expand();
+  expect(row.querySelector('.output-log')?.textContent).toBe('stderr: this is only text');
+  expect(row.querySelector('[data-stream]')).toBeNull();
+});
+
 it('keeps execution facts and details when Core reports reclaimed output', async () => {
   const r = await toolFixture('running');
+  const initial = r.db.answer.bind(r.db);
+  r.db.answer = call => call.command === 'shell.read' ? { ok: true, result: {
+    execution_id: 'exec-1', text: 'Retained fixture log', segments: [{ stream: 'stderr', start_byte: 0, end_byte: 20 }],
+  } } : initial(call);
   const row = await r.expand();
-  const answer = r.db.answer.bind(r.db);
-  r.db.answer = call => call.command === 'shell.read' ? { ok: false, code: 'output_expired' } : answer(call);
+  expect(row.querySelector('[data-stream="stderr"]')).not.toBeNull();
+  r.db.answer = call => call.command === 'shell.read' ? { ok: false, code: 'output_expired' } : initial(call);
   await act(async () => { r.t.push({ t: 'changed', thread_ids: ['lead'], config_changed: false, list: false }); await settle(r.t, r.db); });
   expect(row.querySelector('[role="note"]')?.textContent).toContain('no longer retained');
   expect(row.textContent).not.toContain('Retained fixture log');
+  expect(row.querySelector('[data-stream]')).toBeNull();
+  expect(r.model.outputs.peek().get('exec-1')?.stderr).toBeUndefined();
   expect(row.querySelector('.shell-step-facts [data-status="running"]')).not.toBeNull();
   const duration = row.querySelector('.shell-step-facts [aria-label^="Duration:"]');
   expect(duration?.textContent).toMatch(/ so far$/);

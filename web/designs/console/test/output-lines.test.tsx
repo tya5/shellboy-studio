@@ -4,7 +4,7 @@ import { render } from "preact";
 import { OutputLines, outputLineRange } from "../screens/Conversation";
 
 it("mounts only the viewport-sized window plus overscan for long formatted output", () => {
-  const lines = Array.from({ length: 5000 }, (_, index) => ({ text: `line-${index}`, kind: "plain" }));
+  const lines = Array.from({ length: 5000 }, (_, index) => ({ text: `line-${index}`, kind: "plain" as const }));
   const host = document.createElement("div");
   render(<OutputLines lines={lines} boxed={false} />, host);
   expect(host.querySelectorAll("span").length).toBeLessThan(lines.length);

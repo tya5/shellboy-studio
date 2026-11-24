@@ -525,10 +525,14 @@ export interface ModelListResult {
   [extra: string]: unknown;
 }
 
+/** Offsets in Studio's decoded string, not Core's wire byte offsets. */
+export interface StderrRange { start: number; end: number }
+
 /** `shell.read` page. `cursor` continues after this page; `output_complete` ends it. */
 export interface ShellOutput {
   execution_id: string;
   text: string;
+  stderr?: readonly StderrRange[];
   cursor?: string;
   output_complete: boolean;
   [extra: string]: unknown;
@@ -607,6 +611,7 @@ export interface ShellListArgs {
 }
 export interface ShellReadArgs {
   execution_id: string;
+  segments?: boolean;
   cursor?: string;
   limit_bytes?: number;
 }

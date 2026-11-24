@@ -787,6 +787,89 @@ async fn schedule_and_service_activity_against_the_pinned_owner() {
         c.ok("schedule.list", json!({"thread_id":tid}), None).await["items"],
         json!([])
     );
+    // Use a separate Thread and a one-shot fixture so no service output can be mistaken for this read.
+    let output_thread = c
+        .ok(
+            "thread.create",
+            json!({"cwd":root.to_string_lossy()}),
+            Some(op("output-thread")),
+        )
+        .await;
+    let output_tid = &output_thread["thread_id"];
+    let command = if cfg!(windows) {
+        "[Console]::Out.WriteLine('fixture-out'); [Console]::Error.WriteLine('fixture-err')"
+    } else {
+        "printf 'fixture-out\\n'; printf 'fixture-err\\n' >&2"
+    };
+    let scheduled = owner
+        .call(
+            shellboy::protocol::Command::ScheduleAdd(
+                serde_json::from_value(json!({
+                    "thread_id":output_tid,"in_seconds":1,"command":command
+                }))
+                .unwrap(),
+            ),
+            Some(op("output-schedule")),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(scheduled).unwrap()["ok"], true);
+    let execution = tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            let list = c
+                .ok("shell.list", json!({"thread_id":output_tid}), None)
+                .await;
+            let item = &list["items"][0];
+            if item["state"] == "exited" {
+                assert_eq!(item["exit_code"], 0);
+                let id = item["execution_id"].as_str().unwrap();
+                let details = c.ok("shell.get", json!({"execution_id":id}), None).await;
+                if details["output_complete"] == true {
+                    break id.to_owned();
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(75)).await;
+        }
+    })
+    .await
+    .expect("fixture shell settled");
+    let plain = c
+        .ok("shell.read", json!({"execution_id":execution}), None)
+        .await;
+    let page = c
+        .ok(
+            "shell.read",
+            json!({"execution_id":execution,"segments":true}),
+            None,
+        )
+        .await;
+    assert!(plain.get("segments").is_none());
+    assert_eq!(page["execution_id"], execution);
+    assert_eq!(page["text"], plain["text"]);
+    let text = page["text"].as_str().unwrap();
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    for segment in page["segments"].as_array().unwrap() {
+        let start = segment["start_byte"].as_u64().unwrap() as usize;
+        let end = segment["end_byte"].as_u64().unwrap() as usize;
+        match segment["stream"].as_str().unwrap() {
+            "stdout" => stdout.push_str(&text[start..end]),
+            "stderr" => stderr.push_str(&text[start..end]),
+            stream => panic!("unexpected stream: {stream}"),
+        }
+    }
+    assert_eq!(stdout.trim_end(), "fixture-out");
+    assert_eq!(stderr.trim_end(), "fixture-err");
+    let end = c
+        .ok(
+            "shell.read",
+            json!({"execution_id":execution,"segments":true,"cursor":page["cursor"]}),
+            None,
+        )
+        .await;
+    assert_eq!(end["text"], "");
+    assert!(end.get("segments").is_none());
     drop(c);
     cancel.cancel();
     stop_owner(&bin, &data, serve).await;

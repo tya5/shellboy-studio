@@ -248,10 +248,36 @@ const decodeBody: Decoder<HistoryBody> = (v) => {
   }
   return { ok: true, value: sanitizeMessageRelation(v as HistoryBody) };
 };
-const decodeShellOutput: Decoder<ShellOutput> = (v) =>
-  isObject(v) && typeof v.execution_id === "string" && typeof v.text === "string"
-    ? { ok: true, value: v as ShellOutput }
-    : { ok: false, reason: "shell.read result lacks execution_id or text" };
+function decodeStderr(text: string, segments: unknown): ShellOutput["stderr"] {
+  if (!Array.isArray(segments) || segments.length === 0) return;
+  let bytes = 0, offset = 0;
+  const advance = (end: number) => {
+    while (bytes < end && offset < text.length) {
+      const code = text.codePointAt(offset)!;
+      bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+      offset += code < 0x10000 ? 1 : 2;
+    }
+    return bytes === end;
+  };
+  const stderr = [];
+  for (const segment of segments as unknown[]) {
+    if (!isObject(segment) || (segment.stream !== 'stdout' && segment.stream !== 'stderr')) return;
+    const { start_byte: start, end_byte: end } = segment;
+    if (typeof start !== 'number' || !Number.isSafeInteger(start) || start < bytes ||
+        typeof end !== 'number' || !Number.isSafeInteger(end) || end <= start || !advance(start)) return;
+    const from = offset;
+    if (!advance(end)) return;
+    if (segment.stream === 'stderr') stderr.push({ start: from, end: offset });
+  }
+  return stderr.length ? stderr : undefined;
+}
+const decodeShellOutput: Decoder<ShellOutput> = (v) => {
+  if (!isObject(v) || typeof v.execution_id !== 'string' || typeof v.text !== 'string')
+    return { ok: false, reason: 'shell.read result lacks execution_id or text' };
+  const { segments, stderr: _untrusted, ...page } = v;
+  const stderr = decodeStderr(v.text, segments);
+  return { ok: true, value: { ...page, ...(stderr && { stderr }) } as ShellOutput };
+};
 const decodeNames = pageOf<string>((v) => (typeof v === "string" ? undefined : "a name in the page is not a string"));
 const decodeTagResult: Decoder<TagResult> = (v) =>
   isObject(v) && Array.isArray(v.changed) && Array.isArray(v.unchanged) && Array.isArray(v.not_found)

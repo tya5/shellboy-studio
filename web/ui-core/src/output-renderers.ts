@@ -1,4 +1,6 @@
-export interface OutputLine { text: string; kind: "key" | "value" | "add" | "remove" | "hunk" | "file" | "plain" }
+import type { StderrRange } from "../../data/src";
+
+export interface OutputLine { text: string; stderr?: boolean; kind: "key" | "value" | "add" | "remove" | "hunk" | "file" | "plain" }
 export interface RenderedOutput { kind: "json" | "diff"; lines: OutputLine[] }
 export interface OutputInput { command: string; text: string; complete: boolean }
 const MAX_OUTPUT = 64 * 1024;
@@ -41,4 +43,17 @@ export function renderOutput(input: OutputInput): RenderedOutput | undefined {
   if (!input.complete || input.text.length > MAX_OUTPUT) return;
   for (const renderer of outputRenderers) { const result = renderer(input); if (result) return result; }
   return undefined;
+}
+
+/** Preserve source lines when a formatter would move bytes across line boundaries. */
+export function stderrOutputLines(text: string, stderr: readonly StderrRange[], formatted?: RenderedOutput): OutputLine[] {
+  let position = 0, range = 0;
+  return text.split("\n").map((source, i) => {
+    const start = position;
+    const end = Math.min(text.length, start + source.length + 1);
+    position = end;
+    while (range < stderr.length && stderr[range]!.end <= start) range++;
+    const line: OutputLine = (formatted?.kind === "diff" ? formatted.lines[i] : undefined) ?? { kind: "plain", text: source };
+    return start < end && range < stderr.length && stderr[range]!.start < end ? { ...line, stderr: true } : line;
+  });
 }

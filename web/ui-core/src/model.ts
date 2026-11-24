@@ -14,7 +14,7 @@ import { recentAppFolders } from "./app-templates";
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
-import { Cancel, messageCancelFailure, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle, type ReplyCount } from "../../data/src";
+import { Cancel, messageCancelFailure, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type StderrRange, type ThreadDetails, type ThreadSummary, type ThreadHandle, type ReplyCount } from "../../data/src";
 import { ArtifactObservation, CAPABILITY_HISTORY_WINDOW, ReplyPages, type ReplySide } from "../../data/src";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
@@ -73,6 +73,7 @@ export interface PendingOwnMessage {
 
 export interface OutputState {
   text: string;
+  stderr?: readonly StderrRange[];
   loading: boolean;
   /** More output exists than this view reads. */
   cutOff: boolean;
@@ -1043,11 +1044,13 @@ export class AppModel {
     // A validated empty output is still a saved result, not first-load absence.
     if (!cur || cur.loading || (cur.error !== undefined && !cur.expired)) this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
       text: cur?.text ?? "",
+      ...(cur?.stderr && { stderr: cur.stderr }),
       loading: true,
       cutOff: cur?.cutOff ?? false,
       error: undefined,
     });
     let text = "";
+    const stderr: StderrRange[] = [];
     let cursor: string | undefined;
     let error: string | undefined;
     let cutOff = false;
@@ -1057,7 +1060,7 @@ export class AppModel {
         cutOff = true;
         break;
       }
-      const out = await this.ops.shellRead({ execution_id: executionId, ...(cursor !== undefined && { cursor }) }, { cancel });
+      const out = await this.ops.shellRead({ execution_id: executionId, segments: true, ...(cursor !== undefined && { cursor }) }, { cancel });
       if (this.outputReads.get(executionId) !== cancel) return;
       if (!out.ok) {
         if (out.error.kind === "cancelled") {
@@ -1072,13 +1075,21 @@ export class AppModel {
         error = errorMessage(out.error);
         break;
       }
+      if (out.value.execution_id !== executionId) {
+        error = "shell.read returned a different execution";
+        break;
+      }
+      for (const { start, end } of out.value.stderr ?? []) stderr.push({ start: text.length + start, end: text.length + end });
       text += out.value.text;
       cursor = out.value.cursor;
       if (out.value.text === "" || cursor === undefined) break;
     }
-    const next: OutputState = { text: expired ? "" : error !== undefined ? (cur?.text ?? "") : text, loading: false, cutOff, error, ...(expired && { expired }) };
+    const ranges = expired ? undefined : error !== undefined ? cur?.stderr : stderr.length ? stderr : undefined;
+    const next: OutputState = { text: expired ? "" : error !== undefined ? (cur?.text ?? "") : text, loading: false, cutOff, error, ...(ranges && { stderr: ranges }), ...(expired && { expired }) };
     const current = this.outputs.peek().get(executionId);
-    if (current?.text === next.text && current.loading === next.loading && current.cutOff === next.cutOff && current.error === next.error && current.expired === next.expired) return;
+    if (current?.text === next.text && current.loading === next.loading && current.cutOff === next.cutOff && current.error === next.error && current.expired === next.expired &&
+        current.stderr?.length === ranges?.length &&
+        (!ranges || ranges.every(({ start, end }, i) => current.stderr?.[i]?.start === start && current.stderr[i]?.end === end))) return;
     this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, next);
   }
 

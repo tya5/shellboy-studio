@@ -29,6 +29,8 @@
 
 .output-actions{display:flex;flex-wrap:wrap;gap:var(--space-8);align-items:center}
 .output-log{min-width:0;width:100%}.output-wrapped .log{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
+.output-window [data-stream="stderr"]{border-inline-start:thin solid currentColor;padding-inline-start:var(--space-4)}
+.output-stream-label{margin-inline-end:var(--space-8);color:var(--muted)}
 @container app (max-width:899px){.panel-detail[data-panel-detail]{position:fixed;inset:0;z-index:var(--z-popover);display:flex;flex-direction:column;overflow:auto;background:var(--panel);padding:var(--space-12)}.panel-detail .log{max-height:none;overflow-y:visible}}
 
 .shell-step-content{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8);padding:0 var(--space-12) var(--space-12) calc(var(--space-12) + var(--size-icon) + var(--space-8))}

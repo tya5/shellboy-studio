@@ -268,6 +268,16 @@ describe("Operations added for the presentation", () => {
     expect(await read).toMatchObject({ ok: true, value: { text: "out" } });
   });
 
+  it.each([[4, 7, true], [5, 7, false], [4, 8, false]])("maps only valid UTF-8 stderr boundaries (%s..%s)", async (start, end, valid) => {
+    const { t, ops } = setup();
+    const read = ops.shellRead({ execution_id: "e", segments: true });
+    t.ok(t.calls("shell.read")[0]!.id, { execution_id: "e", text: "\u{1f4a5}\u65e5", segments: [
+      { stream: "stderr", start_byte: start, end_byte: end },
+    ] });
+    const out = await read;
+    expect(out.ok && out.value.stderr).toEqual(valid ? [{ start: 2, end: 3 }] : undefined);
+  });
+
   it("thread.create is a mutation with an operation id", async () => {
     const { t, ops } = setup();
     const made = ops.threadCreate({ cwd: "/w" });

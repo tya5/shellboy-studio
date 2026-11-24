@@ -27,7 +27,7 @@ import { ConversationCharacter } from "../system/components";
 import { computed, effect } from "@preact/signals-core";
 import { memo } from "preact/compat";
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, stderrOutputLines, type OutputLine, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, CopyButton, IconButton, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
@@ -386,27 +386,31 @@ function useOutputBody({ model, id, command, complete, boxed }: OutputProps) {
   const t = model.t.value;
   const output = useMemo(() => computed(() => model.outputs.value.get(id)), [model, id]);
   const out = output.value;
-  const rendered = useMemo(() => !out || out.error ? undefined : renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff }), [command, out?.text, complete, out?.loading, out?.cutOff, out?.error]);
+  const lines = useMemo(() => {
+    if (!out || out.expired) return;
+    const formatted = out.error ? undefined : renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff });
+    return out.stderr ? stderrOutputLines(out.text, out.stderr, formatted) : formatted?.lines;
+  }, [command, out?.text, out?.stderr, complete, out?.loading, out?.cutOff, out?.error, out?.expired]);
   const loading = !out || (out.loading && out.text === "");
   const available = !!out?.text && !out.expired;
   const body = loading ? <div class="log muted">{t("details.outputLoading")}</div>
     : out.expired ? <div class="output-reclaimed muted caption" role="note">{t("output.expired")}</div>
     : out.error && !available ? <div class="log muted">{t("details.outputError", { message: out.error })}</div>
     : <>
-      <div class={`output-log${wrap ? " output-wrapped" : ""}`}>{rendered && !raw ? <OutputLines lines={rendered.lines} boxed={boxed ?? false} /> : <LogBlock text={out.text || t("details.outputEmpty")} boxed={boxed ?? false} />}</div>
+      <div class={`output-log${wrap ? " output-wrapped" : ""}`}>{lines && !raw ? <OutputLines lines={lines} boxed={boxed ?? false} /> : <LogBlock text={out.text || t("details.outputEmpty")} boxed={boxed ?? false} />}</div>
       {out.error ? <div class="caption muted">{t("details.outputError", { message: out.error })}</div> : null}
       {out.cutOff ? <div class="caption muted" role="note">{t("details.outputMore")}</div> : null}
     </>;
-  return { out, available, body, wrap, setWrap, raw, setRaw, rendered, loading };
+  return { out, available, body, wrap, setWrap, raw, setRaw, lines, loading };
 }
 
 export const Output = memo(function Output(props: OutputProps) {
   const t = props.model.t.value;
-  const { out, body, wrap, setWrap, raw, setRaw, rendered, loading } = useOutputBody(props);
+  const { out, body, wrap, setWrap, raw, setRaw, lines, loading } = useOutputBody(props);
   if (!out || loading || out.expired || (out.error && !out.text)) return body;
   return <>
     <div class="output-actions"><Button onClick={() => { void navigator.clipboard.writeText(out.text).catch(() => {}); }}>{t("code.copy")}</Button><Button aria-pressed={wrap} onClick={() => setWrap(!wrap)}>{t("output.wrapLines")}</Button>
-      {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
+      {lines ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
     </div>
     {body}
   </>;
@@ -414,7 +418,7 @@ export const Output = memo(function Output(props: OutputProps) {
 
 const InlineShellOutput = memo(function InlineShellOutput({ onDetails, ...props }: OutputProps & { onDetails: (opener: HTMLButtonElement) => void }) {
   const t = props.model.t.value;
-  const { out, available, body, wrap, setWrap, raw, setRaw, rendered, loading } = useOutputBody(props);
+  const { out, available, body, wrap, setWrap, raw, setRaw, lines, loading } = useOutputBody(props);
   const text = available ? out?.text ?? "" : "";
   const count = useMemo(() => text ? (text.match(/\n/g)?.length ?? 0) + (text.endsWith("\n") ? 0 : 1) : 0, [text]);
   if (out && !loading && !available && !out.expired && !out.error && !out.cutOff) return null;
@@ -424,7 +428,7 @@ const InlineShellOutput = memo(function InlineShellOutput({ onDetails, ...props 
       <span class="output-heading">{title}</span>
       <IconButton glyph="output.wrap" label={t("output.wrapLines")} aria-pressed={wrap} disabled={!available} onClick={() => setWrap(value => !value)} />
       <CopyButton text={text} label={t("output.copyOutput")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} />
-      {available && rendered ? <IconButton glyph="output.format" label={t("output.formatted")} aria-pressed={!raw} onClick={() => setRaw(value => !value)} /> : null}
+      {available && lines ? <IconButton glyph="output.format" label={t("output.formatted")} aria-pressed={!raw} onClick={() => setRaw(value => !value)} /> : null}
       <IconButton glyph="output.openDetails" label={t("output.openDetails")} onClick={event => onDetails(event.currentTarget)} />
     </div>
     {body}
@@ -438,7 +442,7 @@ export function outputLineRange(total: number, start: number, count: number): { 
   return { first, last: Math.min(total, first + Math.max(0, count)) };
 }
 
-export function OutputLines({ lines, boxed }: { lines: readonly { text: string; kind: string }[]; boxed: boolean }) {
+export function OutputLines({ lines, boxed }: { lines: readonly OutputLine[]; boxed: boolean }) {
   const pre = useRef<HTMLPreElement>(null);
   const [range, setRange] = useState({ first: 0, last: OUTPUT_WINDOW_THRESHOLD });
   const windowed = lines.length > OUTPUT_WINDOW_THRESHOLD;
@@ -460,7 +464,7 @@ export function OutputLines({ lines, boxed }: { lines: readonly { text: string; 
     const visible = Math.ceil(element.clientHeight / lineHeight);
     const start = Math.max(0, Math.floor(element.scrollTop / lineHeight) - OUTPUT_OVERSCAN);
     setRange(outputLineRange(lines.length, start, visible + OUTPUT_OVERSCAN * 2));
-  }}>{first > 0 ? "\n".repeat(first) : null}{lines.slice(first, last).map((line, index) => <span key={first + index} class={`output-${line.kind}`}>{line.text}{first + index < lines.length - 1 ? "\n" : ""}</span>)}{last < lines.length ? "\n".repeat(lines.length - last) : null}</pre>;
+  }}>{first > 0 ? "\n".repeat(first) : null}{lines.slice(first, last).map((line, index) => <span key={first + index} class={`output-${line.kind}`} data-stream={line.stderr ? "stderr" : undefined}>{line.stderr ? <span class="output-stream-label">stderr</span> : null}{line.text}{first + index < lines.length - 1 ? "\n" : ""}</span>)}{last < lines.length ? "\n".repeat(lines.length - last) : null}</pre>;
 }
 
 const OpenPhonePanelIfHidden = createContext<(() => void) | undefined>(undefined);
