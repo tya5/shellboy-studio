@@ -51,7 +51,7 @@ In **Conversation**, use **Expand right panel** when the panel is collapsed, or 
 
 With a keyboard, use Tab or Shift+Tab to leave a row menu and continue outside that row. Collapsed Work rows keep a focus outline, and Tab can reach panel content with no controls. If **Stop** disappears while focused, focus returns to the composer. Global shortcuts are ignored in dialogs, while editing or composing text with an IME, and when a control has already handled the key.
 
-For v0.4.2, pending landing: higher-contrast counts on tabs such as **Reply needed** and **Awaiting reply**. The sidebar also gains screen-reader tree navigation, focused conversation rows stay mounted during scrolling, and Studio announces **Reply is arriving.** and **Reply saved.** without announcing each chunk. The page cannot guarantee where a screen reader’s independent browse cursor stays.
+The sidebar also gains screen-reader tree navigation, focused conversation rows stay mounted during scrolling, and Studio announces **Reply is arriving.** and **Reply saved.** without announcing each chunk. The page cannot guarantee where a screen reader’s independent browse cursor stays.
 
 | Tab | What to look for |
 | --- | --- |
@@ -86,7 +86,7 @@ The screen updates in place as Threads change: rows, your selected message and t
 Open the global **Analytics** screen and choose a **Period**. Under **By Thread**, compare **Excl. cached** (conversation other plus all summaries), **Total**, **Cached input** (conversation only), or **Summary tokens**. The bars and shares follow the selected metric. An incomplete scan does not show rankings. Open a Thread row for its exact breakdown and model usage in the same period; **Back to ranking** returns to that row. **Detailed usage table** keeps the recorded counters, cache rates and weighted values available. Summary usage is separate and is not attributed to models. **Show more usage rows** reveals more rows already read. Incomplete totals can be lower bounds; a missing value is not zero. **Cache rate** is the cached share of conversation input where the counters support a comparison. **Effective tokens** uses editable cached-input and output weights stored in this browser. Neither that value nor **Summary cost** is a currency amount or a provider bill.
 
 
-For v0.4.2, pending landing: **By Thread** adds **Comparison metric**: **Excl. cached** (default; other conversation tokens plus all summary tokens), **Total**, **Cached input** (conversation only), and **Summary tokens**. Rank, bars, exact counts and shares follow the selected metric. An incomplete scan does not show a ranking. Open a Thread's breakdown for the same **Period**, then use **Back to ranking**. The older counters and model breakdowns remain under **Detailed usage table**.
+**By Thread** includes **Comparison metric**: **Excl. cached** (default; other conversation tokens plus all summary tokens), **Total**, **Cached input** (conversation only), and **Summary tokens**. Rank, bars, exact counts and shares follow the selected metric. An incomplete scan does not show a ranking. Open a Thread's breakdown for the same **Period**, then use **Back to ranking**. The older counters and model breakdowns remain under **Detailed usage table**.
 
 ## Share settings with a colleague
 
@@ -184,7 +184,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 
 Tab または Shift+Tab で行メニューから出ると、その行の外の操作に移ります。閉じた作業行にもフォーカス枠が表示され、操作のないパネルにも Tab で移動できます。フォーカス中の **停止** が消えると、入力欄に戻ります。ダイアログ内、編集中、IME 変換中、または操作側が処理済みのキーでは、全体のショートカットは動作しません。
 
-v0.4.2 向け（反映待ち）：**要返信** や **返信待ち** などの件数の文字が読みやすくなります。サイドバーは読み上げでツリーとして操作でき、スクロール中もフォーカス中の会話行は維持されます。読み上げ通知は **返信を受信中です。** と **返信を保存しました。** のみで、受信のたびに通知しません。読み上げソフト独自の閲覧カーソルの位置はページ側では保証できません。
+サイドバーは読み上げでツリーとして操作でき、スクロール中もフォーカス中の会話行は維持されます。読み上げ通知は **返信を受信中です。** と **返信を保存しました。** のみで、受信のたびに通知しません。読み上げソフト独自の閲覧カーソルの位置はページ側では保証できません。
 
 | タブ | 内容 |
 | --- | --- |
@@ -219,7 +219,7 @@ v0.4.2 向け（反映待ち）：**要返信** や **返信待ち** などの�
 全体の **分析** で **期間** を選び、**スレッド別** で **キャッシュを除く**（会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を比較できます。棒と割合は選択項目に対応し、集計が不完全なときは順位を表示しません。行を開くと同じ期間の内訳とモデル別使用量を確認でき、**ランキングに戻る** で元の行に戻ります。**詳細な使用量の表** では記録済みの内訳、キャッシュ率、実効トークンを引き続き確認できます。要約は別集計で、モデル別には配分しません。**使用量の続きを表示** は読み込み済みの行を追加で表示します。集計が不完全な場合は下限になり、値がない場合はゼロとは限りません。**キャッシュ率** は比較できる会話入力のうちキャッシュを使った割合です。**実効トークン** のキャッシュ入力と出力の重みはブラウザに保存されます。実効トークンも **要約コスト** も金額ではありません。
 
 
-v0.4.2 向け（反映待ち）：**スレッド別** の **比較する項目** で **キャッシュを除く**（既定。会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を選べます。順位、棒、件数、割合は選んだ項目に対応します。集計が不完全な場合は順位を表示しません。行を開くと同じ **期間** の内訳を確認でき、**ランキングに戻る** で元の行に戻ります。従来の使用量やモデル別の内訳は **詳細な使用量の表** にあります。
+**スレッド別** の **比較する項目** で **キャッシュを除く**（既定。会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を選べます。順位、棒、件数、割合は選んだ項目に対応します。集計が不完全な場合は順位を表示しません。行を開くと同じ **期間** の内訳を確認でき、**ランキングに戻る** で元の行に戻ります。従来の使用量やモデル別の内訳は **詳細な使用量の表** にあります。
 
 ### 設定を共有する
 
