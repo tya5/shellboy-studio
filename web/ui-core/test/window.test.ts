@@ -207,14 +207,17 @@ describe("append, rewind and delayed replies", () => {
     const r = await open(5000);
     r.w.view(205, VIEW, false);
     const anchor = r.w.anchor(205);
+    const kind = r.w.itemAt(anchor.ordinal)!.kind;
+    r.w.measure([[anchor.ordinal, 137]]);
     r.owner.rewrite(3000);
     const at = 2400;
-    r.owner.decorate = (i, item) => i === at ? { ...item, node_id: anchor.nodeId, kind: "user" } : item;
+    r.owner.decorate = (i, item) => i === at ? { ...item, node_id: anchor.nodeId, kind } : item;
     const answer = r.owner.answer.bind(r.owner);
     r.owner.answer = (call) => (call.args as { node_id?: string }).node_id === anchor.nodeId
       ? answer({ ...call, args: { ...call.args as object, node_id: undefined, ordinal: at } }) : answer(call);
     r.pause(); await r.settle(); paint(r);
-    expect(r.w.pathChanged.value).toBe(true);
+    expect(r.w.pathChanged.value).toBe(false);
+    expect(r.w.heightOf(at)).toBe(137);
     expect(r.w.anchor(r.w.scrollTop)).toEqual({ ...anchor, ordinal: at });
     close(r);
   });
@@ -343,7 +346,10 @@ it("recovery drains coalesced changed hints once without waiting for another hin
  try {
   r.owner.rewrite(10);r.w.changed();await flush();
   const probe=r.calls().at(-1)!;r.owner.answered.add(probe.id);const probeReply=r.owner.answer(probe);if(probeReply.ok)r.t.ok(probe.id,probeReply.result);else r.t.ownerError(probe.id,probeReply.code,"Synthetic cursor expiry",probeReply.details);await flush();
-  const recover=r.calls().at(-1)!;expect(recover.id).not.toBe(probe.id);r.owner.answered.add(recover.id);
+  const byNode=r.calls().at(-1)!;expect(byNode.id).not.toBe(probe.id);expect(args(byNode).node_id).toBe("n0-9");
+  r.owner.answered.add(byNode.id);const missing=r.owner.answer(byNode);if(missing.ok)throw new Error('fixture');
+  r.t.ownerError(byNode.id,missing.code,"Synthetic missing anchor",missing.details);await flush();
+  const recover=r.calls().at(-1)!;expect(recover.id).not.toBe(byNode.id);r.owner.answered.add(recover.id);
   const old=r.owner.answer(recover);if(!old.ok)throw new Error('fixture');
   r.owner.append(1);const mark=r.calls().length;r.w.changed();r.w.changed();await flush();expect(r.calls()).toHaveLength(mark);
   r.t.ok(recover.id,old.result);await flush();expect(r.calls()).toHaveLength(mark+1);

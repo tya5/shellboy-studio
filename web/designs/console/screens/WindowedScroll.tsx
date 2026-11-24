@@ -236,7 +236,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       for (let position = i; position <= end; position++) {
         if (position === liveBoundary) parts.push(<div class="live-tail" key="live">{live}</div>);
         const grouped = rowAt.get(position);
-        parts.push(grouped ? <div key={position} data-o={position} data-node={win.itemAt(position)?.node_id} data-members={JSON.stringify(grouped.flatMap((row) => row.type === "steps" ? row.steps.map((step) => step.executionId) : []))} class="vrow">{grouped.map(renderRow)}</div>
+        parts.push(grouped ? <div key={win.itemAt(position)?.node_id ?? position} data-o={position} data-node={win.itemAt(position)?.node_id} data-members={JSON.stringify(grouped.flatMap((row) => row.type === "steps" ? row.steps.map((step) => step.executionId) : []))} class="vrow">{grouped.map(renderRow)}</div>
           : <div key={`empty${position}`} data-o={position} />);
       }
       i = end + 1;
@@ -270,12 +270,12 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       onScroll={(e) => {
         if (win.status.peek() === "loading") return;
         const b = e.currentTarget;
-        tellWindow(b, rowOrigin(b), intent.current.scroll(b));
+        tellWindow(b, rowOrigin(b), intent.current.scroll(b, () => { win.pathChanged.value = false; }));
         const context = accepted ? readingContext(accepted, () => win.acceptedView.isCurrent(accepted)) : undefined;
         readingAnchor.current.capture(b, context);
       }}
     >
-      {win.pathChanged.value ? <Notice tone="wait">{t("convo.pathChanged")}</Notice> : null}
+      {win.pathChanged.value ? <Notice tone="wait" actions={<Button variant="ghost" onClick={() => { win.pathChanged.value = false; }}>{t("common.close")}</Button>}>{t("convo.pathChanged")}</Notice> : null}
       {error !== undefined ? (
         <Notice tone="bad" actions={<Button onClick={() => { win.retry(); if (win.pendingNavigation) intent.current.following = true; }}>{t("convo.retryLoad")}</Button>}>
           {t("convo.loadError", { message: error })}

@@ -50,7 +50,7 @@ export class WindowOwner {
     let to: number;
     if (a.node_id !== undefined) {
       const m = /^n(\d+)-(\d+)$/.exec(a.node_id);
-      if (!m || Number(m[1]) !== this.gen || Number(m[2]) >= this.total) return { ok: false, code: "not_found" };
+      if (!m || Number(m[1]) !== this.gen || Number(m[2]) >= this.total) return stale;
       at = Number(m[2]);
       from = at - before;
       to = at + after;

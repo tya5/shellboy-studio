@@ -77,3 +77,63 @@ it.each([390, 1280])('exposes Load earlier only at an unloaded history boundary 
   await act(async()=>{ render(<WindowedScroll model={model()} win={w} renderRow={row=><div>{row.id}</div>} live={null}/>,host!); w.version.value++; });
   expect(!!host.querySelector('.history-older button')).toBe(false);
 });
+
+async function mountRewrite() {
+  r = await realWindow(8);
+  await r.settle();
+  const fixture = r;
+  const w = fixture.w;
+  host = document.createElement('div');
+  document.body.append(host);
+  const slot = (snapshot: ReturnType<typeof w.acceptedView.peek>) => <div class="conversation-items">{snapshot.rows.map(row =>
+    <div key={row.node_id} data-item-key={row.node_id} data-node={row.node_id}>{row.excerpt}</div>)}</div>;
+  await act(async () => render(<WindowedScroll model={model()} win={w} renderRow={() => <div />} live={null} renderAcceptedView={slot} />, host!));
+  const box = host.querySelector<HTMLElement>('.scroll')!;
+  Object.defineProperties(box, { scrollHeight: { value: 400 }, clientHeight: { value: 120 } });
+  box.scrollTop = 280;
+  await act(async () => { box.dispatchEvent(new Event('scroll')); });
+  return { fixture, w, box };
+}
+
+it('keeps followed rows mounted and the same scroll during and after compaction', async () => {
+  const { fixture, w, box } = await mountRewrite();
+  const tail = box.querySelector('[data-node="n0-7"]');
+  const prior = box.querySelector('[data-node="n0-6"]');
+  expect(tail).not.toBeNull();
+  expect(prior).not.toBeNull();
+  fixture.owner.rewrite(7);
+  fixture.owner.nodeId = i => i === 0 ? 'summary-0' : `n0-${i + 1}`;
+  const answer = fixture.owner.answer.bind(fixture.owner);
+  fixture.owner.answer = call => (call.args as { node_id?: string }).node_id === 'n0-7'
+    ? answer({ ...call, args: { ...call.args as object, node_id: undefined, ordinal: 6 } }) : answer(call);
+  const assertStable = () => {
+    expect(box.querySelector('[data-node="n0-7"]')).toBe(tail);
+    expect(box.querySelector('[data-node="n0-6"]')).toBe(prior);
+    expect(box.querySelector('.loadrows')).toBeNull();
+    expect(box.textContent).not.toContain('convo.pathChanged');
+    expect(box.scrollTop).toBe(280);
+  };
+  await act(async () => { w.changed(); });
+  assertStable();
+  await act(async () => { await fixture.settle(); });
+  expect(box.querySelector('[data-node="summary-0"]')).not.toBeNull();
+  assertStable();
+});
+
+it.each(['scroll', 'dismiss'])('shows one rewind notice and clears it on %s', async method => {
+  const { fixture, w, box } = await mountRewrite();
+  fixture.owner.rewrite(5);
+  await act(async () => { w.changed(); await fixture.settle(); });
+  const noticeCount = () => (box.textContent ?? '').split('convo.pathChanged').length - 1;
+  expect(noticeCount()).toBe(1);
+  // The scroll event emitted by the programmatic reposition is not a dismissal.
+  await act(async () => { box.dispatchEvent(new Event('scroll')); });
+  expect(noticeCount()).toBe(1);
+  await act(async () => {
+    if (method === 'dismiss') [...box.querySelectorAll('button')].find(button => button.textContent === 'common.close')!.click();
+    else { box.scrollTop = 220; box.dispatchEvent(new Event('scroll')); }
+  });
+  expect(noticeCount()).toBe(0);
+  await act(async () => { w.changed(); await fixture.settle(); });
+  expect(noticeCount()).toBe(0);
+});

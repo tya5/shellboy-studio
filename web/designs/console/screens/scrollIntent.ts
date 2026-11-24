@@ -22,12 +22,13 @@ export class ScrollIntent {
   }
   key(key: string): void { this.upward = ["PageUp", "Home", "ArrowUp"].includes(key); }
   wheel(deltaY: number): void { this.upward = deltaY < 0; }
-  scroll(box: HTMLElement): boolean {
+  scroll(box: HTMLElement, onUserMove?: () => void): boolean {
     const top = box.scrollTop;
     const resized = this.height !== box.scrollHeight || this.viewport !== box.clientHeight;
     this.height = box.scrollHeight;
     this.viewport = box.clientHeight;
     if (box.scrollHeight <= box.clientHeight) {
+      if (this.programTop === undefined && top !== this.top) onUserMove?.();
       this.following = true;
       this.programTop = undefined;
       this.top = top;
@@ -39,6 +40,7 @@ export class ScrollIntent {
       return this.following;
     }
     this.programTop = undefined;
+    if (top !== this.top && (!resized || this.upward)) onUserMove?.();
     if (top < this.top && (!resized || this.upward)) this.following = false;
     else if (top > this.top && !resized && box.scrollHeight - top - box.clientHeight <= 1) this.following = true;
     this.top = top;

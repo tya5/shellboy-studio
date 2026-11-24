@@ -512,7 +512,7 @@ export class ConversationWindow {
     }
   }
 
-  private async refreshSelection(minimumRevision:number):Promise<void>{
+  private async refreshSelection(minimumRevision:number, rewrite = false):Promise<void>{
     if(this.disposed||this.tailCancel||this.verifying)return;
     const expected=this.acceptedView.peek(),capability=this.acceptedView.currentCapability,epoch=this.epoch;
     if(!this.acceptedView.isCurrent(expected))return;
@@ -537,32 +537,79 @@ export class ConversationWindow {
       return ok;
     };
     const range=expected.range,rows:HistoryItem[]=[];let revision:number|undefined,total:number|undefined;
+    const anchor = follow ? this.tailKnown : this.lastAnchor ?? this.anchor(this.viewTop);
+    let anchorLost = false;
     try{
-      if(!follow&&(!range||range.last-range.first+1>WINDOW_NODES*WINDOWS_HELD))return;
-      const first=follow?0:range!.first,last=follow?0:range!.last;
-      for(let ordinal=first;ordinal<=last;ordinal+=2*WINDOW_NODES){
-        const args:WindowReadArgs=follow?{before:WINDOW_NODES-1,after:0,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true}:
-          {ordinal,before:0,after:Math.min(2*WINDOW_NODES-1,last-ordinal),expect_node_id:expected.rows[ordinal-first]?.node_id,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true};
-        const out=await this.reader.read(args,cancel);
-        if(!captureResponseOwner()||!readOwnerCurrent()){
-          // A same-lifetime publication (e.g. a Work change) superseded the start ref: the newer cut is still owed.
-          if(!this.disposed&&!cancel.cancelled&&this.tailCancel===cancel&&this.epoch===epoch&&capability===this.acceptedView.currentCapability)this.tailAgain=true;
-          return;
+      if (rewrite) {
+        const before = WINDOW_NODES / 2;
+        const around = { before: follow ? WINDOW_NODES - 1 : before, after: follow ? 0 : before - 1, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true } as const;
+        // The old accepted view remains mounted until this replacement is qualified.
+        const read = async (position: WindowReadArgs) => {
+          const out = await this.reader.read({ ...around, ...position }, cancel);
+          if (captureResponseOwner() && readOwnerCurrent()) return out;
+          if (!this.disposed && !cancel.cancelled && this.tailCancel === cancel && this.epoch === epoch && capability === this.acceptedView.currentCapability) this.tailAgain = true;
+        };
+        let out = anchor?.nodeId ? await read({ node_id: anchor.nodeId }) : await read({});
+        if (!out) return;
+        if (!out.ok && anchor?.nodeId && out.error.kind === "owner" && out.error.code === "cursor_expired") {
+          anchorLost = true;
+          const details = out.error.details as { total?: unknown; revision?: unknown } | undefined;
+          const count = details?.total;
+          out = await read(!follow && typeof count === "number" && Number.isSafeInteger(count) && count > 0
+            ? { ordinal: Math.min(anchor.ordinal, count - 1) } : {});
+          if (out?.ok && out.value.revision !== details?.revision) return;
+        } else if (out.ok && anchor?.nodeId) {
+          const page = out.value;
+          if (!page.items.some(row => row.node_id === anchor.nodeId)) return;
+          if (follow && page.items.at(-1)?.selection?.ordinal !== page.total - 1) {
+            out = await read({});
+            if (out?.ok && out.value.revision !== page.revision) return;
+          }
         }
-        if(!out.ok){if(out.error.kind!=='cancelled')this.error.value=out.error.message;return;}
-        const page=out.value;
-        if(page.revision<minimumRevision||revision!==undefined&&(revision!==page.revision||total!==page.total))return;
-        revision=page.revision;total=page.total;
-        const begin=follow?Math.max(0,page.total-WINDOW_NODES):ordinal;
-        const end=follow?page.total-1:Math.min(last,ordinal+2*WINDOW_NODES-1);
-        if(page.items.length!==Math.max(0,end-begin+1))return;
-        rows.push(...page.items);
+        if (!out) return;
+        if (!out.ok) { if (out.error.kind !== "cancelled") this.fail(out.error.message); return; }
+        if (out.value.revision < minimumRevision) return;
+        ({ revision, total } = out.value);
+        rows.push(...out.value.items);
+      } else {
+        if(!follow&&(!range||range.last-range.first+1>WINDOW_NODES*WINDOWS_HELD))return;
+        const first=follow?0:range!.first,last=follow?0:range!.last;
+        for(let ordinal=first;ordinal<=last;ordinal+=2*WINDOW_NODES){
+          const args:WindowReadArgs=follow?{before:WINDOW_NODES-1,after:0,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true}:
+            {ordinal,before:0,after:Math.min(2*WINDOW_NODES-1,last-ordinal),expect_node_id:expected.rows[ordinal-first]?.node_id,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true};
+          const out=await this.reader.read(args,cancel);
+          if(!captureResponseOwner()||!readOwnerCurrent()){
+            // A same-lifetime publication (e.g. a Work change) superseded the start ref: the newer cut is still owed.
+            if(!this.disposed&&!cancel.cancelled&&this.tailCancel===cancel&&this.epoch===epoch&&capability===this.acceptedView.currentCapability)this.tailAgain=true;
+            return;
+          }
+          if (!out.ok) {
+            if (out.error.kind === "owner" && out.error.code === "cursor_expired") {
+              this.tailCancel = undefined;
+              void this.refreshSelection(minimumRevision, true);
+            } else if (out.error.kind !== "cancelled") this.error.value = out.error.message;
+            return;
+          }
+          const page=out.value;
+          if(page.revision<minimumRevision||revision!==undefined&&(revision!==page.revision||total!==page.total))return;
+          revision=page.revision;total=page.total;
+          const begin=follow?Math.max(0,page.total-WINDOW_NODES):ordinal;
+          const end=follow?page.total-1:Math.min(last,ordinal+2*WINDOW_NODES-1);
+          if(page.items.length!==Math.max(0,end-begin+1))return;
+          rows.push(...page.items);
+        }
       }
       if(!readOwnerCurrent()||revision===undefined||total===undefined)return;
       // An upward gesture during the owned latest read is not permission to navigate away.
       if(follow&&!this.following.peek()){this.newer.value=true;return;}
       const cursor={revision,total};
-      const firstOrdinal=follow?Math.max(0,total-WINDOW_NODES):range!.first,lastOrdinal=follow?total-1:range!.last;
+      const firstOrdinal = rewrite ? rows[0]?.selection?.ordinal ?? 0 : follow ? Math.max(0,total-WINDOW_NODES) : range!.first;
+      const lastOrdinal = rewrite ? rows.at(-1)?.selection?.ordinal ?? -1 : follow ? total-1 : range!.last;
+      if (rewrite && ((!rows.length && total > 0) || lastOrdinal >= total || (follow && lastOrdinal !== total - 1))) return;
+      if (rewrite && !follow && this.lastAnchor?.nodeId !== undefined && this.lastAnchor.nodeId !== anchor?.nodeId) {
+        this.tailAgain = true;
+        return;
+      }
       // Validate and compose from the one bounded plain capture, then retain those exact rows.
       const selected=Object.freeze(rows);
       if(selected.length!==Math.max(0,lastOrdinal-firstOrdinal+1)||new Set(selected.map(row=>row.node_id)).size!==selected.length
@@ -581,20 +628,33 @@ export class ConversationWindow {
       if(replacement.size>WINDOWS_HELD)return;
       const old={buckets:this.buckets,total:this.total,revision:this.revision,tailKnown:this.tailKnown,lastAnchor:this.lastAnchor,heights:this.heights,scroll:this.scrollRequest,
         inflight:new Map(this.inflight),wanted:this.wanted};
-      const nextHeights=new Heights();
-      for(const row of selected){const ordinal=row.selection!.ordinal!,prior=old.buckets.get(Math.floor(ordinal/WINDOW_NODES))?.items[ordinal%WINDOW_NODES];
-        const height=old.heights.h.get(ordinal);if(prior&&prior.node_id===row.node_id&&prior.kind===row.kind&&height!==undefined)nextHeights.set(ordinal,height);
+      const nextHeights = new Heights();
+      const saved = new Map<string, { row: HistoryItem; height: number }>();
+      for (const [ordinal, height] of old.heights.h) {
+        const row = old.buckets.get(Math.floor(ordinal / WINDOW_NODES))?.items[ordinal % WINDOW_NODES];
+        if (row?.node_id) saved.set(row.node_id, { row, height });
+      }
+      for (const row of selected) {
+        const prior = saved.get(row.node_id!);
+        if (prior && prior.row.kind === row.kind) nextHeights.set(row.selection!.ordinal!, prior.height);
       }
       const nextTailKnown=selected.at(-1)?.node_id?{nodeId:selected.at(-1)!.node_id!,ordinal:lastOrdinal}:undefined;
-      const nextLastAnchor=follow?undefined:old.lastAnchor, nextScroll=follow?Number.MAX_SAFE_INTEGER:old.scroll;
+      const recovered = rewrite && !follow ? selected.find(row => row.node_id === anchor?.nodeId) : undefined;
+      const nearest = rewrite && !follow && !recovered && selected.length ? Math.min(Math.max(anchor?.ordinal ?? firstOrdinal, firstOrdinal), lastOrdinal) : undefined;
+      const nextLastAnchor = follow ? undefined : !rewrite ? old.lastAnchor : recovered
+        ? { ordinal: ordinalOf(recovered)!, nodeId: recovered.node_id, offset: anchor && "offset" in anchor ? anchor.offset : 0 }
+        : nearest === undefined ? undefined : { ordinal: nearest, nodeId: selected[nearest - firstOrdinal]?.node_id, offset: 0 };
       if(!readOwnerCurrent()||this.acceptedView.peek()!==commitExpected||this.acceptedGeneration!==generation||capability!==this.acceptedView.currentCapability)return;
       if(!this.commitSelectedPublication(staged,replacement,commitExpected,capability,()=>{
-        this.heights=nextHeights; this.tailKnown=nextTailKnown; this.lastAnchor=nextLastAnchor; this.scrollRequest=nextScroll;
+        this.heights=nextHeights; this.tailKnown=nextTailKnown; this.lastAnchor=nextLastAnchor;
+        this.scrollRequest = follow ? Number.MAX_SAFE_INTEGER : rewrite && nextLastAnchor ? this.scrollFor(nextLastAnchor) : old.scroll;
+        if (rewrite && !follow && this.scrollRequest !== undefined) this.viewTop = this.scrollRequest;
       })){ return; }
       if(this.buckets!==replacement||this.disposed||capability!==this.acceptedView.currentCapability)return;
         for(const [index,read] of old.inflight)if(this.inflight.get(index)===read){read.cancel.cancel();this.inflight.delete(index);}
-      if(follow&&this.following.peek()&&this.wanted===old.wanted)this.wanted.clear();this.failed.clear();
+      if((rewrite || follow&&this.following.peek())&&this.wanted===old.wanted)this.wanted.clear();this.failed.clear();
       if(follow&&!this.following.peek())this.scrollRequest=undefined;
+      if (anchorLost) this.pathChanged.value = true;
       this.status.value='ready';this.error.value=undefined;this.jumping=false;this.version.value++;
     }finally{
       if(this.tailCancel===cancel){
@@ -660,7 +720,7 @@ export class ConversationWindow {
   private async verify(): Promise<void> {
     if (this.verifying || this.disposed) return;
     const known = this.tailKnown;
-    if (!known) return this.reset();
+    if (!known) return this.readTail(true);
     this.verifying = true;
     const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
@@ -671,10 +731,9 @@ export class ConversationWindow {
     this.verifying = false;
     this.tailCancel = undefined;
     if (!out.ok) {
-      if (out.error.kind === "owner" && out.error.code === "path_changed" && this.revision !== undefined && this.following.peek()) {
-        void this.refreshSelection(this.revision); return;
+      if (out.error.kind === "owner" && (out.error.code === "cursor_expired" || out.error.code === "path_changed")) {
+        void this.refreshSelection(this.revision ?? 0, true); return;
       }
-      if (out.error.kind === "owner" && out.error.code === "cursor_expired") this.reset();
       else if (out.error.kind !== "cancelled") this.fail(out.error.message);
       return;
     }
@@ -712,10 +771,9 @@ export class ConversationWindow {
     if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.tailCancel !== cancel) return;
     this.tailCancel = undefined;
     if (!out.ok) {
-      if (out.error.kind === "owner" && out.error.code === "path_changed" && this.revision !== undefined && this.following.peek()) {
-        void this.refreshSelection(this.revision); return;
+      if (out.error.kind === "owner" && (out.error.code === "cursor_expired" || out.error.code === "path_changed")) {
+        void this.refreshSelection(this.revision ?? 0, true); return;
       }
-      if (out.error.kind === "owner" && out.error.code === "cursor_expired") this.reset();
       else if (out.error.kind === "cancelled") this.drainTailHint();
       else {
         this.tailFailed = true;
@@ -767,70 +825,6 @@ export class ConversationWindow {
   private fail(message: string): void {
     if (this.total === 0) this.status.value = "error";
     this.error.value = message;
-  }
-
-  /** The path was rewritten: drop everything and re-read at the anchor node, else the nearest position. */
-  private reset(): void {
-    const anchor = this.lastAnchor;
-    const follow = this.following.peek();
-    this.epoch++;
-    this.acceptedView.revoke();
-    const capability = this.acceptedView.currentCapability;
-    this.cancelAll();
-    if (capability !== this.acceptedView.currentCapability || this.disposed) return;
-    this.verifying = false;
-    this.tailAgain = false;
-    this.jumping = false;
-    this.lastAnchor = undefined;
-    this.wanted.clear();
-    this.buckets.clear();
-    this.failed.clear();
-    this.heights = new Heights();
-    this.revision = undefined;
-    this.tailKnown = undefined;
-    this.total = 0;
-    this.status.value = "loading";
-    this.pathChanged.value = true;
-    this.bump();
-    void this.recover(anchor, follow, this.epoch);
-  }
-
-  private async recover(anchor: Anchor | undefined, follow: boolean, epoch: number): Promise<void> {
-    const around = (extra: WindowReadArgs): WindowReadArgs => ({ items: true, before: WINDOW_NODES / 2, after: WINDOW_NODES / 2 - 1, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, ...extra });
-    const attempts: WindowReadArgs[] = [];
-    if (!follow && anchor) {
-      if (anchor.nodeId) attempts.push(around({ node_id: anchor.nodeId }));
-      attempts.push(around({ ordinal: anchor.ordinal }));
-    }
-    attempts.push({ before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true });
-    const cancel = new Cancel();
-    this.tailCancel = cancel;
-    for (const args of attempts) {
-      const out = await this.reader.read(args, cancel);
-      if (this.disposed || epoch !== this.epoch) return;
-      if (!out.ok) {
-        if (out.error.kind === "cancelled") break;
-        continue;
-      }
-      this.tailCancel = undefined;
-      this.revision = out.value.revision;
-      this.setTotal(out.value.total);
-      const recovered = out.value.items.find((item) => item.node_id === anchor?.nodeId);
-      const ordinal = recovered ? ordinalOf(recovered) : anchor && this.total > 0 ? Math.min(anchor.ordinal, this.total - 1) : undefined;
-      this.lastAnchor = !follow && ordinal !== undefined ? { ordinal, nodeId: recovered?.node_id, offset: recovered ? anchor!.offset : 0 } : undefined;
-      this.install(out.value);
-      if (!follow && this.lastAnchor) this.scrollRequest = this.scrollFor(this.lastAnchor);
-      else if (follow) this.scrollRequest = Number.MAX_SAFE_INTEGER;
-      if (this.scrollRequest !== undefined && this.scrollRequest < Number.MAX_SAFE_INTEGER) this.viewTop = this.scrollRequest;
-      this.bump();
-      if (this.disposed || epoch !== this.epoch) return;
-      this.drainTailHint();
-      this.pump();
-      return;
-    }
-    if (this.tailCancel === cancel) this.tailCancel = undefined;
-    this.fail("history could not be re-read");
-    this.bump();
   }
 
   // ---- storing ----
