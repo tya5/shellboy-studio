@@ -2276,6 +2276,99 @@ async fn intervention_stdin_delivery_reaches_the_child() {
 }
 
 #[tokio::test]
+async fn deliver_now_releases_foreground_and_reaches_provider() {
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
+    let root = temp_root();
+    let data = root.join("data");
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let (continued_tx, mut continued_rx) = tokio::sync::mpsc::unbounded_channel();
+    let url = intervention_provider(gate.clone(), continued_tx, false).await;
+    let serve = start_owner_with(&bin, &root, &data, &url);
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner.clone(), true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut client = Client { ws, next: 0 };
+    next_t(&mut client.ws, "hello").await;
+    let thread = client
+        .ok(
+            "thread.create",
+            json!({"cwd":root.to_str().unwrap()}),
+            Some(format!("{}:deliver-now-thread", serve.instance)),
+        )
+        .await["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    client
+        .ok(
+            "message.send",
+            json!({"thread_id":thread,"text":"start shell before immediate delivery"}),
+            Some(format!("{}:deliver-now-start", serve.instance)),
+        )
+        .await;
+    let started = client.wait_running_shell(owner.as_ref(), &thread).await;
+    let execution = started["execution_id"].as_str().unwrap().to_owned();
+    let live = client
+        .ok("thread.get", json!({"thread_id":thread}), None)
+        .await;
+    assert_eq!(
+        live["shells_count"], 1,
+        "fixture shell must still be live: {live}"
+    );
+    assert_eq!(
+        live["context"]["state"], "active",
+        "fixture Turn must hold foreground: {live}"
+    );
+    let turn = live["turn_id"]
+        .as_str()
+        .expect("foreground turn")
+        .to_owned();
+
+    let sent = client
+        .ok(
+            "message.send",
+            json!({"thread_id":thread,"text":"deliver-now-synthetic","deliver":"now"}),
+            Some(format!("{}:deliver-now-message", serve.instance)),
+        )
+        .await;
+    assert_eq!(sent["delivery_status"], "accepted", "{sent}");
+    assert_eq!(sent["deliver"], "now", "{sent}");
+    assert_eq!(sent["assignment"], "existing_turn", "{sent}");
+    let continued = tokio::time::timeout(Duration::from_secs(10), continued_rx.recv())
+        .await
+        .expect("deliver-now must release the shell-held foreground wait before deadline")
+        .expect("provider continuation request");
+    assert!(
+        continued.contains("deliver-now-synthetic"),
+        "released provider continuation must include the immediate message: {continued}"
+    );
+
+    gate.notify_one();
+    let stopped = client
+        .wait_turn_state(owner.as_ref(), &thread, &turn, |item| {
+            item["state"] != "running"
+        })
+        .await;
+    assert_eq!(stopped["thread_id"], thread);
+    let _ = client
+        .ok("shell.stop", json!({"execution_id":execution}), None)
+        .await;
+    cancel.cancel();
+    drop(serve);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
 async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let bin = PathBuf::from(
         std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
