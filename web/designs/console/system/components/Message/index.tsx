@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { Icon } from "../Icon";
 import { CopyButton } from "../CopyButton";
 
-type Create = (copyLabel: string) => (text: string) => string;
+type Create = () => (text: string) => string;
 let loaded: Create | undefined;
 let loading: Promise<Create> | undefined;
 const loadRenderer = (): Promise<Create> => (loading ??= import("./markdown").then((m) => (loaded = m.createRenderer)));
@@ -49,7 +49,7 @@ function htmlNodes(html: string, copyLabel: string, copiedLabel: string, copyFai
 }
 
 export const MarkdownBlock = memo(function MarkdownBlock({ text, copyLabel, copiedLabel, copyFailedLabel, create }: { text: string; copyLabel: string; copiedLabel: string; copyFailedLabel?: string; create: Create }) {
-  const children = useMemo(() => htmlNodes(create(copyLabel)(text), copyLabel, copiedLabel, copyFailedLabel), [create, copyLabel, copiedLabel, copyFailedLabel, text]);
+  const children = useMemo(() => htmlNodes(create()(text), copyLabel, copiedLabel, copyFailedLabel), [create, copyLabel, copiedLabel, copyFailedLabel, text]);
   return <>{children}</>;
 });
 

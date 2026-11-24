@@ -5,7 +5,7 @@ import MarkdownIt from "markdown-it";
 
 const SAFE_LINK = /^(https?:|mailto:)/i;
 
-export function createRenderer(_copyLabel: string): (text: string) => string {
+export function createRenderer(): (text: string) => string {
   const md = new MarkdownIt({ html: false, linkify: false, breaks: false });
   md.validateLink = (url) => SAFE_LINK.test(url.trim());
   const escape = md.utils.escapeHtml;

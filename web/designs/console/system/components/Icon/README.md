@@ -19,6 +19,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `output.copy` | Copy a command or output to the clipboard. | `copy` |
 | `output.copied` | Confirm a successful clipboard copy. | `check` |
 | `output.wrap` | Toggle line wrapping in inline shell output. | `wrap` |
+| `output.format` | Toggle formatted rendering of inline shell output; off shows raw text. | `brackets` |
 | `output.openDetails` | Open the shell execution in the Activity panel. | `openPanel` |
 | `menu.checked` | Show that a toggle item in a menu (`menuitemcheckbox`) is on. | Lucide `check` |
 | `composer.modelMenu` | Show that the composer model control opens its picker. | `chevronDown` |

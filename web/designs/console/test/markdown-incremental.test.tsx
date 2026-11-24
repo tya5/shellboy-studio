@@ -11,8 +11,8 @@ const normalize = (node: Node): unknown => node.nodeType === Node.TEXT_NODE ? no
 it("mounts Markdown and parses each stable live block once", async () => {
   const host = document.createElement("div");
   const parsed: string[] = [];
-  const base = createRenderer("Copy");
-  const renderer = (_copy: string) => (text: string) => { parsed.push(text); return base(text); };
+  const base = createRenderer();
+  const renderer = () => (text: string) => { parsed.push(text); return base(text); };
   try {
     await act(async () => render(<Markdown {...props} text={"First paragraph\n\nSecond"} live renderer={renderer} />, host));
     expect(parsed).toEqual(["First paragraph", "Second"]);
@@ -31,8 +31,8 @@ it.each([
 ])("keeps saved %s Markdown byte-for-byte equivalent to the normal renderer", async (_name, text) => {
   const host = document.createElement("div");
   const expected = document.createElement("div");
-  expected.innerHTML = createRenderer("Copy")(text);
-  await act(async () => render(<Markdown {...props} text={text} renderer={() => createRenderer("Copy")} />, host));
+  expected.innerHTML = createRenderer()(text);
+  await act(async () => render(<Markdown {...props} text={text} renderer={createRenderer} />, host));
   const prose = host.querySelector(".message-markdown")!.cloneNode(true) as HTMLElement;
   prose.querySelectorAll(".message-code-copy").forEach(node => node.remove());
   expect(normalize(prose)).toEqual(["DIV", [["class", "message-markdown"], ["data-reading-body", ""]], [...expected.childNodes].map(normalize)]);

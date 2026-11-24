@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createRenderer } from "../system/components/Message/markdown";
 
-const render = createRenderer("Copy");
+const render = createRenderer();
 
 describe("Markdown", () => {
   it("renders the common cases", () => {
