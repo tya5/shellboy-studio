@@ -326,7 +326,8 @@ describe("Conversation live text", () => {
     await act(async () => flushPromises());
     const statuses = [...el.querySelectorAll('.conversation-status')];
     expect(statuses).toHaveLength(1);
-    expect(statuses[0]!.getAttribute('role')).toBe('status');
+    expect(statuses[0]!.hasAttribute('role')).toBe(false);
+    expect(el.querySelector('[data-conversation-announcement][role="status"][aria-live="polite"]')?.textContent).toBeTruthy();
     model.dispose();
   });
 
