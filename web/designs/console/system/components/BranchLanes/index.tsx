@@ -43,9 +43,14 @@ function LaneCell({ row }: { row: LaneRowView }) {
         {row.first ? null : <span class={`lanes-line lanes-above${fade}`} style={laneStyle(row.lane)} />}
         {row.kind === "tip" ? null : <span class={`lanes-line lanes-below${fade}`} style={laneStyle(row.lane)} />}
       </>}
-    {row.branchTo.map((m, i) => <svg key={`b${i}`} class="lanes-curve" style={{ ...laneStyle(m), "--from": row.lane.column, "--span": Math.max(m.column - row.lane.column, 0) } as JSX.CSSProperties} viewBox="0 0 100 100" preserveAspectRatio="none">
-      <path d="M0 0C0 70 100 35 100 100" vector-effect="non-scaling-stroke" />
-    </svg>)}
+    {row.branchTo.map((m, i) => {
+      // The connector leaves the parent's diamond and ends at the top of the child's column, which can lie on
+      // either side: a column freed by an ended lane may be to the parent's left.
+      const left = m.column < row.lane.column;
+      return <svg key={`b${i}`} class="lanes-curve" data-dir={left ? "left" : "right"} style={{ ...laneStyle(m), "--from": Math.min(m.column, row.lane.column), "--span": Math.abs(m.column - row.lane.column) } as JSX.CSSProperties} viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path d={left ? "M100 0C100 70 0 35 0 100" : "M0 0C0 70 100 35 100 100"} vector-effect="non-scaling-stroke" />
+      </svg>;
+    })}
     {row.kind === "run" ? null : <span class={`lanes-node lanes-node-${row.kind}${fade}`} style={laneStyle(row.lane)} />}
   </span>;
 }

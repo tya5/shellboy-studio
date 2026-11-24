@@ -81,6 +81,24 @@ describe("Branches screen", () => {
     expect(el.querySelector(".loadrows")).toBeNull();
   });
 
+  it("every split draws a connector from the parent's diamond to each child's column, left or right", async () => {
+    const { el, row } = await open();
+    const curves = (key: string) => [...row(key)!.querySelectorAll<SVGElement>(".lanes-curve")].map((c) => ({ dir: c.dataset.dir, from: Number(c.style.getPropertyValue("--from")), span: Number(c.style.getPropertyValue("--span")), d: c.querySelector("path")!.getAttribute("d") }));
+    // Release notes (column 0) to Streaming output (column 1): rightwards.
+    expect(curves("rel|split|r6")).toEqual([{ dir: "right", from: 0, span: 1, d: "M0 0C0 70 100 35 100 100" }]);
+    // Streaming output (column 1) to Streaming + retry, which reuses column 0 once Release notes ended: leftwards.
+    expect(curves("stream|split|s10")).toEqual([{ dir: "left", from: 0, span: 1, d: "M100 0C100 70 0 35 0 100" }]);
+    for (const split of el.querySelectorAll<HTMLElement>(".branch-lanes > li[data-kind=split]")) {
+      expect(split.querySelectorAll(".lanes-curve").length, split.dataset.key).toBeGreaterThan(0);
+      for (const c of curves(split.dataset.key!)) expect(c.span, split.dataset.key).toBeGreaterThan(0);
+    }
+    // The child's line continues straight down from the split row to its own first row.
+    const through = (key: string) => [...row(key)!.querySelectorAll<HTMLElement>(".lanes-full:not(.lanes-dashed)")].map((l) => l.style.getPropertyValue("--c"));
+    expect(through("stream|run|10")).toEqual(["0"]);
+    expect(through("stream|tip")).toEqual(["0"]);
+    expect(row("retry|start")!.querySelector<HTMLElement>(".lanes-above")!.style.getPropertyValue("--c")).toBe("0");
+  });
+
   it("a refresh with the same data keeps every row element, focus, the selection, its open actions and the scroll position, with no loading row", async () => {
     const { el, rows, point, refresh, t } = await open();
     await act(async () => { point("Compare provider behavior")!.click(); });

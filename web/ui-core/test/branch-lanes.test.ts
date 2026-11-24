@@ -35,6 +35,31 @@ describe("lane graph", () => {
     expect(g.rows.find((r) => r.key === "plain-child|start")!.pass).toEqual([]);
   });
 
+  it("every child lane's first segment starts at its parent's split row, also when it reuses a column to the left", () => {
+    // Root "r" ends before its child's rows, so the grandchild takes column 0, left of its parent "c".
+    const item = (id: string, parent: string | null, split: [string, number] | null, path: number) => ({ thread_id: id, parent_thread_id: parent, depth: 0, state: id === "r" ? "current" : "branch",
+      divergence: split ? { node_id: split[0], ordinal: split[1], parent_continues: true } : null, size: { path_nodes: path }, tip: { node_id: `${id}-tip` } });
+    const nested = readFamily([{ thread_id: "r", items: [item("r", null, null, 14), item("c", "r", ["n5", 5], 12), item("g", "c", ["n9", 9], 12)] }]);
+    for (const f of [nested, family()]) {
+      const g = laneGraph(f);
+      for (const lane of g.lanes) {
+        if (!lane.parent || lane.detached) continue;
+        const id = lane.item.threadId;
+        const split = g.rows.findIndex((r) => r.branchTo.includes(id));
+        const own = g.rows.findIndex((r) => r.lane === id);
+        expect(split, id).toBeGreaterThanOrEqual(0);
+        expect(g.rows[split]!.lane, id).toBe(lane.parent.threadId);
+        expect(g.rows[split]!.nodeId, id).toBe(lane.item.divergence!.nodeId);
+        // Not drawn above the split; one unbroken line from the split down to the lane's own rows.
+        g.rows.slice(0, split + 1).forEach((r) => expect(r.pass, `${id} above ${r.key}`).not.toContain(id));
+        g.rows.slice(split + 1, own).forEach((r) => expect(r.pass, `${id} at ${r.key}`).toContain(id));
+        expect(lane.column, id).not.toBe(g.byId.get(lane.parent.threadId)!.column);
+      }
+    }
+    const g = laneGraph(nested);
+    expect([g.byId.get("r")!.column, g.byId.get("c")!.column, g.byId.get("g")!.column]).toEqual([0, 1, 0]);
+  });
+
   it("the same facts give the same keys; an appended message changes only the last run and the tip", () => {
     const a = laneGraph(family());
     expect(laneGraph(family()).rows.map((r) => r.key)).toEqual(a.rows.map((r) => r.key));

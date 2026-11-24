@@ -76,6 +76,10 @@ try {
       for (const [k, v] of Object.entries(h)) assert.equal(v.length, 1, `${kind}: one height for ${k} rows ${JSON.stringify(h)}`);
       if (mobile) for (const k of ['start', 'message', 'split', 'run']) if (h[k]) assert(h[k][0] >= 44, `${kind}: ${k} rows reach 44px ${JSON.stringify(h)}`);
       await noSideScroll(`${kind} ${theme}`);
+      // Every split's connector has width and starts at its row's diamond.
+      const connectors = await evaluate(`[...document.querySelectorAll('.branch-lanes>li[data-kind=split]')].map(li=>{const d=li.querySelector('.lanes-node').getBoundingClientRect();return [...li.querySelectorAll('.lanes-curve')].map(c=>{const r=c.getBoundingClientRect();const start=c.dataset.dir==='left'?r.right:r.left;return {key:li.dataset.key,width:r.width,offset:Math.abs(start-(d.left+d.width/2)),top:Math.abs(r.top-(d.top+d.height/2))}})}).flat()`);
+      assert(connectors.length >= 2, `${kind}: split connectors drawn ${JSON.stringify(connectors)}`);
+      for (const c of connectors) assert(c.width > 0 && c.offset <= 2 && c.top <= 2, `${kind}: connector leaves the diamond ${JSON.stringify(c)}`);
       // Identity: a refresh (owner hint) keeps every row element.
       const before = await evaluate(`(()=>{window.__rows=[...document.querySelectorAll('.branch-lanes>li')];return window.__rows.length})()`);
       await evaluate(`window.branchesFixture.model.branches.read('rel')`);
