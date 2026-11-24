@@ -26,25 +26,28 @@ try{
   const inspect = () => evaluate(`(() => {
    const ring=document.querySelector('.context-ring');
    const arc=ring.lastElementChild;
-   const style=getComputedStyle(arc);
+   const ringStyle=getComputedStyle(ring);
+   const arcStyle=getComputedStyle(arc);
    const bounds=ring.closest('button').getBoundingClientRect();
-   const amber=getComputedStyle(ring).getPropertyValue('--wait').trim();
+   const amber=ringStyle.getPropertyValue('--wait').trim();
    const probe=document.createElement('span'); probe.style.color=amber; document.body.append(probe);
-   const amberMatches=getComputedStyle(probe).color===getComputedStyle(ring).color; probe.remove();
+   const amberMatches=getComputedStyle(probe).color===ringStyle.color; probe.remove();
    return { state:ring.dataset.contextState,width:innerWidth, theme:document.documentElement.dataset.ds,
-    label:ring.closest('button').getAttribute('aria-label'),amberMatches, animation:style.animationName, dash:style.strokeDasharray,
+    label:ring.closest('button').getAttribute('aria-label'),amberMatches, rootAnimation:ringStyle.animationName, arcAnimation:arcStyle.animationName, dash:arcStyle.strokeDasharray,
     fits:bounds.left>=0 && bounds.right<=innerWidth && document.documentElement.scrollWidth<=innerWidth };
   })()`);
   const active=await inspect();
   assert.equal(active.width,width); assert.equal(active.theme,theme); assert.equal(active.state,'summarizing');
-  assert(active.amberMatches && active.label.includes('要約中') && active.fits); assert.equal(active.animation,'context-ring-spin');
+  assert(active.amberMatches && active.label.includes('要約中') && active.fits); assert.equal(active.rootAnimation,'context-ring-spin');
+  assert.equal(active.arcAnimation,'none');
   const shot = async suffix => {
    const png=await call('Page.captureScreenshot',{format:'png'});
    await writeFile(`${process.env.SHOTS}/summary-${width}-${theme}-${suffix}.png`,Buffer.from(png.data,'base64'));
   };
   await shot('active');
   await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
-  const still=await until(async()=>{const facts=await inspect(); return facts.animation==='none' && facts;});
+  const still=await until(async()=>{const facts=await inspect(); return facts.rootAnimation==='none' && facts;});
+  assert.equal(still.arcAnimation,'none');
   assert.notEqual(still.dash,active.dash); assert(still.amberMatches);
   await shot('reduced');
   await evaluate("document.querySelector('.context-ring').closest('button').click(); true");
