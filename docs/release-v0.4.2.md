@@ -23,7 +23,7 @@ Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa
 - The README and bilingual [user guide](guides/user-guide.md) now match the current setup steps, screen labels, and upgrade and pairing guidance.
 - **Settings > Studio > Startup** offers **Open Studio at login** to authenticated local desktop users on macOS and Windows; on Windows, use Windows Startup settings or remove the Startup shortcut to turn it off. Linux does not have this setting (#85).
 - Use **Archive** and **Unarchive** in the sidebar selection bar to change archive status for the selected Threads (#127; Monitor was removed in #138).
-- On phones, use the **Thread panel** picker and full-screen details; dialogs scroll in one place, expanded shell steps offer **Wrap lines** and turn **Formatted** off, and **Load earlier messages** appears when earlier history is available (#128 items 3–7).
+- On phones, use the **Thread panel** picker and full-screen details; dialogs scroll in one place, when formatting is available in an expanded shell step, turn **Formatted** off to see raw text; **Wrap lines** and **Load earlier messages** appears when earlier history is available (#128 items 3–7).
 - Global shortcuts stay out of dialogs, editable fields, Japanese text composition, and key events already handled by a control (#130).
 - Tab moves from a row menu to the next control after the row (#130).
 - Collapsed Work rows keep their keyboard focus outline (#130).
