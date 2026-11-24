@@ -2162,10 +2162,14 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
         .await;
     assert_eq!(wrote["status"], "complete", "{wrote}");
     assert!(wrote["bytes_written"].as_u64().unwrap() > 0, "{wrote}");
-    let eof = client
-        .ok("shell.eof", json!({"execution_id":execution}), None)
-        .await;
-    assert_eq!(eof["accepted"], true, "{eof}");
+    // The Windows ReadToEnd fixture emits its marker only after EOF; Unix
+    // keeps the stronger open-stdin output-before-EOF witness.
+    if cfg!(windows) {
+        let eof = client
+            .ok("shell.eof", json!({"execution_id":execution}), None)
+            .await;
+        assert_eq!(eof["accepted"], true, "{eof}");
+    }
     let mut last_output = Value::Null;
     let output = match tokio::time::timeout(Duration::from_secs(10), async {
         loop {
@@ -2210,6 +2214,12 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
             .contains("READ:studio-input"),
         "{output}"
     );
+    if !cfg!(windows) {
+        let eof = client
+            .ok("shell.eof", json!({"execution_id":execution}), None)
+            .await;
+        assert_eq!(eof["accepted"], true, "{eof}");
+    }
     let closed = client
         .wait_shell_fact(owner.as_ref(), &thread, &execution, |item| {
             item["stdin_open"] == false
