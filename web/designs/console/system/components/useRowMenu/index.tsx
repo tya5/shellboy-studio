@@ -25,7 +25,7 @@ export function useRowMenu(options: RowMenuOptions | undefined): { open: boolean
     onKeyDown: (event) => { if (event.key === "ArrowDown") { event.preventDefault(); setOpenMethod("keyboard"); setPointerPosition(null); show(event.currentTarget, document.activeElement as HTMLElement | null); } },
   } : {};
   const tabExit = (backward: boolean) => {
-    const row = anchor?.closest<HTMLElement>(".list-row");
+    const row = anchor?.closest<HTMLElement>("[data-row-menu-owner]");
     if (!row?.isConnected) return;
     const scope = row.closest('dialog[open],[aria-modal="true"]') ?? row.ownerDocument.body;
     const direction = backward ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING;
