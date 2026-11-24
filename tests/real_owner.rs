@@ -1913,3 +1913,70 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
     drop(serve);
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+#[tokio::test]
+async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
+    let root = temp_root();
+    let data = root.join("data");
+    let serve = start_owner(&bin, &root, &data);
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner, true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut client = Client { ws, next: 0 };
+    next_t(&mut client.ws, "hello").await;
+
+    let thread = client
+        .ok(
+            "thread.create",
+            json!({"cwd":root.to_str().unwrap()}),
+            Some(format!("{}:intervene-thread", serve.instance)),
+        )
+        .await;
+    let thread_id = thread["thread_id"].as_str().unwrap();
+    let listed = client
+        .ok(
+            "shell.list",
+            json!({"thread_id":thread_id,"limit":10}),
+            None,
+        )
+        .await;
+    assert_eq!(listed["items"], json!([]));
+    let commands = [
+        (
+            "shell.background",
+            json!({"execution_id":"synthetic-execution"}),
+        ),
+        ("shell.stop", json!({"execution_id":"synthetic-execution"})),
+        (
+            "shell.write",
+            json!({"execution_id":"synthetic-execution","text":"input","encoding":"utf8"}),
+        ),
+        ("shell.eof", json!({"execution_id":"synthetic-execution"})),
+        ("turn.interrupt", json!({"turn_id":"synthetic-turn"})),
+    ];
+    for (command, args) in commands {
+        let reply = client.call(command, args, None).await;
+        assert_eq!(
+            reply["response"]["ok"], false,
+            "{command} was not handled by the pinned owner: {reply}"
+        );
+        assert!(
+            reply["response"]["error"]["code"].is_string(),
+            "{command}: {reply}"
+        );
+    }
+    drop(client);
+    cancel.cancel();
+    stop_owner(&bin, &data, serve).await;
+}

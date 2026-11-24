@@ -8,3 +8,8 @@
 @container app (max-width:899px){
   .composer-root .composer-hint{display:none}
 }
+
+.composer-above{display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap}
+
+.composer-target-chip{display:flex;align-items:center;gap:var(--space-4)}
+.composer-routing{display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap}

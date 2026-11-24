@@ -26,7 +26,7 @@ export { Notice } from "./Notice";
 export { OutputLimitNotice } from "./OutputLimitNotice";
 export { EmptyState } from "./EmptyState";
 export { Message } from "./Message";
-export { Composer } from "./Composer";
+export { Composer, ComposerRouting } from "./Composer";
 export { Section } from "./Section";
 export { Stat } from "./Stat";
 export { Chart, type ChartPoint, type ChartSeries } from "./Chart";

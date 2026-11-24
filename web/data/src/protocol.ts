@@ -445,6 +445,7 @@ export interface ShellEntry {
   run_id?: string;
   command_excerpt?: string;
   command_excerpt_truncated?: boolean;
+  turn_id?: string;
   started_at?: string;
   ended_at?: string;
   exit_code?: number | null;

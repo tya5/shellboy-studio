@@ -529,6 +529,21 @@ export class Operations {
   shellRead(args: ShellReadArgs, read?: ReadOptions): Promise<Outcome<ShellOutput>> {
     return this.run("shell.read", args, outcomeDecoder(decodeShellOutput), undefined, read);
   }
+  shellBackground(executionId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("shell.background", { execution_id: executionId }, outcomeDecoder(decodeRecord), { operationId });
+  }
+  shellStop(executionId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("shell.stop", { execution_id: executionId }, outcomeDecoder(decodeRecord), { operationId });
+  }
+  shellWrite(executionId: string, text: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("shell.write", { execution_id: executionId, text, encoding: "UTF-8" }, outcomeDecoder(decodeRecord), { operationId });
+  }
+  shellEof(executionId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("shell.eof", { execution_id: executionId }, outcomeDecoder(decodeRecord), { operationId });
+  }
+  turnInterrupt(turnId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("turn.interrupt", { turn_id: turnId }, outcomeDecoder(decodeRecord), { operationId });
+  }
   /** Saved usage totals, or one page of a grouped scan when `group_by` is set. No provider call. */
   usageGet(args: UsageGetArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("usage.get", args, outcomeDecoder(decodeRecord), undefined, read);

@@ -1,3 +1,4 @@
+import type { Deliver } from "../../data/src/protocol";
 import { readThreadSettings } from "./resources";
 import { readCompactionEvent, type CompactionEvent } from "./analytics";
 import { seedUnreadMarkers, isUnread, markUnread, type UnreadRecord } from "./sidebar-unread";
@@ -68,6 +69,7 @@ export interface PendingOwnMessage {
   readonly messageId?: string;
   readonly heldAtAcceptance?: { hint?: string; operationId?: string };
   readonly plainMessageSend?: true;
+  readonly deliver?: Deliver;
   readonly clientOrdinal: number;
 }
 
@@ -1170,10 +1172,10 @@ export class AppModel {
 
   // ---- actions (state changes arrive through hints and re-reads) ----
 
-  async send(text: string, onReserved?: () => void): Promise<boolean> {
+  async send(text: string, onReserved?: () => void, delivery: Deliver = "next"): Promise<boolean> {
     const threadId = this.selectedId.value;
     if (threadId === undefined || text.trim() === "") return false;
-    return this.deliver(threadId, text, undefined, onReserved);
+    return this.deliver(threadId, text, undefined, onReserved, delivery);
   }
 
   /** Repeat an unconfirmed send with the same operation id: the owner's receipt prevents a double. */
@@ -1182,7 +1184,7 @@ export class AppModel {
     const threadId = this.selectedId.value;
     const pending = this.pendingOwnMessage.peek();
     if (!pending || (original && original!==pending) || !this.ownSendCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
-    return this.deliver(threadId, pending.text, pending.operationId);
+    return this.deliver(threadId, pending.text, pending.operationId, undefined, pending.deliver ?? "next");
   }
 
   localSendAdmission(text:string) {
@@ -1216,7 +1218,7 @@ export class AppModel {
     const rows = this.ownMutationRows(region.scope);
     const sameRow = (a: PendingOwnMessage, b: PendingOwnMessage) => a.operationId === b.operationId
       && a.threadId === b.threadId && a.scope === b.scope && a.messageId === b.messageId
-      && a.phase === b.phase && a.plainMessageSend === b.plainMessageSend;
+      && a.phase === b.phase && a.plainMessageSend === b.plainMessageSend && a.deliver === b.deliver;
     if (rows.length !== region.cohort.length || rows.some((row, index) => !sameRow(row, region.cohort[index]!)) || !current()) return;
     const retiring = new Set(region.retire.map(row => row.operationId));
     const previous = this.acceptedOwnMessages.peek();
@@ -1232,7 +1234,7 @@ export class AppModel {
     });
   }
 
-  private async deliver(threadId: string, text: string, operationId = this.ops.mutationId(), onReserved?: () => void): Promise<boolean> {
+  private async deliver(threadId: string, text: string, operationId = this.ops.mutationId(), onReserved?: () => void, delivery: Deliver = "next"): Promise<boolean> {
     const handle = this.handle.peek(), route = this.route.peek();
     if (!handle || handle.threadId !== threadId) return false;
     const old = this.pendingOwnMessage.peek();
@@ -1251,7 +1253,7 @@ export class AppModel {
         (now.state !== "connected" || now.info.instance_id === owner.info.instance_id);
     };
     this.ownSendCurrent = current;
-    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true,clientOrdinal:old?.clientOrdinal ?? this.nextTailOrdinal()};
+    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true,deliver:delivery,clientOrdinal:old?.clientOrdinal ?? this.nextTailOrdinal()};
     this.sendState.value = { kind: "sending" };
     const originalPlainOperation=this.pendingOwnMessage.peek();
     if(current()&&originalPlainOperation?.operationId===operationId){
@@ -1265,7 +1267,7 @@ export class AppModel {
       }
       return false;
     }
-    const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);
+    const out = await this.ops.messageSend({ thread_id: threadId, text, deliver: delivery }, operationId);
     if (!current() || this.pendingOwnMessage.peek() !== originalPlainOperation) return false;
     if (out.ok && out.value.thread_id === threadId) {
       const accepted = originalPlainOperation;
@@ -1448,6 +1450,39 @@ export class AppModel {
     this.report("action.stop", await this.ops.runStop(runId));
   }
 
+  async interruptTurn(): Promise<void> {
+    const turnId = this.details.value?.turn_id;
+    if (turnId === undefined) return;
+    this.report("action.interrupt", await this.ops.turnInterrupt(turnId));
+  }
+
+  async backgroundShell(executionId: string): Promise<void> {
+    const threadId = this.handle.peek()?.threadId;
+    if (!threadId || this.shells.peek().get(executionId)?.thread_id !== threadId) return;
+    this.report("action.shellBackground", await this.ops.shellBackground(executionId));
+  }
+
+  async stopShell(executionId: string): Promise<void> {
+    const threadId = this.handle.peek()?.threadId;
+    if (!threadId || this.shells.peek().get(executionId)?.thread_id !== threadId) return;
+    this.report("action.shellStop", await this.ops.shellStop(executionId));
+  }
+
+  async sendShellInput(executionId: string, text: string): Promise<boolean> {
+    const threadId = this.handle.peek()?.threadId;
+    const shell = this.shells.peek().get(executionId);
+    if (!threadId || shell?.thread_id !== threadId || text.length === 0) return false;
+    const out = await this.ops.shellWrite(executionId, text);
+    if (!out.ok) { this.report("action.shellWrite", out); return false; }
+    return true;
+  }
+
+  async sendShellEof(executionId: string): Promise<void> {
+    const threadId = this.handle.peek()?.threadId;
+    if (!threadId || this.shells.peek().get(executionId)?.thread_id !== threadId) return;
+    this.report("action.shellEof", await this.ops.shellEof(executionId));
+  }
+
   /** Retry the open Thread, or any Thread: its Run is read first, the list doesn't carry it. */
   async retry(threadId?: string): Promise<void> {
     const id = threadId ?? this.selectedId.value;
@@ -1470,7 +1505,7 @@ export class AppModel {
     if (out.ok) this.openThread(out.value.thread_id);
   }
 
-  private report(action: "action.stop" | "action.retry" | "action.archive" | "action.new", out: { ok: true } | { ok: false; error: OpError }): void {
+  private report(action: "action.stop" | "action.retry" | "action.archive" | "action.new" | "action.interrupt" | "action.shellBackground" | "action.shellStop" | "action.shellWrite" | "action.shellEof", out: { ok: true } | { ok: false; error: OpError }): void {
     this.actionError.value = out.ok
       ? { kind: "success", text: this.t.value("action.succeeded", { action: this.t.value(action) }) }
       : { kind: "error", text: this.t.value("action.failed", { action: this.t.value(action), message: errorMessage(out.error) }) };

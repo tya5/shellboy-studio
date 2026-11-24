@@ -43,11 +43,15 @@ The v2 interface uses consistent headings, links, action buttons, and loading an
 - Use **Pin** in a Thread's row menu to put it in **Pinned**, above **All**. The pinned band can include older Threads outside the loaded **All** list, and orders them by creation time, newest first; entries without a creation time come last.
 - **Archived**, below **All**, lists archived Threads separately. **All** excludes them; archived Threads with a pin remain in **Pinned**. To archive several Threads, select them in the sidebar and use **Archive** in the selection bar; press **Archive** again to confirm. **Unarchive** is available for selected archived Threads. **Include descendants** controls whether the owner applies the action to their descendants.
 - **Awaiting you** is a separate sidebar filter. It clears search, tag, and directory filters and hides **Pinned** and **Archived**. Choosing any of those filters turns **Awaiting you** off. The **Awaiting you** screen also lists requests directed to you. A count with `+` is a lower bound.
-- In **Conversation**, send a message from the composer, expand tool output, or use **Stop** for a Run that can be stopped. A recovery wait does not clear a reply duty. If recovery offers **Retry**, it may incur additional usage; if unavailable, read the reason shown. Drafts stay with their Thread when you switch.
+- In **Conversation**, the composer normally targets the model. Choose a running shell under **Send input to:** to write to that shell; running shells are listed with the newest foreground shell first. **EOF** on the chip closes its input. Choose **Next boundary** (default) or **Now** for model delivery. Use **Interrupt Turn** to interrupt the active Turn, or **Stop** to stop its Run. A recovery wait does not clear a reply duty. If recovery offers **Retry**, it may incur additional usage; if unavailable, read the reason shown. Drafts stay with their Thread when you switch.
 
 ### Conversation side panel
 
+<<<<<<< HEAD
 In **Conversation**, use **Expand right panel** when the panel is collapsed, or press `Alt+9`. On a phone, the **Thread panel** picker switches sections, and details open full-screen. Use the button named after the section (for example, **Activity**) to go back. When formatted output is available in an expanded shell step, turn **Formatted** off to see raw text. When Core supplies stream information, the expanded step counts lines containing standard error. It marks those lines with a `stderr` label and an edge line where the display preserves the original line boundaries. Output without stream information is not labeled. Raw view and Copy keep the original text without labels. **Wrap lines** does not change what is copied. Use **Load earlier messages** when earlier history is available. The composer adjusts to the on-screen keyboard, and the sidebar row menu has its own touch target.
+=======
+In **Conversation**, use **Expand right panel** when the panel is collapsed, or press `Alt+9`. On a phone, the **Thread panel** picker switches sections, and details open full-screen. Use the button named after the section (for example, **Activity**) to go back. When formatting is available in an expanded shell step, turn **Formatted** off to see raw text. **Wrap lines** does not change what is copied. Use **Load earlier messages** when earlier history is available. The composer adjusts to the on-screen keyboard, and the sidebar row menu has its own touch target.
+>>>>>>> 60d58edc8 (Implement Core v0.16 shell interventions in Studio)
 
 With a keyboard, use Tab or Shift+Tab to leave a row menu and continue outside that row. Collapsed Work rows keep a focus outline, and Tab can reach panel content with no controls. If **Stop** disappears while focused, focus returns to the composer. Global shortcuts are ignored in dialogs, while editing or composing text with an IME, and when a control has already handled the key.
 
@@ -55,7 +59,7 @@ The sidebar also gains screen-reader tree navigation, focused conversation rows 
 
 | Tab | What to look for |
 | --- | --- |
-| **Activity** | Running work and pending deliveries. Open a row for details and available actions, such as inspecting a tool's output. |
+| **Activity** | Running work and pending deliveries. A running shell's action menu offers **Move to background** and **Stop this shell** (confirmation required); details offer the same actions. |
 | **Reply needed** | Requests this Thread owes a reply to. Open the request and use its reply action when available. |
 | **Awaiting reply** | Requests this Thread is waiting to have answered, not requests you need to answer. |
 | **Possessions** | **Artifacts** and **Attachments** when supported. Open an artifact to inspect its available preview and versions. Versions record references, not copies of files. |
@@ -176,11 +180,15 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 - 行メニューの **ピン留め** で **すべて** の上にある **ピン留め** 欄に追加します。**すべて** の読み込み範囲外にある古いスレッドも表示されます。作成日時の新しい順で、日時が不明なものは最後です。
 - **すべて** の下の **アーカイブ済み** にアーカイブしたスレッドが表示されます。**すべて** には表示されませんが、ピン留めしたものは **ピン留め** に残ります。複数のスレッドを選択し、サイドバーの選択バーで **アーカイブ** を押します。確認のためもう一度押してください。選択したアーカイブ済みスレッドには **アーカイブ解除** を使えます。**子孫も含める** は子孫への適用を切り替えます。
 - **あなた待ち** の絞り込みを有効にすると検索語、タグ、ディレクトリの条件が解除され、**ピン留め** と **アーカイブ済み** が隠れます。いずれかの条件を選び直すと **あなた待ち** は解除されます。**あなた待ち** 画面では自分宛ての依頼も確認できます。`+` 付きの件数は下限です。
-- **会話** では入力欄から送信し、ツール出力を展開できます。停止できる Run には **停止** を使えます。復旧待ちになっても返信義務は消えません。**再試行** では追加の利用量が発生する場合があります。使えないときは画面の理由を確認してください。書きかけはスレッドを切り替えても元のスレッドに残ります。
+- **会話** の入力欄は通常モデルに送信します。**入力の送信先:** で実行中のシェルを選ぶと、そのシェルへ入力します。実行中のシェルは、最も新しいフォアグラウンドのシェルを先頭に表示します。チップの **EOF** はシェル入力を閉じます。モデルへの送信は **次の区切り**（既定）または **今すぐ** を選べます。**ターンを中断** は現在の Turn を中断し、**停止** は Run を停止します。停止できる Run には **停止** を使えます。復旧待ちになっても返信義務は消えません。**再試行** では追加の利用量が発生する場合があります。使えないときは画面の理由を確認してください。書きかけはスレッドを切り替えても元のスレッドに残ります。
 
 #### 右パネル
 
+<<<<<<< HEAD
 **会話** の **右パネルを展開** で右パネルを開きます。`Alt+9` でも開閉できます。スマートフォンでは **スレッドパネル** で表示する項目を選べます。詳細は全画面で開き、**動作** など項目名のボタンで元に戻ります。展開したシェルステップで整形済みの出力がある場合、**整形表示** をオフにすると生テキストを表示します。Core が出力の種別を返した場合、展開したステップに標準エラーを含む行数を表示します。元の行の区切りを保つ表示では、該当する行に `stderr` と左端の線を付けます。種別が不明な出力にはラベルを付けません。生テキスト表示とコピーにはラベルを含めません。**行を折り返す** を切り替えてもコピーする内容は変わりません。履歴が残っている場合は **以前のメッセージを読み込む** を使えます。画面キーボードに合わせて入力欄の位置が調整され、行メニューはスレッドのリンクとは別にタップできます。
+=======
+**会話** の **右パネルを展開** で右パネルを開きます。`Alt+9` でも開閉できます。スマートフォンでは **スレッドパネル** で表示する項目を選べます。詳細は全画面で開き、**動作** など項目名のボタンで元に戻ります。展開したシェルステップで整形表示が利用できる場合、**整形表示** をオフにすると生テキストを表示します。**行を折り返す** を切り替えてもコピーする内容は変わりません。履歴が残っている場合は **以前のメッセージを読み込む** を使えます。画面キーボードに合わせて入力欄の位置が調整され、行メニューはスレッドのリンクとは別にタップできます。
+>>>>>>> 60d58edc8 (Implement Core v0.16 shell interventions in Studio)
 
 Tab または Shift+Tab で行メニューから出ると、その行の外の操作に移ります。閉じた作業行にもフォーカス枠が表示され、操作のないパネルにも Tab で移動できます。フォーカス中の **停止** が消えると、入力欄に戻ります。ダイアログ内、編集中、IME 変換中、または操作側が処理済みのキーでは、全体のショートカットは動作しません。
 

@@ -457,7 +457,7 @@ describe("AppModel over the fake transport", () => {
     expect(model.sendState.value.kind).toBe("sending");
     await flush();
     const call = t.calls("message.send")[0]!;
-    expect(call.args).toEqual({ thread_id: "lead", text: "hello" });
+    expect(call.args).toEqual({ thread_id: "lead", text: "hello", deliver: "next" });
     const rowsBefore = model.conversation.value.length;
     t.ok(call.id, { message_id: "m", thread_id: "lead" });
     expect(await sent).toBe(true);

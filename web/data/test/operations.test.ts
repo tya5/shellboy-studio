@@ -505,3 +505,21 @@ it("rejects missing required Turn identity fields without correlation", async ()
   t.ok(t.calls()[0]!.id, { turn_id: "turn-a", state: "recovery_wait", recovery_hint: "retry" });
   await expect(turn).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
 });
+
+it("sends Core v0.16 shell and interrupt commands with their typed protocol targets", async () => {
+  const {t,ops}=setup();
+  const cases=[
+    ["shell.background",()=>ops.shellBackground("exec-1"),{execution_id:"exec-1"}],
+    ["shell.stop",()=>ops.shellStop("exec-1"),{execution_id:"exec-1"}],
+    ["shell.write",()=>ops.shellWrite("exec-1","hello\n"),{execution_id:"exec-1",text:"hello\n",encoding:"UTF-8"}],
+    ["shell.eof",()=>ops.shellEof("exec-1"),{execution_id:"exec-1"}],
+    ["turn.interrupt",()=>ops.turnInterrupt("turn-1"),{turn_id:"turn-1"}],
+  ] as const;
+  for (const [command,invoke,args] of cases) {
+    const promise=invoke();
+    const call=t.calls().at(-1)!;
+    expect(call).toMatchObject({command,args,operation_id:expect.any(String)});
+    t.ok(call.id,{});
+    await expect(promise).resolves.toMatchObject({ok:true,value:{}});
+  }
+});
