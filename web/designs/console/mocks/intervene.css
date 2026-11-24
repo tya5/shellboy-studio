@@ -1,38 +1,49 @@
-#mock { min-height:100vh; background:var(--bg); color:var(--fg); }
-.intervene-mock { display:grid; gap:var(--space-24); padding:var(--space-24); }
-.intervene-intro { max-width:var(--size-setup-column-width); }
-.intervene-intro h1 { margin:0; font:var(--type-display); letter-spacing:var(--tracking-tight); }
-.intervene-intro p { color:var(--muted); }
-.intervene-eyebrow { margin:0 0 var(--space-8); color:var(--accent); font:var(--type-caption); letter-spacing:var(--letter-caps); }
-.intervene-grid { display:grid; grid-template-columns:minmax(0, 1.3fr) minmax(320px, .7fr); gap:var(--space-24); align-items:start; }
-.intervene-variant { min-width:0; }
-.intervene-variant-label { color:var(--muted); font:var(--type-caption); }
-.intervene-device { display:grid; gap:var(--space-16); min-width:0; padding:var(--space-16); border:1px solid var(--line); border-radius:var(--radius-m); background:var(--panel); }
-.intervene-toolbar,.intervene-shell-row,.intervene-output-head,.intervene-turn-actions,.intervene-input-actions { display:flex; align-items:center; justify-content:space-between; gap:var(--space-8); }
-.intervene-toolbar h2 { margin:0; font:var(--type-heading); }
-.intervene-shell-row { padding:var(--space-8); border:1px solid var(--line); border-radius:var(--radius-s); }
-.intervene-shell-row .list-row { flex:1; min-width:0; }
-.intervene-output { min-width:0; }
-.intervene-output-head { color:var(--muted); font:var(--type-caption); }
-.intervene-output .log { max-height:var(--size-log-max-height); overflow:auto; }
-.intervene-commands { display:grid; gap:var(--space-12); }
-.intervene-composer { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-8); align-items:end; padding:var(--space-12); border:1px solid var(--line); border-radius:var(--radius); background:var(--inset); }
-.intervene-composer .form-field-stack:first-child { grid-column:1 / -1; }
-.intervene-help { display:flex; align-items:flex-start; gap:var(--space-4); grid-column:1 / -1; margin:0; color:var(--muted); font:var(--type-caption); }
-.intervene-turn-actions { flex-wrap:wrap; justify-content:flex-start; }
-.core-note { color:var(--muted); font:var(--type-caption); }
-.intervene-path { color:var(--muted); font:var(--type-caption); }
-.intervene-detail-status { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-8); padding:var(--space-8); border-radius:var(--radius-s); background:var(--wait-bg); }
-.intervene-action-group,.intervene-input { display:grid; gap:var(--space-8); padding-block:var(--space-8); border-top:1px solid var(--line); }
-.intervene-input-actions { justify-content:flex-start; flex-wrap:wrap; }
-.intervene-toast { position:fixed; inset-inline:var(--space-16); inset-block-end:var(--space-16); z-index:10; width:max-content; max-width:calc(100% - 2 * var(--space-16)); padding:var(--space-8) var(--space-12); border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); }
-.intervene-legend { display:grid; gap:var(--space-8); padding:var(--space-12); border-top:1px solid var(--line); color:var(--muted); font:var(--type-caption); }
-.intervene-legend b { color:var(--fg); }
-@media (max-width:760px) {
-  .intervene-mock { padding:var(--space-12); }
-  .intervene-grid { grid-template-columns:minmax(0,1fr); }
-  .intervene-device.is-phone { border:var(--space-4) solid var(--line-strong); border-radius:var(--radius); padding:var(--space-12); }
-  .intervene-device.is-phone .intervene-composer { grid-template-columns:minmax(0,1fr); }
-  .intervene-device.is-phone .intervene-turn-actions { display:grid; grid-template-columns:1fr 1fr; }
-  .intervene-device.is-phone .core-note { grid-column:1 / -1; }
+/* Mock-only layout for #134. Rows, detail and composer reuse system parts; these rules only place them. */
+
+/* Studio #133 sets the tab count text to `on-wait`; mirror it until that lands on main. */
+.panel-tab-count { color:var(--on-wait); }
+
+/* The composer is the subject here, so each desktop frame spans the row. */
+.mock-figure-desktop { flex:1 1 100%; }
+.mock-figure-desktop > .mock-frame-desktop { inline-size:100%; block-size:50rem; }
+/* Product popovers float above every scroll container; let the drawn menu do the same. */
+.mock-sheet-body:has(.iv-menu), .details:has(.iv-menu), .details:has(.iv-menu) .panel-pages:not([hidden]), .details:has(.iv-menu) .panel-pages [role=tabpanel]:not([hidden]), .details:has(.iv-menu) .panel-list { overflow:visible; }
+/* A phone-height frame, so the full-screen detail shows to its end. */
+.mock-frame-phone { block-size:52rem; }
+
+/* Send timing: a segmented choice and its one-line explanation, above the composer. */
+.iv-send-mode { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-4) var(--space-12); min-width:0; }
+.iv-send-mode-copy { flex:1 1 0; min-width:0; margin:0; color:var(--muted); font:var(--type-caption); }
+.iv-note { margin:0; color:var(--muted); font:var(--type-caption); }
+.iv-model { flex:0 1 auto; min-width:0; overflow:hidden; }
+.iv-model > span { overflow:hidden; text-overflow:ellipsis; }
+
+/* Shell rows keep their action trigger visible: touch and pointer users find the shell controls without hover. */
+.iv-row { position:relative; }
+.iv-row .list-row-action { visibility:visible; }
+
+/* A static picture of the open row menu; values mirror Menu and Popover. */
+.iv-menu { position:absolute; inset-block-start:100%; inset-inline-end:0; z-index:var(--z-popover); display:flex; flex-direction:column; min-width:var(--size-menu-min); padding:var(--space-4); border:1px solid var(--line); border-radius:var(--radius-m); background:var(--panel); filter:drop-shadow(var(--shadow-popover)); }
+.iv-menu-item { display:flex; align-items:center; gap:var(--space-8); min-height:var(--size-control); padding:var(--space-6) var(--space-8); border-radius:var(--radius-s); color:var(--fg); font:var(--type-label); white-space:nowrap; }
+.iv-menu-item[aria-disabled="true"] { color:var(--muted); }
+.iv-menu-copy { display:flex; flex-direction:column; }
+.iv-menu-copy small { font:var(--type-caption); }
+.iv-menu-item-destructive { color:var(--bad); }
+.iv-menu-separator { height:1px; margin:var(--space-4) calc(-1 * var(--space-4)); background:var(--line); }
+
+.iv-detail { display:flex; flex-direction:column; gap:var(--space-12); min-width:0; }
+.iv-group { display:flex; flex-direction:column; gap:var(--space-8); padding-top:var(--space-12); border-top:1px solid var(--line); }
+.iv-group h4, .iv-output-title { margin:0; font:var(--type-label); font-weight:600; }
+.iv-input { border-top:0; margin-inline:calc(-1 * var(--space-8)); padding:var(--space-12) var(--space-8) var(--space-8); border-radius:var(--radius-s); background:var(--need-bg); }
+.iv-prompt { margin:0; overflow-wrap:anywhere; }
+.iv-prompt code { font:var(--type-code); }
+.iv-actions { display:flex; flex-wrap:wrap; gap:var(--space-8); }
+.iv-shell-actions { display:flex; flex-direction:column; align-items:flex-start; gap:var(--space-4); }
+.iv-shell-actions .iv-note { padding-inline:var(--space-8); }
+.iv-stop-shell { color:var(--bad); }
+
+@container app (max-width:899px) {
+  .iv-send-mode-copy { flex-basis:100%; }
+  .iv-actions .btn { min-height:var(--size-touch); }
+  .iv-shell-actions .btn { min-height:var(--size-touch); }
 }
