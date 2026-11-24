@@ -936,7 +936,9 @@ describe("Recorded usage (#118)", () => {
       db.answer = c => c.command === "usage.get" ? { ok: true, result: (c.args as { group_by?: string }).group_by === "model"
         ? usagePage([group("historical-model", 100)]) : usagePage(items) } : orig(c);
     } });
-    return { ...r, el: draw(r.model) };
+    const el = draw(r.model);
+    act(() => choose(el, "Detailed usage table")!.click());
+    return { ...r, el };
   }
   const dispose = (r: Awaited<ReturnType<typeof fixtureModel>>) => { r.model.dispose(); r.data.stop(); };
   it("opens a selected Thread's historical model totals with the existing owner read", async () => {
@@ -1009,6 +1011,7 @@ describe("Recorded usage (#118)", () => {
       } });
       try {
         const el = draw(r.model);
+        if (section === "threads") act(() => choose(el, "Detailed usage table")!.click());
         const values = el.querySelector(section === "threads" ? "tbody tr" : ".stats")!;
         expect(text(values)).toContain("At least 1,179");
         expect(text(values)).toContain("Period scan incomplete");
@@ -1051,6 +1054,7 @@ describe("Recorded usage (#118)", () => {
     try {
       await expect(settle(r.t, r.db)).rejects.toThrow("hold next page");
       const el = draw(r.model);
+      act(() => choose(el, "Detailed usage table")!.click());
       const row = el.querySelector<HTMLTableRowElement>("tbody tr")!;
       expect(row.cells[4]?.textContent).toBe("Aggregating");
       expect(row.cells[5]?.textContent).toBe("Aggregating");
@@ -1169,6 +1173,7 @@ describe("Analytics", () => {
       await settle(t, db);
     });
     expect(text(el)).toContain("Improve history search");
+    act(() => el.querySelector<HTMLButtonElement>("table[data-compact] tbody button")!.click());
     const show = [...el.querySelectorAll("button")].find((b) => text(b) === "Show compaction")!;
     await act(async () => {
       show.click();

@@ -45,7 +45,7 @@ In the sidebar use **Select Threads**, select the Threads, then choose **Delete*
 
 ## Inspect usage and cost
 
-Open the global **Analytics** screen and choose a **Period**. Under **By Thread**, compare **Excl. cached** (conversation other plus all summaries), **Total**, **Cached input** (conversation only), or **Summary tokens**. The bars and shares follow the selected metric. An incomplete scan does not show rankings. Open a Thread row for its exact breakdown and model usage in the same period; **Back to ranking** returns to that row. Summary usage is separate and is not attributed to models. **Show more usage rows** reveals more rows already read. Incomplete totals can be lower bounds; a missing value is not zero. **Cache rate** is the cached share of conversation input where the counters support a comparison. **Effective tokens** uses editable cached-input and output weights stored in this browser. Neither that value nor **Summary cost** is a currency amount or a provider bill.
+Open the global **Analytics** screen and choose a **Period**. Under **By Thread**, compare **Excl. cached** (conversation other plus all summaries), **Total**, **Cached input** (conversation only), or **Summary tokens**. The bars and shares follow the selected metric. An incomplete scan does not show rankings. Open a Thread row for its exact breakdown and model usage in the same period; **Back to ranking** returns to that row. **Detailed usage table** keeps the recorded counters, cache rates and weighted values available. Summary usage is separate and is not attributed to models. **Show more usage rows** reveals more rows already read. Incomplete totals can be lower bounds; a missing value is not zero. **Cache rate** is the cached share of conversation input where the counters support a comparison. **Effective tokens** uses editable cached-input and output weights stored in this browser. Neither that value nor **Summary cost** is a currency amount or a provider bill.
 
 ## Share settings with a colleague
 
@@ -133,7 +133,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 
 ### 使用量とコストを確認する
 
-全体の **分析** で **期間** を選び、**スレッド別** で **キャッシュを除く**（会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を比較できます。棒と割合は選択項目に対応し、集計が不完全なときは順位を表示しません。行を開くと同じ期間の内訳とモデル別使用量を確認でき、**順位に戻る** で元の行に戻ります。要約は別集計で、モデル別には配分しません。**使用量の続きを表示** は読み込み済みの行を追加で表示します。集計が不完全な場合は下限になり、値がない場合はゼロとは限りません。**キャッシュ率** は比較できる会話入力のうちキャッシュを使った割合です。**実効トークン** のキャッシュ入力と出力の重みはブラウザに保存されます。実効トークンも **要約コスト** も金額ではありません。
+全体の **分析** で **期間** を選び、**スレッド別** で **キャッシュを除く**（会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を比較できます。棒と割合は選択項目に対応し、集計が不完全なときは順位を表示しません。行を開くと同じ期間の内訳とモデル別使用量を確認でき、**順位に戻る** で元の行に戻ります。**詳細な使用量の表** では記録済みの内訳、キャッシュ率、実効トークンを引き続き確認できます。要約は別集計で、モデル別には配分しません。**使用量の続きを表示** は読み込み済みの行を追加で表示します。集計が不完全な場合は下限になり、値がない場合はゼロとは限りません。**キャッシュ率** は比較できる会話入力のうちキャッシュを使った割合です。**実効トークン** のキャッシュ入力と出力の重みはブラウザに保存されます。実効トークンも **要約コスト** も金額ではありません。
 
 ### 設定を共有する
 
