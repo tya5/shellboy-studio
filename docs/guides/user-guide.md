@@ -65,8 +65,8 @@ starting the bridge, run `shellboy-studio guide user` or
 
 ## Version and troubleshooting
 
-Studio v0.4.0 pairs with Core v0.15.0 (protocol 18); install the exact pair
-named in the [release notes](../release-v0.4.0.md), not an older owner. Studio
+Studio v0.4.1 pairs with Core v0.15.0 (protocol 18); install the exact pair
+named in the [release notes](../release-v0.4.1.md), not an older owner. Studio
 does not negotiate missing features with an older owner. If operations fail
 after a version mismatch, check both versions; do not reset data or restart an
 owner that is running work without explicit approval.
@@ -122,8 +122,8 @@ Actual reverse-proxy/VPN or Serve/Funnel operation is not established by synthet
 
 ## Protocol compatibility
 
-Studio v0.4.0 uses Core protocol 18 and pairs only with Core v0.15.0 at the exact
-revision in the [release notes](../release-v0.4.0.md). There is no protocol
+Studio v0.4.1 uses Core protocol 18 and pairs only with Core v0.15.0 at the exact
+revision in the [release notes](../release-v0.4.1.md). There is no protocol
 downgrade or ownership alias. Check the installed versions against that pairing;
 do not restart a working owner or change its data to resolve a mismatch without
 explicit approval. Studio v0.1.0's protocol-5 pairing is historical.

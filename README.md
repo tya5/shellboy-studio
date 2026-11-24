@@ -25,8 +25,8 @@ Screenshots are not bundled yet.
 
 ## Current release pairing
 
-Studio v0.4.0 pairs with Core v0.15.0 at the exact commit and protocol 18 recorded
-in the [release notes](docs/release-v0.4.0.md). Install the matching Studio and
+Studio v0.4.1 pairs with Core v0.15.0 at the exact commit and protocol 18 recorded
+in the [release notes](docs/release-v0.4.1.md). Install the matching Studio and
 Core together; do not pair this build with an older Core. Back up the owner data
 directory before the first Core start, which applies migration 62.
 
@@ -121,8 +121,8 @@ A Claude or ChatGPT subscription is not an API key; an API key is required.
 ## Version pairing with Shellboy
 
 Studio releases are built against one Shellboy release and speak its protocol.
-This build (Studio 0.4.0) binds Core v0.15.0 (protocol 18) at the exact commit in
-Cargo.toml and Cargo.lock. See the [0.4.0 release notes](docs/release-v0.4.0.md)
+This build (Studio 0.4.1) binds Core v0.15.0 (protocol 18) at the exact commit in
+Cargo.toml and Cargo.lock. See the [0.4.1 release notes](docs/release-v0.4.1.md)
 for the pairing and validation plan. Studio v0.2.4 was paired
 with Core v0.11.2 and Studio v0.1.0 with Core v0.11.0. For v0.1.0, hosted
 exact-pair checks and distribution builds passed for the published release; see
@@ -169,9 +169,9 @@ Apps can run actions on the Studio host, so review their code and permissions.
 
 ## Protocol compatibility
 
-Studio v0.4.0 uses Core protocol 18 and is supported only with its exact Core
+Studio v0.4.1 uses Core protocol 18 and is supported only with its exact Core
 v0.15.0 pairing. There is no protocol downgrade or ownership alias. Check both
-installed versions against the [release notes](docs/release-v0.4.0.md) before
+installed versions against the [release notes](docs/release-v0.4.1.md) before
 replacing binaries. Older Studio v0.1.0 followed protocol 5; that is historical,
 not the current pairing.
 Never restart a working owner or change its data to resolve a mismatch without
