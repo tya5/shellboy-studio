@@ -127,9 +127,25 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
       return kept.size === previous.size ? previous : kept;
     });
   }, [projection]);
-  const opened = (summary: { memberKeys: readonly string[] }) => openMemberships.get(membershipKey(summary)) ?? projection.items.filter(item=>summary.memberKeys.includes(item.key)).some(item=>item.classification!.openPolicy !== "closed");
+  const groupProjection = useMemo(() => {
+    const groups = projection.workGroups ?? projection.toolSummaries;
+    const groupForItem = new Map<string, (typeof groups)[number]>();
+    const itemsByKey = new Map(projection.items.map(item => [item.key, item]));
+    const itemsByGroup = new Map<string, ConversationItem[]>();
+    for (const group of groups) {
+      const key = membershipKey(group);
+      const members = group.memberKeys.map(memberKey => itemsByKey.get(memberKey)).filter((item): item is ConversationItem => item !== undefined);
+      itemsByGroup.set(key, members);
+      for (const item of members) groupForItem.set(item.key, group);
+    }
+    const stepsByExecution = new Map(allSteps.map(step => [step.executionId, step]));
+    const stepsByGroup = new Map(groups.map(group => [membershipKey(group), group.executionIds.map(id => stepsByExecution.get(id)).filter((step): step is Step => step !== undefined)]));
+    const defaults = new Map(groups.map(group => [membershipKey(group), (itemsByGroup.get(membershipKey(group)) ?? []).some(item => item.classification?.openPolicy !== "closed")]));
+    return { groupForItem, itemsByGroup, stepsByGroup, defaults };
+  }, [projection, allSteps]);
+  const opened = (summary: { memberKeys: readonly string[] }) => openMemberships.get(membershipKey(summary)) ?? groupProjection.defaults.get(membershipKey(summary)) ?? false;
   const hidden = (item: ConversationItem) => {
-    const summary = (projection.workGroups ?? projection.toolSummaries).find(summary => summary.memberKeys.includes(item.key));
+    const summary = groupProjection.groupForItem.get(item.key);
     return summary !== undefined && !opened(summary);
   };
   const groupOpen = useMemo(() => {
@@ -137,13 +153,14 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
     return new Map(projection.workGroups?.map(group => [group.key, openMemberships.get(group.key) ?? group.memberKeys.some(key => byKey.get(key)?.classification?.openPolicy !== "closed")]));
   }, [projection, openMemberships]);
   const renderWorkGroup = (group: ConversationWorkGroup, children: ComponentChildren, window?: import("./ConversationItems").WindowedWorkGroup) => {
-    const steps = allSteps.filter(step => group.executionIds.includes(step.executionId));
+    const groupKey = membershipKey(group);
+    const steps = groupProjection.stepsByGroup.get(groupKey) ?? [];
     const active = steps.some(step => step.status === "running");
     const failures = steps.filter(step => step.status === "failed").length;
     const unknown = group.unknownToolCount > 0 || steps.length !== group.executionIds.length;
     const status = toolGroupStatus(steps, !unknown);
     const stateLabel = status ? activityStatusLabel(t, status) : group.executionIds.length || group.unknownToolCount ? t("common.notReadable") : undefined;
-    const reasons = [...new Set(projection.items.filter(item => group.memberKeys.includes(item.key)).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
+    const reasons = [...new Set((groupProjection.itemsByGroup.get(groupKey) ?? []).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
     const categoryLabel = [...(["Tools","Reasoning","Notifications","Problems"] as const).flatMap(category=>{
       const n=group.categoryCounts?.[category] ?? 0;
       if(!n)return [];
@@ -172,10 +189,11 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
   };
   if (!planCurrent) return <section role="status" data-display-plan-unavailable="">{t("work.textUnavailable")}</section>;
   return <ConversationItems {...projection} ordinalByNode={ordinalByNode} groupOpen={groupOpen} items={planItems} sequence={displayPlan!.sequence} workGroups={displayPlan!.workGroups} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={renderWorkGroup} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
-    const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
+    const groupKey = membershipKey(summary);
+    const steps = groupProjection.stepsByGroup.get(groupKey) ?? [];
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
-    const members = projection.items.filter(item => summary.memberKeys.includes(item.key));
+    const members = groupProjection.itemsByGroup.get(groupKey) ?? [];
     const missingExecution = members.some(item => item.source.kind !== "tool" || !(item.source.executionIds?.length || item.source.executionId)) || steps.length !== summary.executionIds.length;
     const status = toolGroupStatus(steps, !missingExecution);
     const label = [t(summary.memberKeys.length === 1 ? "tools.countOne" : "tools.count", { n: summary.memberKeys.length }), ...(missingExecution ? [t("work.textUnavailable")] : []), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
