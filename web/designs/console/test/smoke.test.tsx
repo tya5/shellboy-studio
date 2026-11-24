@@ -189,7 +189,7 @@ describe("Conversation right-panel activity", () => {
     await act(async () => settle(t, db));
     const sidebar = el.querySelector(".details")!;
     const headings = [...sidebar.querySelectorAll("#panel-page-work h3 > span:first-child")].map(text);
-    expect(headings).toEqual(["Running", "Waiting for history"]);
+    expect(headings).toEqual(["Running", "Waiting for history", "Schedules", "Services"]);
     expect(text(sidebar)).toContain("test command");
     expect(text(sidebar)).toContain("Please review");
     db.work.lead = [];
