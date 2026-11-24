@@ -1,5 +1,9 @@
+import { Cancel, type Operations, type ThreadSummary } from "../../data/src";
+
+import { signal } from "@preact/signals-core";
+
 import type { StatusKey } from "./status";
-import type { ThreadRow } from "./threads";
+import { threadTree, type ThreadRow } from "./threads";
 
 export type MonitorArchive = "exclude" | "include" | "only";
 export interface MonitorCriteria { statuses: readonly StatusKey[]; query: string; archive: MonitorArchive; pinnedOnly: boolean; attention?: boolean; pins: readonly string[]; refresh: number }
@@ -34,9 +38,6 @@ export class MonitorSelection {
 }
 
 // Resolves pins outside the currently loaded list. Four reads run at once; the owner is the view model.
-import { signal } from "@preact/signals-core";
-import { Cancel, type Operations, type ThreadSummary } from "../../data/src";
-import { threadTree } from "./threads";
 
 export class MissingPins {
   readonly rows = signal<readonly ThreadRow[]>([]);
@@ -76,5 +77,38 @@ export class MissingPins {
         this.publish();
       }).finally(() => { this.running.delete(id); this.pump(); });
     }
+  }
+}
+
+
+export const MAX_MONITOR_ARCHIVED_ROWS = 1000;
+
+/** Owns the optional archived-list read without changing the shared sidebar filter. */
+export class MonitorArchiveRows {
+  readonly rows = signal<readonly ThreadRow[]>([]);
+  private cancel?: Cancel;
+  private generation = 0;
+  constructor(private readonly ops: Operations) {}
+  sync(active: boolean, archive: MonitorArchive): void {
+    const wanted = active && archive !== "exclude";
+    if (!wanted) { this.cancel?.cancel(); this.cancel = undefined; this.rows.value = []; this.generation++; return; }
+    if (this.cancel) return;
+    const cancel = this.cancel = new Cancel();
+    const generation = ++this.generation;
+    void this.read(cancel, generation);
+  }
+  close(): void { this.cancel?.cancel(); this.cancel = undefined; this.generation++; this.rows.value = []; }
+  private async read(cancel: Cancel, generation: number): Promise<void> {
+    const rows = new Map<string, ThreadSummary>();
+    let cursor: string | undefined;
+    while (!cancel.cancelled && rows.size < MAX_MONITOR_ARCHIVED_ROWS) {
+      const page = await this.ops.threadList({ archived: "only", limit: Math.min(50, MAX_MONITOR_ARCHIVED_ROWS - rows.size), ...(cursor ? { cursor } : {}) }, { cancel });
+      if (!page.ok || cancel.cancelled || generation !== this.generation) return;
+      for (const row of page.value.items) { rows.set(row.thread_id, row); if (rows.size >= MAX_MONITOR_ARCHIVED_ROWS) break; }
+      cursor = page.value.next_cursor;
+      if (!cursor || page.value.items.length === 0) break;
+    }
+    if (cancel.cancelled || generation !== this.generation) return;
+    this.rows.value = threadTree([...rows.values()], new Map());
   }
 }

@@ -16,7 +16,7 @@ import { recentAppFolders } from "./app-templates";
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, messageCancelFailure, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle, type ReplyCount } from "../../data/src";
 import { ArtifactObservation, CAPABILITY_HISTORY_WINDOW, ReplyPages, type ReplySide } from "../../data/src";
-import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
+import { MissingPins, MonitorArchiveRows, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
 import { projectHistoryWindowItems, projectSavedItems, projectOwnedHandoffFacts, normalizeLiveWorkFacts, scopeIssuedWorkFacts } from "./conversation-items";
@@ -275,6 +275,7 @@ export class AppModel {
   readonly monitorArchive = signal<MonitorArchive>("exclude");
   readonly monitorRefresh = signal(0);
   readonly missingPins: MissingPins;
+  readonly monitorArchiveRows: MonitorArchiveRows;
   readonly monitorOutOfFilter: ReadonlySignal<ReadonlySet<string>>;
   readonly monitorRows: ReadonlySignal<ThreadRow[]>;
   /** Retained awaiting-you questions; inexact while Core has more than the loaded pages. */
@@ -500,14 +501,16 @@ export class AppModel {
     this.counts = computed(() => countByStatus(this.rows.value));
     this.pendingCount = computed(() => ({ count: this.pending.items.value.length, exact: this.pending.complete?.value ?? !this.pending.hasMore?.value }));
     this.missingPins = new MissingPins(this.ops);
+    this.monitorArchiveRows = new MonitorArchiveRows(this.ops);
     const stableMonitor = new StableMonitorOrder();
-    const stableRows = computed(() => stableMonitor.order([...this.rows.value, ...this.missingPins.rows.value]));
+    const stableRows = computed(() => stableMonitor.order([...this.rows.value, ...this.missingPins.rows.value, ...this.monitorArchiveRows.rows.value]));
     this.disposers.push(effect(() => { stableRows.value; }));
     this.disposers.push(effect(() => {
       const active = this.route.value.view === "monitor" && this.data.threadList.value.loaded && this.data.owner.value.state === "connected";
       const pins = this.monitorPins.value;
       const rows = this.rows.value;
-      untracked(() => this.missingPins.sync(pins, rows, active));
+      const archive = this.monitorArchive.value;
+      untracked(() => { this.missingPins.sync(pins, rows, active); this.monitorArchiveRows.sync(active, archive); });
     }));
     this.monitorStableRows = stableRows;
     const selection = new MonitorSelection();
@@ -758,6 +761,7 @@ export class AppModel {
     this.pending.close?.();
     this.modelListCancel.cancel();
     this.missingPins.close();
+    this.monitorArchiveRows.close();
     this.longReader.peek()?.dispose();
     this.apps.leaveFolders();
     for (const d of this.disposers) d();

@@ -649,6 +649,33 @@ describe("Conversation", () => {
 });
 
 describe("Monitor", () => {
+  it("reads archived Threads for Monitor's archive scopes without adding them to sidebar All", async () => {
+    const { model, t, db, data } = await fixtureModel({ route: "monitor", configure(db) {
+      db.threads.archived = summary("archived", { title: "Archived fixture", activity: "tools", state: "completed", archived_at: "2025-01-01T00:00:00Z" });
+      const answer = db.answer.bind(db);
+      db.answer = call => {
+        if (call.command !== "thread.list" || (call.args as { thread_ids?: string[] }).thread_ids) return answer(call);
+        const args = call.args as { archived?: string; limit?: number; cursor?: string };
+        const rows = Object.values(db.threads).filter(row => { const archived = (row as typeof row & { archived_at?: string }).archived_at; return args.archived === "only" ? !!archived : args.archived === "include" ? true : !archived; });
+        return { ok: true, result: { items: rows, next_cursor: undefined } };
+      };
+    } });
+    try {
+      const el = draw(model, { monitorArchive: "exclude" });
+      await act(async () => { await settle(t, db); await flushPromises(); });
+      const button = (label: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find(b => text(b) === label)!;
+      act(() => button(model.t.value("monitor.filterButton")).click());
+      act(() => button(model.t.value("monitor.archiveOnly")).click());
+      await act(async () => { await settle(t, db); await flushPromises(); });
+      expect(el.querySelector(".mon")?.textContent).toContain("Archived fixture");
+      expect(t.calls("thread.list").some(call => (call.args as { archived?: string }).archived === "only")).toBe(true);
+      expect(el.querySelector(".side")?.textContent).not.toContain("Archived fixture");
+      act(() => button(model.t.value("monitor.archiveInclude")).click());
+      expect(el.querySelector(".mon")?.textContent).toContain("Archived fixture");
+      expect(data.threadList.value.filter?.archived).not.toBe("include");
+    } finally { model.dispose(); data.stop(); }
+  });
+
   it("keeps archived Threads out of the sidebar All band while Monitor is open", async () => {
     const { model, t, db, data } = await fixtureModel({ route: "conversation", configure(db) {
       db.threads.archived = summary("archived", { title: "Archived fixture", activity: "tools", state: "completed", archived_at: "2025-01-01T00:00:00Z" });
