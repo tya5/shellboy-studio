@@ -1,7 +1,7 @@
 import { ExcerptBatch } from "../src/branching";
 import { describe, expect, it } from "vitest";
 import { details, flush, settle } from "../../data/test/harness";
-import { branchLayout, branchMarks, branchRowMarks, branchTitle, formatRoute, groupThreads, listedDescendants, parseRoute, materializeHistoryPresentation, readFamily, readRewind, readWholeFamily } from "../src";
+import { branchLayout, branchMarks, branchRowMarks, branchTitle, formatRoute, parseRoute, materializeHistoryPresentation, readFamily, readRewind, readWholeFamily } from "../src";
 import { Cancel } from "../../data/src";
 import type { HistoryItem, ThreadSummary } from "../../data/src";
 import { fixtureBranches, fixtureModel, fixtureRewind } from "./fixture";
@@ -132,7 +132,9 @@ describe("rewind facts", () => {
 
 describe("routes", () => {
   it("branches keep the Thread and the point in the hash", () => {
-    for (const r of [{ view: "branches" }, { view: "branches", threadId: "t" }, { view: "branches", threadId: "t", nodeId: "n" }, { view: "threads" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
+    for (const r of [{ view: "branches" }, { view: "branches", threadId: "t" }, { view: "branches", threadId: "t", nodeId: "n" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
+    expect(parseRoute("#/monitor")).toEqual({ view: "conversation" });
+    expect(parseRoute("#/threads")).toEqual({ view: "conversation" });
   });
 });
 
@@ -143,7 +145,7 @@ describe("Branches over the fake transport", () => {
     return made;
   };
   it("reads nothing until the view opens; opens no history", async () => {
-    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    const { model, t, db } = await fixtureModel({ route: "inbox" });
     try {
       expect(t.calls("thread.branches")).toHaveLength(0);
       model.navigate({ view: "branches" });
@@ -155,7 +157,7 @@ describe("Branches over the fake transport", () => {
     } finally { model.dispose(); }
   });
   it("walks pages, and starts over when the cursor expires", async () => {
-    const { t, db, model } = await fixtureModel({ route: "monitor" });
+    const { t, db, model } = await fixtureModel({ route: "inbox" });
     const plain = db.answer;
     let n = 0;
     db.answer = (c) => {
@@ -174,7 +176,7 @@ describe("Branches over the fake transport", () => {
     expect(n).toBe(4);
   });
   it("gives up on an expiring cursor after its bound and reports it", async () => {
-    const { t, db, model } = await fixtureModel({ route: "monitor" });
+    const { t, db, model } = await fixtureModel({ route: "inbox" });
     const plain = db.answer;
     db.answer = (c) => (c.command === "thread.branches" ? { ok: false, code: "cursor_expired" } : plain(c));
     const read = readWholeFamily(model.ops, "lead");
@@ -274,7 +276,7 @@ describe("Branches over the fake transport", () => {
     await settle(t, db);
     const after = t.calls("thread.branches").length;
     expect(after).toBeGreaterThan(before);
-    model.applyRoute({ view: "monitor" });
+    model.applyRoute({ view: "inbox" });
     db.threads.fresh2 = { ...db.threads.lead!, thread_id: "fresh2" };
     t.push({ t: "changed", config_changed: false, thread_ids: ["fresh2"], list: true });
     await settle(t, db);
@@ -296,102 +298,13 @@ describe("Branches over the fake transport", () => {
   });
 });
 
-const summaryOf = (id: string, extra: Partial<ThreadSummary>): ThreadSummary => ({ thread_id: id, title: `t-${id}`, cwd: "/a", state: "idle", activity: "idle", updated_at: "2026-11-07T00:00:00+00:00", excerpt: "", ...extra });
-
-describe("grouping Threads", () => {
-  const items = [summaryOf("p", {}), summaryOf("c", { parent_id: "p" }), summaryOf("other", { parent_id: "p", cwd: "/b" }), summaryOf("run", { activity: "running", cwd: "/b" })];
-  it("by directory: keeps the owner's order, nests a real child, names a parent elsewhere", () => {
-    const groups = groupThreads(items, "directory");
-    expect(groups.map((g) => g.key)).toEqual(["/a", "/b"]);
-    expect(groups[0]!.rows.map((r) => [r.summary.thread_id, r.depth])).toEqual([["p", 0], ["c", 1]]);
-    const other = groups[1]!.rows.find((r) => r.summary.thread_id === "other")!;
-    expect(other).toMatchObject({ depth: 0, parentTitle: "t-p" });
-  });
-  it("by state: most urgent first", () => {
-    const groups = groupThreads(items, "state");
-    expect(groups[0]!.key).toBe("running");
-    expect(groups.map((g) => g.rows.length).reduce((a, b) => a + b)).toBe(4);
-  });
-  it("counts listed descendants outside the selection, across levels", () => {
-    const deep = [...items, summaryOf("g", { parent_id: "c" })];
-    expect(listedDescendants(deep, new Set(["p"]))).toBe(3);
-    expect(listedDescendants(deep, new Set(["p", "c"]))).toBe(2);
-    expect(listedDescendants(deep, new Set(["run"]))).toBe(0);
-  });
-});
-
-describe("Threads over the fake transport", () => {
-  const open = async () => {
-    const made = await fixtureModel({ route: "threads" });
-    await settle(made.t, made.db);
-    return made;
-  };
-  it("reads the largest page in the Active mode when opened, and not before", async () => {
-    const before = await fixtureModel({ route: "monitor" });
-    expect(before.t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200)).toHaveLength(0);
-    const { t, model } = await open();
-    expect(t.calls("thread.list").some((c) => (c.args as { limit?: number; archived?: string }).limit === 200 && (c.args as { archived?: string }).archived === "exclude")).toBe(true);
-    expect(model.org.state.value.loaded).toBe(true);
-  });
-  it("Archived reads its own mode and drops the selection; a filter goes to the owner", async () => {
-    const { t, db, model } = await open();
-    model.org.toggle("lead");
-    model.org.setMode("only");
-    await settle(t, db);
-    expect(model.org.selected.value.size).toBe(0);
-    expect((t.calls("thread.list").at(-1)!.args as { archived: string }).archived).toBe("only");
-    model.org.setMode("exclude");
-    model.org.setQuery("hist");
-    await settle(t, db);
-    expect((t.calls("thread.list").at(-1)!.args as { query: string }).query).toBe("hist");
-  });
-  it("archive sends the chosen ids with descendants and an operation id; nothing is optimistic", async () => {
-    const { t, db, model } = await open();
-    const org = model.org;
-    org.setMany(["lead", "done"], true);
-    const running = org.apply();
-    expect(org.selected.value.size).toBe(2);
-    await settle(t, db);
-    await running;
-    const call = t.calls("thread.archive")[0]!;
-    expect(call.args).toEqual({ thread_ids: ["lead", "done"], descendants: true });
-    expect(call.operation_id).toBeTruthy();
-    expect(org.selected.value.size).toBe(0);
-    expect(org.action.value).toMatchObject({ kind: "done", verb: "archive" });
-  });
-  it("in Archived the same action unarchives; turning descendants off sends none", async () => {
-    const { t, db, model } = await open();
-    const org = model.org;
-    org.setMode("only");
-    await settle(t, db);
-    org.descendants.value = false;
-    org.setMany(["lead"], true);
-    const running = org.apply();
-    await settle(t, db);
-    await running;
-    expect(t.calls("thread.unarchive")[0]!.args).toEqual({ thread_ids: ["lead"] });
-    expect(t.calls("thread.archive")).toHaveLength(0);
-  });
-  it("a refusal keeps the selection and reports it", async () => {
-    const { t, db, model } = await open();
-    const plain = db.answer;
-    db.answer = (c) => (c.command === "thread.archive" ? { ok: false, code: "input_limit" } : plain(c));
-    model.org.setMany(["lead"], true);
-    const running = model.org.apply();
-    await settle(t, db);
-    await running;
-    expect(model.org.selected.value.has("lead")).toBe(true);
-    expect(model.org.action.value).toMatchObject({ kind: "failed", error: { code: "input_limit" } });
-  });
-});
-
 describe("leaving these views cancels their reads", () => {
   it("Branches: leaving, and then a hint does nothing; returning reads", async () => {
     const { t, db, model } = await fixtureModel();
     model.applyRoute({ view: "branches" });
     await flush();
     const first = t.calls("thread.branches").at(-1)!;
-    model.applyRoute({ view: "monitor" });
+    model.applyRoute({ view: "inbox" });
     await flush();
     expect(t.cancels()).toContain(first.id);
     db.answered.add(first.id);
@@ -401,91 +314,7 @@ describe("leaving these views cancels their reads", () => {
     await settle(t, db);
     expect(model.branches.state.value.family).toBeDefined();
   });
-  it("Threads: a changed filter or leaving cancels the read", async () => {
-    const { t, db, model } = await fixtureModel();
-    model.applyRoute({ view: "threads" });
-    await flush();
-    const big = () => t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200);
-    const first = big()[0]!;
-    model.org.setQuery("x");
-    await flush();
-    expect(t.cancels()).toContain(first.id);
-    db.answered.add(first.id);
-    await settle(t, db);
-    expect((big().at(-1)!.args as { query?: string }).query).toBe("x");
-    model.org.setQuery("y");
-    await flush();
-    const second = big().at(-1)!;
-    model.applyRoute({ view: "monitor" });
-    await flush();
-    expect(t.cancels()).toContain(second.id);
-    db.answered.add(second.id);
-    await settle(t, db);
-    expect(model.org.state.value.loading).toBe(false);
-  });
 });
-
-describe("moving a Thread", () => {
-  it("never moves on a choice or a drop, only on Move, with an operation id", async () => {
-    const { t, db, model } = await fixtureModel({ route: "threads" });
-    await settle(t, db);
-    const org = model.org;
-    org.previewMove("done", "broken");
-    await settle(t, db);
-    expect(t.calls("thread.set")).toHaveLength(0);
-    void org.confirmMove();
-    await settle(t, db);
-    const call = t.calls("thread.set")[0]!;
-    expect(call.args).toEqual({ thread_id: "done", parent_id: "broken" });
-    expect(call.operation_id).toBeTruthy();
-    expect(org.move.value).toMatchObject({ kind: "moved" });
-  });
-  it("shows the refusal and moves organizational parentage without a Run-owner claim", async () => {
-    const { t, db, model } = await fixtureModel({ route: "threads" });
-    const plain = db.answer;
-    db.answer = (c) => (c.command === "thread.set" ? { ok: false, code: "would make T its own ancestor" } : plain(c));
-    model.org.previewMove("lead", "done");
-    void model.org.confirmMove();
-    await settle(t, db);
-    expect(model.org.move.value).toMatchObject({ kind: "refused", message: "would make T its own ancestor" });
-    db.answer = (c) => (c.command === "thread.set" ? { ok: true, result: details("lead", { parent_change: { live_run_id: "r" } }) } : plain(c));
-    model.org.previewMove("lead", "");
-    void model.org.confirmMove();
-    await settle(t, db);
-    expect(t.calls("thread.set").at(-1)!.args).toEqual({ thread_id: "lead", parent_id: "" });
-    expect(model.org.move.value).toMatchObject({ kind: "moved" });
-  });
-});
-
-describe("display modes", () => {
-  const rows = [summaryOf("p", {}), summaryOf("c", { parent_id: "p", cwd: "/b" })];
-  it("tree keeps real parents across directories; tag has nothing until the wire exists", () => {
-    expect(groupThreads(rows, "tree")[0]!.rows.map((r) => [r.summary.thread_id, r.depth])).toEqual([["p", 0], ["c", 1]]);
-    expect(groupThreads(rows, "directory").map((g) => g.key)).toEqual(["/a", "/b"]);
-    expect(groupThreads(rows, "tag")).toEqual([]);
-  });
-});
-
-describe("the Threads view is bounded too", () => {
-  it("holds at most five pages and asks for a filter past that", async () => {
-    const { t, db, model } = await fixtureModel({ route: "threads" });
-    const plain = db.answer;
-    let page = 0;
-    db.answer = (c) => (c.command === "thread.list" && (c.args as { limit?: number }).limit === 200 ? { ok: true, result: { items: [], next_cursor: `c${++page}` } } : plain(c));
-    model.org.setQuery("x");
-    await settle(t, db);
-    for (let i = 0; i < 8; i++) {
-      model.org.loadMore();
-      await settle(t, db);
-    }
-    expect(model.org.canLoadMore()).toBe(false);
-    const last = t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200).length;
-    model.org.loadMore();
-    await settle(t, db);
-    expect(t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200).length).toBe(last);
-  });
-});
-
 
 describe("branch excerpt budget and invalidation", () => {
   it("admits eight rows once per batch, serializes readers, and drops late cancelled results", async () => {

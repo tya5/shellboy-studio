@@ -62,7 +62,6 @@ export { WorkSheet } from "./WorkSheet";
 export { AppRequest } from "./AppRequest";
 export { GuideCopy } from "./GuideCopy";
 
-export { MonitorTile } from "./MonitorTile";
 
 export { MonitorPopover } from "./MonitorPopover";
 
@@ -86,3 +85,7 @@ export { ContextRing } from "./ContextRing";
 export { ConversationHeader } from "./ConversationHeader";
 
 export { Switch } from "./Switch";
+
+export { ThreadTagEditor } from "./ThreadTagEditor";
+
+export { ThreadMovePicker } from "./ThreadMovePicker";

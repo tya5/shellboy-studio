@@ -280,7 +280,7 @@ it("opens all ten cross-directory descendants, gives overlapping pins independen
 });
 
 it('settles the mounted tag session while hidden and ignores late results after retargeting', async () => {
-  const f = await fixtureModel({ route: 'threads', threadId: 'lead', capabilities: ['thread.tags'], configure(db) {
+  const f = await fixtureModel({ route: 'inbox', threadId: 'lead', capabilities: ['thread.tags'], configure(db) {
     db.threads = { lead: summary('lead', { tags: ['old'] }), other: summary('other') };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
@@ -307,25 +307,25 @@ it('settles the mounted tag session while hidden and ignores late results after 
     await open('lead'); await stage('new-tag');
     await act(async () => { apply().click(); await flush(); });
     await close(); await open('lead');
-    expect(apply().disabled).toBe(true); expect(field().disabled).toBe(true);
+    expect(apply().disabled).toBe(true); expect(field().disabled).toBe(false);
     apply().click(); expect(f.t.calls('thread.tag')).toHaveLength(1);
     await close();
     const reads = f.t.calls('thread.list').length;
     await finish('new-tag');
     expect(f.t.calls('thread.list')).toHaveLength(reads);
     await open('lead');
-    expect(f.model.org.tagDraft.peek()).toMatchObject({ add: [], action: { kind: 'idle' } });
+    expect(f.model.threadActions.tagDraft.peek()).toMatchObject({ add: [], action: { kind: 'idle' } });
     expect(panel()?.textContent).not.toContain('new-tag');
     Object.assign(f.db.threads.lead!, { tags: ['old', 'new-tag'] });
     await act(async () => { f.t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
-    expect(panel()?.textContent).toContain('new-tag');
+    expect(panel()?.textContent).not.toContain('new-tag');
     await stage('old-request'); await act(async () => input('raw-a'));
     await act(async () => { apply().click(); await flush(); });
     await open('other');
     expect(field().value).toBe('');
-    expect(f.model.org.tagDraft.peek()).toMatchObject({ targets: ['other'], add: [], action: { kind: 'idle' } });
+    expect(f.model.threadActions.tagDraft.peek()).toMatchObject({ target: 'other', add: [], action: { kind: 'idle' } });
     await stage('draft-b'); await finish('old-request');
-    expect(f.model.org.tagDraft.peek()).toMatchObject({ targets: ['other'], add: ['draft-b'], action: { kind: 'idle' } });
+    expect(f.model.threadActions.tagDraft.peek()).toMatchObject({ target: 'other', add: ['draft-b'], action: { kind: 'idle' } });
     expect(f.t.calls('thread.tag')).toHaveLength(2);
   } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
 });
@@ -400,7 +400,7 @@ it("bolds a background completion only after the list hint and clears on open or
     visible = true;
     await act(() => hint(true)); // same detail ID is not a new visible completion
     expect(unread()).toBe(true);
-    await act(async () => { f.model.showView("threads"); f.model.openThread("other"); await settle(f.t, f.db); });
+    await act(async () => { f.model.showView("inbox"); f.model.openThread("other"); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
   } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
 });

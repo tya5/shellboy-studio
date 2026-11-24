@@ -4,7 +4,7 @@ import { isThreadRecovery, statusOfActivity, type AppModel } from "../../../../u
 import type { MenuEntry } from "./Menu";
 
 /** Stop and Retry follow the row's owner activity, not the merged attention mark (an open question shows awaiting). */
-export function threadMenuEntries(model: AppModel, row: ThreadSummary, onDelete: (row: ThreadSummary) => void, tags?: { onEditTags: () => void }): MenuEntry[] {
+export function threadMenuEntries(model: AppModel, row: ThreadSummary, onDelete: (row: ThreadSummary) => void, opts?: { onEditTags?: () => void; onMove?: () => void }): MenuEntry[] {
   const archived = row.archived_at !== undefined;
   const activity = statusOfActivity(row.activity);
   const liveRun = activity === "running" || activity === "waiting" || isThreadRecovery(row.activity);
@@ -16,12 +16,13 @@ export function threadMenuEntries(model: AppModel, row: ThreadSummary, onDelete:
   const pinned = row.tags?.includes(SIDEBAR_PIN_TAG) ?? false;
   const pinLabel = model.t.value(pinned ? "sidebar.unpin" : "sidebar.pin");
   return [
-    ...(tags ? [
+    ...(opts?.onMove ? [{ key: "move", label: model.t.value("org.move"), onSelect: opts.onMove }] : []),
+    ...(opts?.onEditTags ? [
       { key: "pin", icon: "thread.pinned" as const, label: pinLabel, onSelect: () => void report(pinLabel, async () => {
         const result = await model.ops.threadTag({ thread_ids: [row.thread_id], ...(pinned ? { remove: [SIDEBAR_PIN_TAG] } : { add: [SIDEBAR_PIN_TAG] }) });
         return result.ok && result.value.not_found.includes(row.thread_id) ? { ok: false } : result;
       }, false) },
-      { key: "edit-tags", icon: "action.editTags" as const, label: model.t.value("sidebar.editTags"), onSelect: tags.onEditTags },
+      { key: "edit-tags", icon: "action.editTags" as const, label: model.t.value("sidebar.editTags"), onSelect: opts.onEditTags },
     ] : []),
     { key: "archive", icon: archived ? "action.unarchive" : "action.archive", label: archived ? model.t.value("org.unarchive") : model.t.value("action.archive"), onSelect: () => void report(archived ? model.t.value("org.unarchive") : model.t.value("action.archive"), () => archived ? model.ops.threadUnarchive([row.thread_id], { descendants: false }) : model.ops.threadArchive([row.thread_id], { descendants: false })) },
     { key: "stop", icon: "action.stop", label: model.t.value("action.stop"), disabled: !liveRun, onSelect: () => void report(model.t.value("action.stop"), async () => { const details = await model.ops.threadGet(row.thread_id); if (!details.ok || !details.value.run_id) return { ok: false, error: { message: model.t.value("action.stopRefused") } }; return model.ops.runStop(details.value.run_id); }) },

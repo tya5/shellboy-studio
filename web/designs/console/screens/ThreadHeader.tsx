@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { CAPABILITY_TAGS, folderName, statusLabel, type AppModel } from "../../../ui-core/src";
+import { CAPABILITY_REPARENT, CAPABILITY_TAGS, folderName, statusLabel, type AppModel } from "../../../ui-core/src";
 import { Button, ConversationHeader, Field, Icon, Notice, StatusMark, WorkSheet } from "../system/components";
 import type { MenuEntry } from "../system/components/Menu";
 import { threadMenuEntries } from "../system/components/thread-menu";
@@ -36,7 +36,7 @@ export function ThreadHeader({ model, settings, onSettings, onList, onDelete, on
   };
   const entries: MenuEntry[] = id ? [
     { key: "rename", icon: "thread.rename", label: t("header.rename"), onSelect: (focus) => open("title", focus) },
-    ...(row ? threadMenuEntries(model, row, target => onDelete(target.thread_id), model.data.capabilities.value.includes(CAPABILITY_TAGS) ? { onEditTags: () => onEditTags(row.thread_id, row.archived_at !== undefined) } : undefined) : []),
+    ...(row ? threadMenuEntries(model, row, target => onDelete(target.thread_id), { ...(model.data.capabilities.value.includes(CAPABILITY_TAGS) ? { onEditTags: () => onEditTags(row.thread_id, row.archived_at !== undefined) } : {}), ...(model.data.capabilities.value.includes(CAPABILITY_REPARENT) ? { onMove: () => model.threadActions.pickParent(row.thread_id) } : {}) }) : []),
   ] : [];
   if (phone) entries.push(
     ...(cwd ? [{ key: "cwd", label: t("header.directory"), onSelect: (focus: HTMLElement | null) => open("cwd", focus) }] : []),

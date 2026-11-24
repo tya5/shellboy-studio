@@ -5,17 +5,15 @@ import { sidebarGroups } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
-import { Button, Field, FilterChips, FilterMenu, Icon, LoadingCount, LoadingRows, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget, useSidebarThreadSelection } from "../system/components";
+import { CAPABILITY_TAGS, CAPABILITY_CWDS, CAPABILITY_REPARENT, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
+import { Button, Field, FilterChips, FilterMenu, Icon, LoadingCount, LoadingRows, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ThreadTagEditor, ThreadMovePicker, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget, useSidebarThreadSelection } from "../system/components";
 import { formatAge, formatCount } from "../../../ui-core/src";
 import { ThreadHeader } from "./ThreadHeader";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
-import { Monitor } from "./Monitor";
 import { Analytics } from "./Analytics";
 import { AppsHost } from "./Apps";
 import { Branches } from "./Branches";
-import { Threads } from "./Threads";
 import { Settings } from "./Settings";
 import { Setup } from "./Setup";
 import { SettingsView } from "./SettingsView";
@@ -50,6 +48,8 @@ export function App({ context }: { context: DesignContext }) {
   }), [model, context]);
   const threadSelection = useSidebarThreadSelection(model, () => document.getElementById("sidebar-thread-list-heading"));
   const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget & { rowKey: string }>();
+  const [tagEditorId, setTagEditorId] = useState<string>();
+  const [movePickerOpen, setMovePickerOpen] = useState(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const lastSidebarFocus = useRef<string>();
   const sidebarPositions = useRef(new Map<string, number>());
@@ -86,7 +86,6 @@ export function App({ context }: { context: DesignContext }) {
   const picker = model.modelPicker.value;
   useEffect(() => { if (picker.open && picker.thread !== model.selectedId.value) model.closeModelPicker(); }, [picker.open, picker.thread, model.selectedId.value]);
 
-  useEffect(() => { model.monitorSort.value = context.prefs.value.monitorSort ?? "stable"; }, [model, context.prefs.value.monitorSort]);
 
 
   useEffect(() => {
@@ -129,9 +128,8 @@ export function App({ context }: { context: DesignContext }) {
 
   const nav = (view: ViewName, role: IconRole, label: string, count?: number | `${number}+`) => <NavItem key={view} href={formatRoute({ view })} role={role} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
   const conversationNav = nav("conversation", "nav.conversation", t("view.conversation"));
-  const monitorNav = nav("monitor", "nav.monitor", t("view.monitor"));
   const inboxNav = nav("inbox", "nav.inbox", t("view.inbox"), formatCount(model.pendingCount.value));
-  const moreItems = ([["apps", "nav.apps"], ["branches", "nav.branches"], ["threads", "nav.threads"], ["analytics", "nav.analytics"], ["settings", "nav.settings"]] as const).map(([view, role]) => ({ key: view, href: formatRoute({ view }), role, label: t(`view.${view}`), current: route.view === view }));
+  const moreItems = ([["apps", "nav.apps"], ["branches", "nav.branches"], ["analytics", "nav.analytics"], ["settings", "nav.settings"]] as const).map(([view, role]) => ({ key: view, href: formatRoute({ view }), role, label: t(`view.${view}`), current: route.view === view }));
 
   const list = model.data.threadList.value;
   const sidebarSelected = route.view === "conversation" ? model.selectedId.value : undefined;
@@ -181,8 +179,10 @@ export function App({ context }: { context: DesignContext }) {
     context.setPrefs({ [field]: add ? [...keys, id].slice(-1000) : keys });
   };
   const editThreadTags = (id: string, archived: boolean) => {
-    model.showView("threads");
-    model.org.openTagsFor(id, archived);
+    const row = model.data.threadRows.value.get(id);
+    if (!row) return;
+    model.threadActions.openTagsFor(id);
+    setTagEditorId(id);
     setDrawer(false);
   };
   const canTag = model.data.capabilities.value.includes(CAPABILITY_TAGS);
@@ -252,7 +252,6 @@ export function App({ context }: { context: DesignContext }) {
           <div class="side-middle">
             <nav class="nav" aria-label={t("nav.views")}>
               {conversationNav}
-              {monitorNav}
               {inboxNav}
               {moreItems.map((i) => <NavItem key={i.key} href={i.href} role={i.role} label={i.label} current={i.current} />)}
             </nav>
@@ -268,10 +267,10 @@ export function App({ context }: { context: DesignContext }) {
                 setFilters(normalizeFilter(current, { ...current, query: value.trim() || undefined }));
                 setQuery(value);
               }} />
-              {route.view !== "monitor" ? <FilterMenu key={formatRoute(route)} label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} data={model.data} canTag={canTag} canCwd={canCwd} /> : null}
+              <FilterMenu key={formatRoute(route)} label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} data={model.data} canTag={canTag} canCwd={canCwd} />
               <Button icon label={t("threads.new")} title={t("threads.new")} onClick={() => { setDrawer(false); void model.createThread(); }}><Icon role="thread.create" size="small" /></Button>
             </div>
-            {route.view !== "monitor" ? <>              <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} /></> : null}
+            <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} />
             {threadSelection.bar}
           </div>
           <div class="side-list" ref={sidebarListRef} onFocusIn={(event) => {
@@ -305,7 +304,7 @@ export function App({ context }: { context: DesignContext }) {
                     const expanded = openParents.includes(r.key);
                     const unread = model.sidebarUnread(r.summary);
                     hiddenBelow = r.childCount && !expanded ? r.depth : undefined;
-                    return <ThreadItem key={r.key} sidebar treePosition={positions[index]} unread={unread} beforeLink={threadSelection.checkbox(id, r.summary.title)} linkId={sidebarLinkId(r.key)}
+                    return <ThreadItem key={r.key} sidebar treePosition={positions[index]} unread={unread} beforeLink={threadSelection.checkbox(id, r.summary.title, r.summary.archived_at !== undefined)} linkId={sidebarLinkId(r.key)}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
                       depth={r.depth} current={id === sidebarSelected} pending={r.pending} pendingExact={r.pendingExact} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
@@ -322,7 +321,7 @@ export function App({ context }: { context: DesignContext }) {
                         } } : undefined}
                       onSelect={() => setDrawer(false)}
                       menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary,
-                        target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), canTag ? { onEditTags: () => editThreadTags(id, r.summary.archived_at !== undefined) } : undefined)] }} />;
+                        target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), { ...(canTag ? { onEditTags: () => { model.threadActions.openTagsFor(id); setTagEditorId(id); setDrawer(false); } } : {}), ...(model.data.capabilities.value.includes(CAPABILITY_REPARENT) ? { onMove: () => { model.threadActions.pickParent(id, r.summary.title, r.summary.parent_id); setMovePickerOpen(true); setDrawer(false); } } : {}) })] }} />;
                   })}
                   </SidebarTree> : null}
                   {/* Each paged band ends with its own Show more, so All's does not sit under Archive; `.side-note` gives it the rows' space-8 inset. */}
@@ -353,16 +352,17 @@ export function App({ context }: { context: DesignContext }) {
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>
           {threadSelection.dialog(id => sidebarRows.find(row => row.thread_id === id)?.title)}
+          {tagEditorId ? (() => { const row = model.data.threadRows.value.get(tagEditorId); return row ? <ThreadTagEditor model={model} row={row} /> : null; })() : null}
+          {movePickerOpen ? <ThreadMovePicker model={model} /> : null}
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={id => resolveSidebarLink(sidebarLinkId(deleteThread.rowKey), id)} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} phonePanel={!!selected && phonePanel === selected} onTogglePhonePanel={togglePanelSheet} onClosePhonePanel={() => setPhonePanel(undefined)} onOpenPhonePanel={() => setPhonePanel(selected)} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} phonePanel={!!selected && phonePanel === selected} onTogglePhonePanel={togglePanelSheet} onClosePhonePanel={() => setPhonePanel(undefined)} onOpenPhonePanel={() => setPhonePanel(selected)} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           {statusFooter}
           <nav class="tabbar" aria-label={t("nav.views")}>
             {inboxNav}
             {conversationNav}
-            {monitorNav}
             <MoreMenu label={t("nav.more")} items={moreItems} />
           </nav>
         </div>

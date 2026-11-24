@@ -60,24 +60,11 @@ export function countByStatus(rows: ThreadRow[]): StatusCounts {
   return counts;
 }
 
-/** Monitor order: what needs a person first, then live work, then the rest; owner order within a state. */
+/** Sidebar ordering: what needs a person first, then live work, then the rest; owner order within a state. */
 export function byUrgency(rows: ThreadRow[]): ThreadRow[] {
   const rank = (r: ThreadRow) => (r.status ? STATUS_KEYS.indexOf(r.status) : STATUS_KEYS.length);
   return rows
     .map((r, i) => ({ r, i }))
     .sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i)
     .map((x) => x.r);
-}
-
-/** Preserves first-visible order; newly observed IDs are appended, and removed IDs are forgotten. */
-export class StableMonitorOrder {
-  private ids: string[] = [];
-  order(rows: readonly ThreadRow[]): ThreadRow[] {
-    const present = new Map(rows.map((row) => [row.summary.thread_id, row]));
-    this.ids = this.ids.filter((id) => present.has(id));
-    const known = new Set(this.ids);
-    const added = rows.map((row) => row.summary.thread_id).filter((id) => !known.has(id)).sort();
-    this.ids.push(...added);
-    return this.ids.flatMap((id) => present.get(id) ?? []);
-  }
 }
