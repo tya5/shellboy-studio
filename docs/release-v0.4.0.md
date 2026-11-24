@@ -4,6 +4,15 @@ Studio 0.4.0 は、commit `318abee0609eeb3b15a3a21b74b85f816c7d3ea0` の
 Shellboy Core v0.15.0（protocol 18）と組み合わせて使用します。この正確な組み合わせを
 導入してください。これより古い Core はサポート対象外です。
 
+## デスクトップ版の初回起動 / First desktop launch
+
+- [macOS desktop ZIP](https://github.com/tya5/shellboy-studio/releases/download/v0.4.0/shellboy-studio-desktop-v0.4.0-aarch64-apple-darwin.zip) (Apple silicon, macOS 14+): extract and open **Shellboy Studio.app**.
+- [Windows desktop ZIP](https://github.com/tya5/shellboy-studio/releases/download/v0.4.0/shellboy-studio-desktop-v0.4.0-x86_64-pc-windows-msvc.zip) (x64): extract the entire ZIP, keep both executables together, and open **Shellboy Studio.exe**.
+
+Core is included in both desktop ZIPs. Verify with [SHA256SUMS](https://github.com/tya5/shellboy-studio/releases/download/v0.4.0/SHA256SUMS). These packages are unsigned; see the [macOS](../README.md#macos-desktop-zip) or [Windows](guides/windows-desktop.txt) guide and follow your organization's security policy.
+
+デスクトップ ZIP には Core が同梱されています。別途インストールは不要です。ZIP 全体を展開して上記のアプリを開いてください。署名なし（Mac は公証なし）のため、チェックサムを照合し、組織のセキュリティ方針に従ってください。
+
 Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信が必要な項目を追いやすくしました。Core v0.15.0 は公開済みです。
 
 比較範囲：[Studio v0.3.0 → `dd04181`](https://github.com/tya5/shellboy-studio/compare/v0.3.0..dd041811be677bb203a2b956ece5bbc0d9ddd187) ／ Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`)。特記のない Issue 番号は Studio のものです。

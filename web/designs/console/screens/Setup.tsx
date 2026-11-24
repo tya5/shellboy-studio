@@ -3,7 +3,7 @@ import { CAPABILITY_CONNECTION_SETUP, DIALECTS, formatRoute, OLLAMA_CONTEXT_URL,
 import { Button, ButtonGroup, Check, ChoiceList, Field, KeyValue, Notice, Section } from "../system/components";
 import { Rich } from "./Rich";
 import { SetupEmbedding } from "./SetupEmbedding";
-import { External, TestResult, Unavailable } from "./SetupParts";
+import { External, FIRST_SETUP_GUIDE, RestartAfterSetup, TestResult, Unavailable } from "./SetupParts";
 import { SettingsShare } from "./SettingsShare";
 
 /** Longest model list drawn at once; the filter narrows the rest. */
@@ -42,7 +42,13 @@ export function Setup({ context }: { context: DesignContext }) {
       <div class="mon">
         <div class="setup">
           {head}
-          {probe.state === "unreadable" ? <Notice tone="bad">{t("setup.fileProblem", { message: probe.message })}</Notice> : <Notice>{t("setup.reading")}</Notice>}
+          {probe.state === "unreadable" ? <Notice tone="bad" actions={<>
+            <Button onClick={() => void s.readFile()}>{t("action.retry")}</Button>
+            <External href={FIRST_SETUP_GUIDE}>{t("setup.guide")}</External>
+          </>}>
+            {t("setup.fileRepair")}{probe.path ? <div class="mono">{probe.path}</div> : null}
+            {probe.message ? <div class="caption">{probe.message}</div> : null}
+          </Notice> : <Notice>{t("setup.reading")}</Notice>}
         </div>
       </div>
     );
@@ -60,9 +66,9 @@ export function Setup({ context }: { context: DesignContext }) {
             <p>
               <Rich text={save.usesStoredKey ? (save.keyPath ? t("setup.saved.keyAt", { path: save.keyPath }) : t("setup.saved.keyAtUnknown")) : service?.envName ? t("setup.saved.keyEnv", { name: service.envName }) : ""} />
             </p>
-            <Notice tone={save.restart === "none" ? undefined : "wait"}>
+            {save.restart === "required" ? <RestartAfterSetup model={model} /> : <Notice tone={save.restart === "none" ? undefined : "wait"}>
               <Rich text={t(`setup.saved.restart.${save.restart}` as MessageKey)} />
-            </Notice>
+            </Notice>}
             <div class="setup-actions">
               {embed.returning.value ? (
                 <a class="btn primary" href={formatRoute({ view: "setup", step: "embedding" })} onClick={() => embed.comeBack(save.connection)}>
@@ -91,6 +97,7 @@ export function Setup({ context }: { context: DesignContext }) {
     );
   }
 
+  const manualModel = s.catalogMissing.value;
   const needle = filter.trim().toLowerCase();
   const matching = s.models.value.filter((m) => m.toLowerCase().includes(needle));
   const shown = matching.slice(0, MODELS_SHOWN);
@@ -176,29 +183,29 @@ export function Setup({ context }: { context: DesignContext }) {
             sub={t("setup.test.sub")}
             actions={<Button variant="primary" disabled={!s.canTest.value} onClick={() => void s.runTest()}>{test.kind === "testing" ? t("setup.test.running") : t("setup.test.run")}</Button>}
           >
-            <TestResult t={t} state={test} />
+            {manualModel ? <Notice tone="wait">{t("setup.model.catalogMissing", { status: test.kind === "failed" ? test.status ?? "" : "" })}</Notice> : <TestResult t={t} state={test} />}
             {service.listSkipsKey && test.kind === "ok" ? <div class="muted caption">{t("setup.test.listSkipsKey")}</div> : null}
           </Section>
         ) : null}
 
-        {service && test.kind === "ok" ? (
-          <Section title={t(s.makeDefault.value ? "setup.step.model" : "setup.step.default")} sub={s.makeDefault.value ? t("setup.model.hint") : t("setup.default.off")}>
+        {service && (test.kind === "ok" || manualModel) ? (
+          <Section title={t((s.makeDefault.value || manualModel) ? "setup.step.model" : "setup.step.default")} sub={manualModel ? t("setup.model.manual") : s.makeDefault.value ? t("setup.model.hint") : t("setup.default.off")}>
             {s.hasDefault.value ? <Check checked={s.makeDefault.value} onChange={(on) => s.setMakeDefault(on)} note={t("setup.default.have")}>{t("setup.default.label")}</Check> : null}
-            {s.makeDefault.value ? <>
+            {s.makeDefault.value || manualModel ? <>
             {service.id === "local" ? (
               <Notice tone="wait" actions={<External href={OLLAMA_CONTEXT_URL}>{t("setup.model.localLink")}</External>}>
                 {t("setup.model.localWarn")}
               </Notice>
             ) : null}
-            {test.facts.models.length > MODELS_SHOWN ? <Field ariaLabel={t("setup.model.filter")} placeholder={t("setup.model.filter")} autoComplete="off" value={filter} onInput={(e) => setFilter(e.currentTarget.value)} /> : null}
-            {shown.length > 0 ? <ChoiceList label={t("setup.model.list")} mono scroll value={s.model.value} onChange={(m) => s.setModel(m)} choices={shown.map((m) => ({ value: m, label: m }))} /> : <div class="muted">{t("setup.model.none")}</div>}
+            {s.models.value.length > MODELS_SHOWN ? <Field ariaLabel={t("setup.model.filter")} placeholder={t("setup.model.filter")} autoComplete="off" value={filter} onInput={(e) => setFilter(e.currentTarget.value)} /> : null}
+            {shown.length > 0 ? <ChoiceList label={t("setup.model.list")} mono scroll value={s.model.value} onChange={(m) => s.setModel(m)} choices={shown.map((m) => ({ value: m, label: m }))} /> : manualModel ? null : <div class="muted">{t("setup.model.none")}</div>}
             {matching.length > shown.length ? <div class="muted caption">{t("setup.model.shown", { n: shown.length, total: matching.length })}</div> : null}
             <Field ariaLabel={t("setup.model.type")} class="mono" placeholder={t("setup.model.type")} autoComplete="off" spellcheck={false} value={s.model.value} onInput={(e) => s.setModel(e.currentTarget.value)} />
             </> : null}
           </Section>
         ) : null}
 
-        {service && test.kind === "ok" ? (
+        {service && (test.kind === "ok" || manualModel) ? (
           <Section title={t("setup.step.save")} sub={<Rich text={t(s.makeDefault.value ? "setup.save.sub" : "setup.save.subKeep", { name: s.connectionName.value })} />}>
             <Field ariaLabel={t("setup.name.label")} class="mono" placeholder={t("setup.name.label")} autoComplete="off" spellcheck={false} value={s.nameDraft.value ?? s.suggestedName.value} onInput={(e) => s.setName(e.currentTarget.value)} />
             <div class="muted caption"><Rich text={t("setup.name.hint")} /></div>

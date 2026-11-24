@@ -128,11 +128,14 @@ async fn entry() -> Result<(), String> {
             })
             .flatten();
         if let Some(paths) = desktop {
-            return shellboy_studio::launcher::desktop::open_or_start(
-                &default_config_dir()?,
-                paths,
-            )
-            .await;
+            let result = match default_config_dir() {
+                Ok(dir) => shellboy_studio::launcher::desktop::open_or_start(&dir, paths).await,
+                Err(error) => Err(error),
+            };
+            if result.is_err() {
+                shellboy_studio::launcher::desktop::show_macos_startup_error().await;
+            }
+            return result;
         }
     }
     #[cfg(windows)]

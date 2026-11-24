@@ -899,9 +899,11 @@ async fn desktop_restart_follows_owner_transition_for_each_instance() {
     let mut state = app_state(owner, false, addr);
     let (_diagnostic_tx, diagnostic) = watch::channel(None);
     let (restart, mut requests) = mpsc::channel(1);
+    let (managed_tx, managed) = watch::channel(None);
     std::sync::Arc::get_mut(&mut state).unwrap().launcher = Some(Control {
         diagnostic,
         restart,
+        managed,
         marker: "test-marker".into(),
     });
     let cancel = state.cancel.clone();
@@ -926,6 +928,29 @@ async fn desktop_restart_follows_owner_transition_for_each_instance() {
             next_t(&mut ws, "error").await["error"]["code"],
             "invalid_state"
         );
+        if instance == "spawned" {
+            managed_tx.send_replace(Some(instance.to_owned()));
+            put(
+                &mut ws,
+                json!({"t":"launcher","action":"restart","instance_id":"attached"}),
+            )
+            .await;
+            assert_eq!(
+                next_t(&mut ws, "error").await["error"]["code"],
+                "invalid_state"
+            );
+            put(
+                &mut ws,
+                json!({"t":"launcher","action":"restart","instance_id":instance}),
+            )
+            .await;
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(2), requests.recv())
+                    .await
+                    .unwrap(),
+                Some(Some(instance.to_owned()))
+            );
+        }
         tx.send(unreachable_owner()).unwrap();
         let down = next_t(&mut ws, "owner").await;
         assert_eq!(down["owner"], json!({"state":"unreachable"}));
@@ -934,7 +959,7 @@ async fn desktop_restart_follows_owner_transition_for_each_instance() {
             tokio::time::timeout(Duration::from_secs(2), requests.recv())
                 .await
                 .unwrap(),
-            Some(())
+            Some(None)
         );
     }
     put(&mut ws, json!({"t":"launcher","action":"exit"})).await;

@@ -1,3 +1,4 @@
+import { External, FIRST_SETUP_GUIDE } from "./SetupParts";
 import { tokenTotal } from "./usage-label";
 import { ArtifactDetail, ArtifactList } from "./ArtifactPanel";
 import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
@@ -296,6 +297,11 @@ export function statusCharacter(status: string): string {
   }
 }
 
+function ConnectionRecovery({ model }: { model: AppModel }) {
+  const t = model.t.value;
+  return <><a class="nav-link" href={formatRoute({ view: "setup" })}>{t("setup.openConnection")}</a><External href={FIRST_SETUP_GUIDE}>{t("setup.guide")}</External></>;
+}
+
 export function ConversationStatus({ model }: { model: AppModel }) {
   const t = model.t.value;
   const work = model.work.value;
@@ -315,7 +321,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
       {start === undefined ? null : <span>{formatDuration(model.now.value - start)}</span>}
     </> : null}
-    {recovery ? <><span data-status-description>{recovery.message ?? recovery.hint}</span>{model.canRetry.value ? <Button aria-describedby="conversation-retry-note" onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
+    {recovery ? <><span data-status-description>{recovery.message ?? recovery.hint}</span>{model.canRetry.value ? <Button aria-describedby="conversation-retry-note" onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}{recovery.configuration ? <ConnectionRecovery model={model} /> : null}</> : null}
   </> : " "}</div>;
   // Supporting text under the one-line status (Material 3 supporting text): it wraps in full, never ellipsized.
   return recovery && model.canRetry.value ? <>{line}<div key="conversation-retry-note" id="conversation-retry-note" class="conversation-retry-note muted" data-retry-note>{t("recovery.body")}</div></> : line;
@@ -818,7 +824,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
           </EmptyState>}
         <ConversationStatus key="permanent-conversation-status" model={model} />
         {handle ? <div class="dock">
-          {send.kind === "failed" ? <Notice tone="bad">{t("composer.failed", { message: send.message })}</Notice> : null}
+          {send.kind === "failed" ? <Notice tone="bad" actions={send.configuration ? <ConnectionRecovery model={model} /> : undefined}>{t("composer.failed", { message: send.message })}</Notice> : null}
           {send.kind === "unconfirmed" ? (
             <Notice tone="wait" actions={<Button variant="warn" disabled={!model.canResend()} onClick={() => void model.resend(pendingOwn)}>{t("composer.retry")}</Button>}>
               {t("composer.unconfirmed")}{!model.canResend()?<div>{t("composer.retryUnavailable")}</div>:null}

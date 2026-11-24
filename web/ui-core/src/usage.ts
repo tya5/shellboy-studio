@@ -52,7 +52,13 @@ export function usageFacts(d: Record<string, unknown> | undefined): UsageFacts |
   };
 }
 
+export function needsConnectionSetup(code: unknown, details: unknown): boolean {
+  const failure = obj(details)?.failure_kind;
+  return code === "config_invalid" || code === "ConfigInvalid" || failure === "config_missing" || failure === "config_invalid";
+}
+
 export interface RecoveryFacts {
+  configuration?: boolean;
   message: string | undefined;
   hint: string | undefined;
 }
@@ -65,6 +71,7 @@ export function recoveryFacts(d: ThreadDetails | undefined): RecoveryFacts | und
     const parsed = obj(JSON.parse(reason));
     if (parsed) {
       return {
+        ...(needsConnectionSetup(parsed.code, parsed.details) ? { configuration: true } : {}),
         message: typeof parsed.message === "string" ? parsed.message : undefined,
         hint: typeof parsed.hint === "string" ? parsed.hint : undefined,
       };

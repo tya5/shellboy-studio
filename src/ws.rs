@@ -118,6 +118,16 @@ pub async fn session<O: Owner>(
             return;
         }
     }
+    let mut managed = state
+        .launcher
+        .as_ref()
+        .map(|control| control.managed.clone());
+    if let Some(rx) = &mut managed {
+        let instance_id = rx.borrow_and_update().clone();
+        if !send(&mut socket, &ServerFrame::LauncherManaged { instance_id }).await {
+            return;
+        }
+    }
     let (results_tx, mut results_rx) = mpsc::channel::<ServerFrame>(RESULT_CHANNEL);
     let in_flight = Arc::new(Semaphore::new(SESSION_IN_FLIGHT));
     let outstanding = Arc::new(AtomicUsize::new(0));
@@ -132,6 +142,13 @@ pub async fn session<O: Owner>(
             } } => {
                 let Some(message) = status else { break };
                 if !send(&mut socket, &ServerFrame::LauncherDiagnostic { message }).await { break; }
+            }
+            status = async { match &mut managed {
+                Some(rx) => { rx.changed().await.ok()?; Some(rx.borrow_and_update().clone()) },
+                None => std::future::pending().await,
+            } } => {
+                let Some(instance_id) = status else { break };
+                if !send(&mut socket, &ServerFrame::LauncherManaged { instance_id }).await { break; }
             }
             incoming = socket.recv() => {
                 let Some(Ok(message)) = incoming else { break };
@@ -247,7 +264,10 @@ fn handle_frame<O: Owner>(
         }
     };
     match frame {
-        ClientFrame::Launcher { action } => {
+        ClientFrame::Launcher {
+            action,
+            instance_id,
+        } => {
             let Some(control) = &state.launcher else {
                 return Some(error_frame(
                     "not_allowed",
@@ -262,10 +282,24 @@ fn handle_frame<O: Owner>(
             }
             if matches!(action, crate::launcher::Action::Exit) {
                 state.cancel.cancel();
-            } else if state.hub.owner_state() != OwnerState::Unreachable {
-                return Some(error_frame("invalid_state", "owner is not down"));
-            } else if control.restart.try_send(()).is_err() {
-                return Some(error_frame("busy", "launcher action already queued"));
+            } else {
+                let allowed = match state.hub.owner_state() {
+                    OwnerState::Unreachable => instance_id.is_none(),
+                    OwnerState::Connected { info } => {
+                        instance_id.is_some()
+                            && instance_id == info.instance_id
+                            && instance_id == *control.managed.borrow()
+                    }
+                };
+                if !allowed {
+                    return Some(error_frame(
+                        "invalid_state",
+                        "Core is not down or is not the Core Studio started",
+                    ));
+                }
+                if control.restart.try_send(instance_id).is_err() {
+                    return Some(error_frame("busy", "launcher action already queued"));
+                }
             }
             None
         }

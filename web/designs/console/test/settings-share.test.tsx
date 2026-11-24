@@ -65,6 +65,8 @@ it.each([false, true])("imports an exported profile and opens a conversation (ex
       expect(f.t.calls("config.set")[0]?.args).toMatchObject({ changes: expect.arrayContaining([{ field: "connections.proxy.api_key_header" }]) });
       expect(f.t.calls("credentials.set")).toHaveLength(0);
     }
+    expect(host.textContent).toContain('First conversation: proxy / chat');
+    expect(host.textContent).toContain('A key is available; the provider has not verified it.');
     const start = host.querySelector('a[href="#/conversation"]');
     expect(start?.textContent).toBe("Start a conversation");
     await act(async () => { f.model.applyRoute(parseRoute(start!.getAttribute("href")!)); void f.model.createThread(); await settle(f.t, f.db); });

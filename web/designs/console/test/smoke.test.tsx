@@ -2052,7 +2052,9 @@ describe("Setup", () => {
     expect(text(el)).toContain("Saved");
     expect(text(el)).toContain("/owner-reported/credentials.toml");
     expect(text(el)).toContain("plain-text file");
-    expect(text(el)).toContain("Restart it");
+    expect(text(el)).toContain("Saved, but not yet active");
+    expect(text(el)).toContain("stop it with Ctrl+C");
+    expect(text(el)).toContain("run the same command again");
     expect(el.querySelector('a[href="#/conversation"]')).toBeTruthy();
     expect(el.innerHTML).not.toContain(KEY);
     expect(JSON.stringify(Object.entries(localStorage))).not.toContain(KEY);

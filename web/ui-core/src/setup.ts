@@ -16,7 +16,7 @@ export type SetupProbe =
   | { state: "reading" }
   | { state: "ready"; connections: string[]; hasDefault: boolean; configPath: string | undefined; known: Record<string, KnownConnection>; embedding: EmbeddingFacts }
   /** The file can't be read or is invalid: setup isn't offered automatically. */
-  | { state: "unreadable"; message: string };
+  | { state: "unreadable"; message: string; path?: string | undefined };
 
 /** What the file says about a connection that already exists. Never a key. */
 export interface KnownConnection {
@@ -118,6 +118,7 @@ export class ConnectionSetup {
   readonly replaces: ReadonlySignal<boolean>;
   readonly hasDefault: ReadonlySignal<boolean>;
   readonly canTest: ReadonlySignal<boolean>;
+  readonly catalogMissing: ReadonlySignal<boolean>;
   readonly canSave: ReadonlySignal<boolean>;
 
   private key = "";
@@ -159,7 +160,11 @@ export class ConnectionSetup {
       if (s.needsKey && this.env.value.kind !== "using" && !this.keyHeld.value && this.keyDraft.value.trim() === "") return false;
       return true;
     });
-    this.canSave = computed(() => this.test.value.kind === "ok" && (!this.makeDefault.value || this.model.value.trim() !== "") && this.nameProblem.value === undefined && (!this.replaces.value || this.confirmReplace.value) && this.saveState.value.kind !== "saving" && this.saveState.value.kind !== "saved");
+    this.catalogMissing = computed(() => {
+      const test = this.test.value;
+      return test.kind === "failed" && ((test.failure === "url" && test.status === 404) || (test.failure === "other" && test.status === 405) || (test.failure === "empty" && test.status !== undefined && test.status >= 200 && test.status < 300));
+    });
+    this.canSave = computed(() => (this.test.value.kind === "ok" || (this.catalogMissing.value && this.model.value.trim() !== "")) && (!this.makeDefault.value || this.model.value.trim() !== "") && this.nameProblem.value === undefined && (!this.replaces.value || this.confirmReplace.value) && this.saveState.value.kind !== "saving" && this.saveState.value.kind !== "saved");
   }
 
   /** True once, when the screen should open by itself. */
@@ -187,7 +192,7 @@ export class ConnectionSetup {
     }
     const facts = readConfigFacts(out.value);
     if (!facts.file.valid && facts.file.present) {
-      if (!quiet) this.probe.value = { state: "unreadable", message: facts.file.error ?? "" };
+      if (!quiet) this.probe.value = { state: "unreadable", message: facts.file.error ?? "", path: facts.path };
       return facts;
     }
     const side = facts.file.present ? facts.file : facts.loaded;

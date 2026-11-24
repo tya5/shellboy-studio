@@ -38,7 +38,7 @@ export type ClientFrame =
   | { t: "call"; id: number; command: string; args?: unknown; operation_id?: string }
   | { t: "watch"; thread_ids: string[]; list: boolean }
   | { t: "cancel"; id: number }
-  | { t: "launcher"; action: "restart" | "exit" };
+  | { t: "launcher"; action: "restart" | "exit"; instance_id?: string };
 
 export type ServerFrame =
   | { t: "hello"; bridge_version: string; listen?: string; apps_dir?: string | null; data_dir?: string; owner: OwnerState; desktop?: boolean }
@@ -50,6 +50,7 @@ export type ServerFrame =
   | { t: "resync" }
   | { t: "owner"; event: OwnerEvent; owner: OwnerState }
   | { t: "error"; error: BridgeError }
+  | { t: "launcher_managed"; instance_id: string | null }
   | { t: "launcher_diagnostic"; message: string | null };
 
 export type ParsedFrame = { ok: true; frame: ServerFrame } | { ok: false; reason: string; code?: "frame_too_large" };
@@ -126,6 +127,9 @@ export function parseServerFrame(text: string): ParsedFrame {
       return { ok: true, frame: v as unknown as ServerFrame };
     case "resync":
       return { ok: true, frame: { t: "resync" } };
+    case "launcher_managed":
+      if (v.instance_id !== null && typeof v.instance_id !== "string") return bad("bad fields");
+      return { ok: true, frame: v as unknown as ServerFrame };
     case "launcher_diagnostic":
       if (v.message !== null && typeof v.message !== "string") return bad("bad fields");
       return { ok: true, frame: v as unknown as ServerFrame };

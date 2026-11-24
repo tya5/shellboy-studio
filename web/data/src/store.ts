@@ -178,6 +178,8 @@ export class ShellboyData {
 
   private readonly desktopSig = signal(false);
   readonly desktop: ReadonlySignal<boolean> = this.desktopSig;
+  private readonly managedInstanceSig = signal<string | null>(null);
+  readonly managedInstance: ReadonlySignal<string | null> = this.managedInstanceSig;
   private readonly desktopDiagnosticSig = signal<string | null>(null);
   readonly desktopDiagnostic: ReadonlySignal<string | null> = this.desktopDiagnosticSig;
 
@@ -490,6 +492,7 @@ export class ShellboyData {
         batch(() => {
           this.desktopSig.value = false;
           this.desktopDiagnosticSig.value = null;
+          this.managedInstanceSig.value = null;
           this.ownerSig.value = { state: "unknown" };
           this.markAllStale();
           this.discardAllPreviews("connection_closed");
@@ -520,6 +523,9 @@ export class ShellboyData {
         this.setOwner(f.owner);
         if (f.owner.state === "connected") { this.notifyHints(); void this.resyncAll(); }
         break;
+      case "launcher_managed":
+        this.managedInstanceSig.value = f.instance_id;
+        return;
       case "launcher_diagnostic":
         this.desktopDiagnosticSig.value = f.message;
         break;

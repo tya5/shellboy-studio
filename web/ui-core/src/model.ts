@@ -34,7 +34,7 @@ import { HumanInbox } from "../../data/src";
 import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
 import { isThreadRecovery, statusOfShell, type StatusKey } from "./status";
 import { StableMonitorOrder, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
-import { contextFacts, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
+import { contextFacts, needsConnectionSetup, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
 
 interface ModelPickerSession {
   readonly route: Route;
@@ -48,7 +48,7 @@ export type ConnectionView = "connected" | "connecting" | "ownerDown" | "authNee
 export type SendState =
   | { kind: "idle" }
   | { kind: "sending" }
-  | { kind: "failed"; message: string }
+  | { kind: "failed"; message: string; configuration?: boolean }
   | { kind: "unconfirmed"; operationId: string; text: string };
 
 export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info" | "settings";
@@ -1280,7 +1280,7 @@ export class AppModel {
     this.pendingOwnMessage.value = {...originalPlainOperation,phase:uncertain?"unconfirmed":"failed"};
     this.sendState.value = uncertain
       ? { kind: "unconfirmed", operationId, text }
-      : { kind: "failed", message: errorMessage(out.error) };
+      : { kind: "failed", message: errorMessage(out.error), ...(out.error.kind === "owner" && needsConnectionSetup(out.error.code, out.error.details) ? { configuration: true } : {}) };
     return false;
   }
 

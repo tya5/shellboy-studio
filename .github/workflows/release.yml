@@ -234,7 +234,14 @@ jobs:
         run: |
           gh release create "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "$RELEASE_TAG" --notes-file - <<NOTES
-          Draft. Built from tag $RELEASE_TAG; see SHA256SUMS. Pairing with Shellboy: see README.
+          Desktop first launch (Core is included, no separate install):
+
+          - [macOS desktop ZIP](https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/shellboy-studio-desktop-$RELEASE_TAG-aarch64-apple-darwin.zip) (Apple silicon, macOS 14+): extract and open **Shellboy Studio.app**.
+          - [Windows desktop ZIP](https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/shellboy-studio-desktop-$RELEASE_TAG-x86_64-pc-windows-msvc.zip) (x64): extract the entire ZIP, keep both executables together, and open **Shellboy Studio.exe**.
+
+          The desktop packages are unsigned; the macOS app is not notarized. Verify with SHA256SUMS and follow your organization's security policy. See the [macOS](https://github.com/$GITHUB_REPOSITORY/blob/$RELEASE_TAG/README.md#macos-desktop-zip) and [Windows](https://github.com/$GITHUB_REPOSITORY/blob/$RELEASE_TAG/docs/guides/windows-desktop.txt) guides.
+
+          Draft. Built from tag $RELEASE_TAG. Pairing for separately installed Core: see README.
 
           Desktop packages checked on real devices: not recorded (before publishing, list each package checked, the OS/device and scope; mark the others as not checked).
           NOTES

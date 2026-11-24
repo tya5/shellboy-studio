@@ -119,7 +119,8 @@ pub struct Launch {
     marker: PathBuf,
     _lock: File,
     owner: ManagedOwner,
-    restart: mpsc::Receiver<()>,
+    restart: mpsc::Receiver<Option<String>>,
+    managed: watch::Sender<Option<String>>,
     diagnostic: watch::Sender<Option<String>>,
     crashes: std::collections::VecDeque<String>,
 }
@@ -178,6 +179,7 @@ impl Launch {
         }
         write.map_err(io)?;
         let (send, restart) = mpsc::channel(1);
+        let (managed, managed_rx) = watch::channel(None);
         let (diagnostic, receiver) = watch::channel(None);
         let owner = ManagedOwner {
             bundled,
@@ -199,12 +201,14 @@ impl Launch {
             control: Control {
                 diagnostic: receiver,
                 restart: send,
+                managed: managed_rx,
                 marker: identity,
             },
             marker: marker_path,
             _lock: lock,
             owner,
             restart,
+            managed,
             diagnostic,
             crashes: std::collections::VecDeque::new(),
         }))
@@ -220,15 +224,18 @@ impl Launch {
                     biased;
                     _ = cancel.cancelled() => break,
                     restart = self.restart.recv() => {
-                        if restart.is_none() { break; }
-                        restart_state.manual_start();
-                        self.start().await;
+                        match restart {
+                            None => break,
+                            Some(None) => { restart_state.manual_start(); self.start().await; }
+                            Some(Some(_)) => {}
+                        }
                     }
                 }
                 continue;
             }
             let mut ready = false;
             let mut ready_closed = false;
+            let mut manual_restart = false;
             let exit = loop {
                 let child = &mut self.owner.child;
                 let ready_signal = &mut self.owner.ready;
@@ -236,9 +243,13 @@ impl Launch {
                     biased;
                     _ = cancel.cancelled() => break None,
                     restart = self.restart.recv() => {
-                        if restart.is_none() { break None; }
-                        restart_state.manual_start();
-                        self.start().await;
+                        let Some(requested) = restart else { break None; };
+                        if requested.is_some() && requested == self.owner.instance_id {
+                            self.managed.send_replace(None);
+                            platform::stop_child(self.owner.child.take(), &self.owner.data, requested.as_deref()).await;
+                            manual_restart = true;
+                            break None;
+                        }
                     },
                     result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {
                         self.owner.child = None;
@@ -248,6 +259,7 @@ impl Launch {
                         if changed.is_ok() {
                             if let Some(instance_id) = ready_signal.borrow_and_update().clone() {
                                 ready = true;
+                                self.managed.send_replace(Some(instance_id.clone()));
                                 self.owner.instance_id = Some(instance_id);
                                 self.crashes.clear();
                                 let warning = self.owner.env.as_ref().and_then(|env| env.warning.clone());
@@ -259,6 +271,19 @@ impl Launch {
                     },
                 }
             };
+            self.managed.send_replace(None);
+            if manual_restart {
+                if let Some(output) = self.owner.output.take() {
+                    let _ = output.await;
+                }
+                self.owner.instance_id = None;
+                if cancel.is_cancelled() {
+                    break;
+                }
+                restart_state.manual_start();
+                self.start().await;
+                continue;
+            }
             let Some(result) = exit else { break };
             if let Some(output) = self.owner.output.take() {
                 let _ = output.await;
@@ -1250,4 +1275,13 @@ mod tests {
         server.abort();
         let _ = server.await;
     }
+}
+
+#[cfg(target_os = "macos")]
+pub async fn show_macos_startup_error() {
+    // Use static text: an error can include a private path or browser URL.
+    let _ = Process::new("/usr/bin/osascript")
+        .args(["-e", r#"display alert "Shellboy Studio could not open" message "Check that the app was fully extracted and that your default browser works. If it still does not open, look for studio.log in ~/Library/Application Support/shellboy-studio or see the Studio user guide on GitHub." as critical"#])
+        .status()
+        .await;
 }

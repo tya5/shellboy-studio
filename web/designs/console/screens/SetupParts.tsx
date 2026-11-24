@@ -1,6 +1,8 @@
 import type { DesignContext, MessageKey, TestState } from "../../../ui-core/src";
-import { Notice, Section } from "../system/components";
+import { Button, Notice, Section } from "../system/components";
 import { Rich } from "./Rich";
+
+export const FIRST_SETUP_GUIDE = "https://github.com/tya5/shellboy/blob/v0.15.0/docs/guides/configuration.md#first-setup-without-an-owner";
 
 export type T = DesignContext["model"]["t"]["value"];
 
@@ -40,3 +42,13 @@ export function TestResult({ t, state }: { t: T; state: TestState }) {
   );
 }
 
+
+export function RestartAfterSetup({ model }: { model: DesignContext["model"] }) {
+  const t = model.t.value;
+  const owner = model.data.owner.value;
+  const id = owner.state === "connected" ? owner.info.instance_id : undefined;
+  const managed = id && model.data.managedInstance.value === id;
+  return <Notice tone="wait" actions={managed ? <Button onClick={() => model.data.link.launcherAction("restart", id)}>{t("launcher.restart")}</Button> : undefined}>
+    {t(managed ? "setup.restartManaged" : "setup.restartExternal")}
+  </Notice>;
+}

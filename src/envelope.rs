@@ -24,11 +24,10 @@ pub enum ClientFrame {
         list: bool,
     },
     /// Drop a pending call.
-    Cancel {
-        id: u64,
-    },
+    Cancel { id: u64 },
     Launcher {
         action: crate::launcher::Action,
+        instance_id: Option<String>,
     },
 }
 
@@ -86,6 +85,9 @@ pub enum ServerFrame {
         owner: OwnerState,
         #[serde(skip_serializing_if = "Option::is_none")]
         desktop: Option<bool>,
+    },
+    LauncherManaged {
+        instance_id: Option<String>,
     },
     LauncherDiagnostic {
         message: Option<String>,

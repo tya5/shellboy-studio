@@ -10,7 +10,8 @@ pub enum Action {
 #[derive(Clone)]
 pub struct Control {
     pub diagnostic: watch::Receiver<Option<String>>,
-    pub restart: mpsc::Sender<()>,
+    pub restart: mpsc::Sender<Option<String>>,
+    pub managed: watch::Receiver<Option<String>>,
     pub marker: String,
 }
 

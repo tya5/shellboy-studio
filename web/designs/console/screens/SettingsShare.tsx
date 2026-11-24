@@ -1,3 +1,4 @@
+import { RestartAfterSetup } from "./SetupParts";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CAPABILITY_CONFIG, formatRoute, showConfigValue, type AppModel, type MessageKey } from "../../../ui-core/src";
 import { exportableSettings, settingsPreview, parseSharedSettings, SETTINGS_FILE_LIMIT, type ImportedSettings } from "../../../ui-core/src/settings-share";
@@ -31,7 +32,15 @@ function ShareForm({ model, firstRun = false, settingId }: ShareProps) {
   const warningIdentity = plan?.warnings.length ? JSON.stringify([plan.hash, plan.changes, plan.warnings]) : undefined;
   const needsConfirmation = !!warningIdentity && ack !== warningIdentity;
   const confirmed = !!hash && ready && facts?.file.contentHash === hash;
-  const next = confirmed && file ? [...file.imported.connections.keys()].find(name => {
+  const values = facts?.file.values;
+  const defaultConnection = typeof values?.default_connection === "string" ? values.default_connection : undefined;
+  const defaultModel = typeof values?.default_model === "string" ? values.default_model : undefined;
+  const defaultSource = defaultConnection ? facts?.file.credentialSource?.[defaultConnection] : undefined;
+  const keys = file ? [...file.imported.connections.keys()] : [];
+  const next = confirmed ? [
+    ...keys.filter(name => name === defaultConnection),
+    ...keys.filter(name => name !== defaultConnection),
+  ].find(name => {
     const source = facts?.file.credentialSource?.[name];
     return source !== "env" && source !== "stored" && !skipped.includes(name);
   }) : undefined;
@@ -125,7 +134,7 @@ function ShareForm({ model, firstRun = false, settingId }: ShareProps) {
         <div class="setup-actions"><Button variant="primary" disabled={!ready || locked || needsConfirmation} onClick={apply}>{t("share.apply")}</Button><Button variant="ghost" disabled={locked} onClick={reset}>{t("share.cancel")}</Button></div>
       </> : null}
       {hash && !confirmed ? invalidated ? <Notice tone="wait">{t("share.changed")}</Notice> : <Notice>{t("share.applying")}</Notice> : null}
-      {restart ? <Notice tone="wait">{t("share.restart")}</Notice> : null}
+      {restart && confirmed && !next ? <RestartAfterSetup model={model} /> : null}
       {next ? <form class="setup-key-step" key={next} onSubmit={event => {
         event.preventDefault();
         saveKey(event.currentTarget.querySelector('input[type="password"]'));
@@ -133,7 +142,11 @@ function ShareForm({ model, firstRun = false, settingId }: ShareProps) {
         <Field label={t("share.keyLabel", { name: next })} help={t("share.keyNote")} type="password" autoComplete="new-password" required disabled={locked} />
         <div class="setup-actions"><Button type="submit" variant="primary" disabled={locked}>{t("share.saveKey")}</Button><Button variant="ghost" disabled={locked} onClick={() => setSkipped([...skipped, next])}>{t("share.skipKey")}</Button></div>
       </form> : null}
-      {confirmed && !next ? <><Notice>{t("share.done")}</Notice>{firstRun ? <a class="nav-link" href={formatRoute({ view: "conversation" })} onClick={() => model.setup.takeAutoShow()}>{t("share.start")}</a> : null}</> : null}
+      {confirmed && !next ? <><Notice actions={defaultConnection && skipped.includes(defaultConnection) ? <Button onClick={() => setSkipped(skipped.filter(name => name !== defaultConnection))}>{t("share.enterKey")}</Button> : undefined}>
+        {t("share.done")}
+        {firstRun ? <div>{t("share.firstDefault", { connection: defaultConnection ?? t("share.unset"), model: defaultModel ?? t("share.unset") })}</div> : null}
+        {firstRun && defaultConnection ? <div>{t(defaultSource === "env" || defaultSource === "stored" ? "share.keyAvailable" : skipped.includes(defaultConnection) ? "share.keySkipped" : "share.keyUnconfirmed")}</div> : null}
+      </Notice>{firstRun ? <a class="nav-link" href={formatRoute({ view: "conversation" })} onClick={() => model.setup.takeAutoShow()}>{t("share.start")}</a> : null}</> : null}
       {hash && (invalidated || (confirmed && !next)) ? <Button variant="ghost" disabled={locked} onClick={reset}>{t("share.cancel")}</Button> : null}
     </> : null}
   </Section>;
