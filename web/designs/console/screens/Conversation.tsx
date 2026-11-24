@@ -976,7 +976,6 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
     const bForeground = details?.turn_id !== undefined && b.turn_id === details.turn_id;
     return Number(bForeground) - Number(aForeground) || (b.started_at ?? "").localeCompare(a.started_at ?? "");
   });
-  const [shellTarget, setShellTarget] = useState<string | undefined>(undefined);
   const [delivery, setDelivery] = useState<"next" | "now">("next");
   const [shellStopTarget, setShellStopTarget] = useState<{ executionId: string; command: string }>();
   const shellStopReturnFocus = useRef<HTMLElement | null>(null);
@@ -984,9 +983,6 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
     shellStopReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setShellStopTarget(target);
   };
-  const currentTarget = shellTarget;
-  const selectedShell = typeof currentTarget === "string" && currentTarget !== "model" ? activeShells.find(shell => shell.execution_id === currentTarget) : undefined;
-  const unavailableShellTarget = typeof currentTarget === "string" && currentTarget !== "model" && selectedShell === undefined;
   useLayoutEffect(() => {
     const frame = root.current?.closest<HTMLElement>(".app");
     const viewport = window.visualViewport;
@@ -1058,22 +1054,20 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
             hint={pendingOwn ? t(`composer.pending.${pendingOwn.phase}`) : t("composer.hint")}
-            draftStatus={text=>{if(selectedShell)return {blocked:false,hint:t("composer.hint")};if(unavailableShellTarget)return {blocked:true,hint:t("composer.shellUnavailable")};const admission=model.localSendAdmission(text);return {blocked:admission!=="ready",hint:admission==="slotsfull"?t("composer.pending.slotsfull"):admission==="bytesfull"?t("composer.pending.bytesfull"):pendingOwn?t(`composer.pending.${pendingOwn.phase}`):t("composer.hint")};}}
+            draftStatus={(text,target)=>{if(activeShells.some(shell=>shell.execution_id===target))return {blocked:false,hint:t("composer.hint")};if(target!=="model")return {blocked:true,hint:t("composer.shellUnavailable")};const admission=model.localSendAdmission(text);return {blocked:admission!=="ready",hint:admission==="slotsfull"?t("composer.pending.slotsfull"):admission==="bytesfull"?t("composer.pending.bytesfull"):pendingOwn?t(`composer.pending.${pendingOwn.phase}`):t("composer.hint")};}}
             start={details ? <ModelPicker model={model} details={details} onThreadSettings={() => openThreadPanel("settings")} /> : undefined}
             context={context ? <ContextRing fill={context.fill} state={context.state} label={t("context.title")} stateLabel={t(`context.state.${context.state}`)} onOpen={() => openThreadPanel("info")} /> : undefined}
             sendLabel={t("composer.send")}
-            canSend={conn === "connected" && !unavailableShellTarget && (selectedShell !== undefined || !sendBlocked)}
+            canSend={target=>{const shell=activeShells.some(item=>item.execution_id===target);return conn === "connected" && (shell || (target === "model" && !sendBlocked));}}
             busy={send.kind === "sending"}
-            allowWhitespace={selectedShell !== undefined}
+            allowWhitespace={target=>activeShells.some(shell=>shell.execution_id===target)}
             draftScope={handle.threadId}
-            onDraftTarget={value => setShellTarget(value === "model" ? undefined : value)}
             routing={{ label: t("composer.sendInputTo"), modelLabel: t("composer.modelTarget"),
               shells: activeShells.map(shell => ({ id: shell.execution_id, command: shell.command_excerpt || t("composer.shellTarget") })),
-              unavailableTarget: unavailableShellTarget ? t("composer.shellUnavailable") : undefined,
-              eof: selectedShell ? { label: `${t("composer.sendEof")}: ${selectedShell.command_excerpt || t("composer.shellTarget")}`, run: () => void model.sendShellEof(selectedShell.execution_id) } : undefined,
-              timingLabel: t("composer.sendTiming"), timing: delivery, timingDisabled: selectedShell !== undefined,
+              unavailableTarget: t("composer.shellUnavailable"), eofLabel: command => `${t("composer.sendEof")}: ${command}`, onEof: executionId => void model.sendShellEof(executionId),
+              timingLabel: t("composer.sendTiming"), timing: delivery,
               onTiming: setDelivery, nextLabel: t("composer.nextBoundary"), nowLabel: t("composer.now"), nextExplanation: t("composer.nextBoundaryHelp"), nowExplanation: t("composer.nowHelp") }}
-            onSend={(text,onReserved) => selectedShell ? model.sendShellInput(selectedShell.execution_id,text) : unavailableShellTarget ? Promise.resolve(false) : model.send(text,onReserved,delivery)}
+            onSend={(text,target,onReserved) => activeShells.some(shell=>shell.execution_id===target) ? model.sendShellInput(target,text) : target === "model" ? model.send(text,onReserved,delivery) : Promise.resolve(false)}
             interrupt={model.details.value?.turn_id ? { label: t("composer.interruptTurn"), run: () => void model.interruptTurn() } : undefined}
             stop={model.canStop.value ? { label: t("composer.stop"), run: () => void model.stop() } : undefined}
           />

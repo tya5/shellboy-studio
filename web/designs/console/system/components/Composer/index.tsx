@@ -5,7 +5,7 @@ import { Icon } from "../Icon";
 import { Button } from "../Button";
 import { ButtonGroup } from "../ButtonGroup";
 
-export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; allowWhitespace?: boolean; above?: ComponentChildren; routing?: Omit<Parameters<typeof ComposerRouting>[0], "target" | "onTarget">; interrupt?: { label: string; run: () => void }; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; onDraftTarget?: (target: string) => void; start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
+export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean | ((target: string) => boolean); busy: boolean; allowWhitespace?: boolean | ((target: string) => boolean); above?: ComponentChildren; routing?: Omit<Parameters<typeof ComposerRouting>[0], "target" | "onTarget" | "timingDisabled" | "eof"> & { onEof?: (executionId: string, command: string) => void; eofLabel: (command: string) => string }; interrupt?: { label: string; run: () => void }; draftStatus?: (text:string,target:string)=>{blocked:boolean;hint:string}; draftScope?: string;  start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, target: string, onReserved?: () => void) => Promise<boolean> }) {
   const [, renderDraft] = useState(0);
   const drafts = useRef(new Map<string | undefined, { text: string; target: string }>());
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -37,31 +37,33 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
     drafts.current.delete(scope);
     if (current.text !== "" || target !== "model") drafts.current.set(scope, { ...current, target });
     if (drafts.current.size > 16) drafts.current.delete(drafts.current.keys().next().value);
-    props.onDraftTarget?.(target);
     renderDraft(++generation.current);
   };
-  useLayoutEffect(() => { props.onDraftTarget?.(draft.target); }, [props.draftScope]);
-  const status=props.draftStatus?.(text);
-  const hasContent = text.length > 0 && (props.allowWhitespace === true || text.trim() !== "");
+  const selectedShell = props.routing?.shells.find(shell => shell.id === draft.target);
+  const unavailableTarget = draft.target !== "model" && !selectedShell;
+  const status=props.draftStatus?.(text, draft.target);
+  const canSend = typeof props.canSend === "function" ? props.canSend(draft.target) : props.canSend;
+  const allowWhitespace = typeof props.allowWhitespace === "function" ? props.allowWhitespace(draft.target) : props.allowWhitespace;
+  const hasContent = text.length > 0 && (allowWhitespace === true || text.trim() !== "");
   const submitting = useRef(false);
   const submit = async () => {
     const submittedScope = props.draftScope;
     const submittedDraft = drafts.current.get(submittedScope) ?? { text: "", target: "model" };
     const submittedText = submittedDraft.text;
-    if (submitting.current || !props.canSend || props.draftStatus?.(submittedText).blocked || props.busy || submittedText.length === 0 || (!props.allowWhitespace && submittedText.trim() === "")) return;
-    const submittedGeneration = generation.current;
-    const submittedScopeGeneration = scopeGeneration.current;
+    const submittedTarget = submittedDraft.target;
+    const submittedCanSend = typeof props.canSend === "function" ? props.canSend(submittedTarget) : props.canSend;
+    const submittedAllowWhitespace = typeof props.allowWhitespace === "function" ? props.allowWhitespace(submittedTarget) : props.allowWhitespace;
+    if (submitting.current || !submittedCanSend || props.draftStatus?.(submittedText, submittedTarget).blocked || props.busy || submittedText.length === 0 || (!submittedAllowWhitespace && submittedText.trim() === "")) return;
     const clearOriginal = () => {
-      if (generation.current !== submittedGeneration || latestScope.current !== submittedScope || scopeGeneration.current !== submittedScopeGeneration) return;
+      if (drafts.current.get(submittedScope) !== submittedDraft) return;
       drafts.current.delete(submittedScope);
-      props.onDraftTarget?.("model");
       renderDraft(++generation.current);
-      if (textarea.current) textarea.current.value = "";
+      if (latestScope.current === submittedScope && textarea.current) textarea.current.value = "";
     };
     submitting.current = true;
     let notifying = true, reserved = false;
     try {
-      const result = props.onSend(submittedText, () => {
+      const result = props.onSend(submittedText, submittedTarget, () => {
         // The owner may transfer this draft only during this submission call.
         if (!notifying || reserved) return;
         reserved = true;
@@ -74,7 +76,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
   };
   return (
     <div class="composer-root">
-      {props.routing ? <div class="composer-above"><ComposerRouting {...props.routing} target={draft.target} onTarget={setDraftTarget} /></div> : props.above ? <div class="composer-above">{props.above}</div> : null}
+      {props.routing ? <div class="composer-above"><ComposerRouting {...props.routing} target={draft.target} unavailableTarget={unavailableTarget ? props.routing.unavailableTarget : undefined} timingDisabled={selectedShell !== undefined} eof={selectedShell && props.routing.onEof ? { label: props.routing.eofLabel(selectedShell.command), run: () => props.routing!.onEof!(selectedShell.id, selectedShell.command) } : undefined} onTarget={setDraftTarget} /></div> : props.above ? <div class="composer-above">{props.above}</div> : null}
       <textarea
         ref={textarea}
         id="composer"
@@ -86,7 +88,8 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         onKeyDown={(e) => {
           if (composerAction(e) === "send") {
             e.preventDefault();
-            if (!props.canSend || props.busy || submitting.current) return;
+            const canSend = typeof props.canSend === "function" ? props.canSend(draft.target) : props.canSend;
+            if (!canSend || props.busy || submitting.current) return;
             void submit();
           }
         }}
@@ -100,7 +103,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
           {props.stop ? <Button buttonRef={stopButton} icon label={props.stop.label} title={props.stop.label} variant="stop" onClick={props.stop.run}>
             <Icon role="action.stop" size="small" />
           </Button> : null}
-          <Button icon label={props.sendLabel} variant="primary" disabled={!props.canSend || status?.blocked || props.busy || !hasContent} onClick={() => void submit()}>
+          <Button icon label={props.sendLabel} variant="primary" disabled={!canSend || status?.blocked || props.busy || !hasContent} onClick={() => void submit()}>
             <Icon role="composer.send" />
           </Button>
         </div>
