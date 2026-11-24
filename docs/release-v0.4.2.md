@@ -10,6 +10,7 @@ Studio v0.4.2 pairs with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa
 
 ## Changes on main since v0.4.1
 
+- In **Analytics > By Thread**, compare **Excl. cached**, **Total**, **Cached input**, or **Summary tokens** over the chosen **Period**. Bars and shares follow the selected metric; open a row for the same-period breakdown. Counts are recorded tokens, not prices, and incomplete scans do not show a ranking (#132).
 - Right-panel count badges, such as those on **Reply needed** and **Awaiting reply**, use higher-contrast text (#133).
 
 - The sidebar now has an **Archived** section below **All**; **All** leaves archived Threads out, and archived pins stay in **Pinned** (#126).
