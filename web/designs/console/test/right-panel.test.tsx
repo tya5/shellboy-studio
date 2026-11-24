@@ -468,8 +468,9 @@ describe('right panel purpose',()=>{
    await act(async()=>row.querySelector<HTMLButtonElement>('button')!.click());
    expect(f.model.selectedStepId.peek()).toBe('shell-running');
    expect(f.host.querySelector('#panel-page-work:not([hidden]) [data-panel-detail]')?.textContent).toContain('npm test');
-   expect(f.host.querySelector('[data-panel-back]')?.textContent).toBe('動作');
    const back=f.host.querySelector<HTMLButtonElement>('[data-panel-back]')!;
+   expect(back.textContent).toBe('動作');
+   expect(back.getAttribute('aria-label')).toBe('動作に戻る');
    await act(async()=>back.click());
    expect(f.host.querySelector('[data-panel-list="work"]')).toBe(list);
    expect(list.scrollTop).toBe(84);
