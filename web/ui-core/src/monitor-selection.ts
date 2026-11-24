@@ -91,13 +91,13 @@ export class MonitorArchiveRows {
   constructor(private readonly ops: Operations) {}
   sync(active: boolean, archive: MonitorArchive): void {
     const wanted = active && archive !== "exclude";
-    if (!wanted) { this.cancel?.cancel(); this.cancel = undefined; this.rows.value = []; this.generation++; return; }
+    if (!wanted) { this.cancel?.cancel(); this.cancel = undefined; if (this.rows.peek().length) this.rows.value = []; this.generation++; return; }
     if (this.cancel) return;
     const cancel = this.cancel = new Cancel();
     const generation = ++this.generation;
     void this.read(cancel, generation);
   }
-  close(): void { this.cancel?.cancel(); this.cancel = undefined; this.generation++; this.rows.value = []; }
+  close(): void { this.cancel?.cancel(); this.cancel = undefined; this.generation++; if (this.rows.peek().length) this.rows.value = []; }
   private async read(cancel: Cancel, generation: number): Promise<void> {
     const rows = new Map<string, ThreadSummary>();
     let cursor: string | undefined;

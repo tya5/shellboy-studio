@@ -692,6 +692,26 @@ describe("Monitor", () => {
     } finally { model.dispose(); data.stop(); }
   });
 
+  it("deduplicates an archived Monitor pin present in both owner reads", async () => {
+    const { model, t, db, data } = await fixtureModel({ route: "monitor", configure(db) {
+      db.threads["archived-pin"] = summary("archived-pin", { title: "Archived pinned fixture", activity: "tools", state: "completed", archived_at: "2025-01-01T00:00:00Z" });
+      const answer = db.answer.bind(db);
+      db.answer = call => {
+        if (call.command !== "thread.list" || (call.args as { thread_ids?: string[] }).thread_ids) return answer(call);
+        const args = call.args as { archived?: string };
+        const rows = Object.values(db.threads).filter(row => { const archived = (row as typeof row & { archived_at?: string }).archived_at; return args.archived === "only" ? !!archived : !archived; });
+        return { ok: true, result: { items: rows, next_cursor: undefined } };
+      };
+    } });
+    const el = draw(model, { monitorArchive: "include", monitorPins: ["archived-pin"] });
+    try {
+      await act(async () => { await settle(t, db); await flushPromises(); });
+      expect(el.querySelectorAll('.mon .card h2')).toHaveLength(1);
+      expect(el.querySelector('.mon .card h2')?.textContent).toBe("Archived pinned fixture");
+      expect(t.calls("thread.list").some(call => JSON.stringify(call.args) === JSON.stringify({ thread_ids: ["archived-pin"] }))).toBe(false);
+    } finally { model.dispose(); data.stop(); }
+  });
+
   it("shows the row-cache status mark for a pinned Thread outside the list without opening details", async () => {
     const { model, t, db } = await fixtureModel({ route: "monitor", configure(db) {
       db.threads["outside-pin"] = summary("outside-pin", { title: "Pinned outside list", activity: "tools", state: "running" });

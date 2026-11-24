@@ -503,14 +503,18 @@ export class AppModel {
     this.missingPins = new MissingPins(this.ops);
     this.monitorArchiveRows = new MonitorArchiveRows(this.ops);
     const stableMonitor = new StableMonitorOrder();
-    const stableRows = computed(() => stableMonitor.order([...this.rows.value, ...this.missingPins.rows.value, ...this.monitorArchiveRows.rows.value]));
+    const stableRows = computed(() => {
+      const unique = new Map<string, ThreadRow>();
+      for (const row of [...this.monitorArchiveRows.rows.value, ...this.missingPins.rows.value, ...this.rows.value]) unique.set(row.summary.thread_id, row);
+      return stableMonitor.order([...unique.values()]);
+    });
     this.disposers.push(effect(() => { stableRows.value; }));
     this.disposers.push(effect(() => {
       const active = this.route.value.view === "monitor" && this.data.threadList.value.loaded && this.data.owner.value.state === "connected";
       const pins = this.monitorPins.value;
       const rows = this.rows.value;
       const archive = this.monitorArchive.value;
-      untracked(() => { this.missingPins.sync(pins, rows, active); this.monitorArchiveRows.sync(active, archive); });
+      untracked(() => { this.missingPins.sync(pins, [...rows, ...this.monitorArchiveRows.rows.value], active); this.monitorArchiveRows.sync(active, archive); });
     }));
     this.monitorStableRows = stableRows;
     const selection = new MonitorSelection();
