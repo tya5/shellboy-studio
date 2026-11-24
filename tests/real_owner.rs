@@ -6,7 +6,8 @@ mod common;
 use common::*;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use shellboy_studio::owner::IpcOwner;
+use shellboy::protocol::{ThreadListArgs, ThreadListOrder, ThreadListState};
+use shellboy_studio::owner::{IpcOwner, Owner};
 use std::{
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -156,6 +157,84 @@ fn temp_root() -> PathBuf {
     let root = std::env::temp_dir().join(format!("shellboy-studio-it-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&root).unwrap();
     root.canonicalize().unwrap()
+}
+
+#[tokio::test]
+async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
+    let root = temp_root();
+    let data = root.join("data");
+    let _serve = start_owner(&bin, &root, &data);
+    let owner = IpcOwner::new(data);
+
+    let cases = [
+        // The pinned band applies the selected query and adds its pin tag.
+        ThreadListArgs {
+            query: Some("never-match".into()),
+            tags: vec!["pin".into()],
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            query: Some("never-match".into()),
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            tags: vec!["pin".into()],
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            cwd: Some(root.to_string_lossy().into_owned()),
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            awaiting: Some("human".into()),
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            state: Some(ThreadListState::Failed),
+            archived: shellboy::protocol::ArchivedFilter::Include,
+            limit: 50,
+            ..Default::default()
+        },
+        ThreadListArgs {
+            state: Some(ThreadListState::RecoveryWait),
+            archived: shellboy::protocol::ArchivedFilter::Include,
+            limit: 50,
+            ..Default::default()
+        },
+    ];
+    for args in cases {
+        assert_eq!(args.order, ThreadListOrder::Updated);
+        owner
+            .call(Command::ThreadList(args), None, None)
+            .await
+            .expect("the exact pinned Core accepts a constrained membership read");
+    }
+
+    let refused = owner
+        .call(
+            Command::ThreadList(ThreadListArgs {
+                query: Some("never-match".into()),
+                order: ThreadListOrder::Created,
+                limit: 50,
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect_err("Core rejects creation ordering with query");
+    assert!(
+        refused.message.contains("order=created cannot be combined"),
+        "{refused}"
+    );
 }
 
 #[tokio::test]
