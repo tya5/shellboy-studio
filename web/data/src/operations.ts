@@ -1,3 +1,4 @@
+import { decodeDefinitions, type DefinitionKind, type ShellDefinition } from "./schedules";
 import {HistoryWindowInput} from './history-input';
 import {decodeHistoryWindow} from './history-decoder';
 import {sanitizeMessageRelation,validHistoryProvenance} from './message-provenance';
@@ -432,6 +433,19 @@ export class Operations {
   }
 
   // ---- reads ----
+  definitions(kind: DefinitionKind, threadId: string, read?: ReadOptions): Promise<Outcome<ReadonlyMap<string, ShellDefinition>>> {
+    return this.run(`${kind}.list`, { thread_id: threadId }, outcomeDecoder(raw => {
+      const value = decodeDefinitions(raw, kind, threadId);
+      return value ? { ok: true, value } : { ok: false, reason: "invalid schedule or service list" };
+    }), undefined, read);
+  }
+  scheduleAction(action: "enable" | "disable" | "remove", id: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+    return this.run(`schedule.${action}`, { schedule_id: id }, outcomeDecoder(decodeRecord), { operationId });
+  }
+  serviceAction(action: "start" | "stop", id: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+    return this.run(`service.${action}`, { service_id: id }, outcomeDecoder(decodeRecord), { operationId });
+  }
+
   threadList(args: ThreadListArgs = {}, read?: ReadOptions): Promise<Outcome<Page<ThreadSummary>>> {
     return this.run("thread.list", args, outcomeDecoder(decodeThreadPage), undefined, read);
   }

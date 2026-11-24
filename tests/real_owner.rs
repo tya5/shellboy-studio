@@ -692,6 +692,107 @@ impl Client {
 }
 
 #[tokio::test]
+async fn schedule_and_service_activity_against_the_pinned_owner() {
+    let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN required"));
+    let root = temp_root();
+    let data = root.join("data");
+    let serve = start_owner(&bin, &root, &data);
+    let op = |name: &str| format!("{}:web-schedule-{name}", serve.instance);
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner.clone(), true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut c = Client { ws, next: 0 };
+    next_t(&mut c.ws, "hello").await;
+    let thread = c
+        .ok(
+            "thread.create",
+            json!({"cwd":root.to_string_lossy()}),
+            Some(op("thread")),
+        )
+        .await;
+    let tid = &thread["thread_id"];
+    let schedule = owner
+        .call(
+            shellboy::protocol::Command::ScheduleAdd(
+                serde_json::from_value(
+                    json!({"thread_id":tid,"in_seconds":3600,"command":"echo studio-test"}),
+                )
+                .unwrap(),
+            ),
+            Some(op("add-schedule")),
+            None,
+        )
+        .await
+        .unwrap();
+    let service = owner
+        .call(
+            shellboy::protocol::Command::ServiceAdd(
+                serde_json::from_value(json!({"thread_id":tid,"command":"echo studio-test"}))
+                    .unwrap(),
+            ),
+            Some(op("add-service")),
+            None,
+        )
+        .await
+        .unwrap();
+    let schedule = serde_json::to_value(schedule).unwrap();
+    let service = serde_json::to_value(service).unwrap();
+    let sid = schedule["result"]["schedule_id"].as_str().unwrap();
+    let vid = service["result"]["service_id"].as_str().unwrap();
+    for (command, key, id) in [
+        ("schedule.list", "schedule_id", sid),
+        ("service.list", "service_id", vid),
+    ] {
+        let result = c.ok(command, json!({"thread_id":tid}), None).await;
+        assert_eq!(result["thread_id"], *tid);
+        assert_eq!(result["items"][0][key], id);
+        assert!(result.get("next_cursor").is_none());
+    }
+    for (command, enabled) in [("schedule.disable", false), ("schedule.enable", true)] {
+        c.ok(command, json!({"schedule_id":sid}), Some(op(command)))
+            .await;
+        assert_eq!(
+            c.ok("schedule.list", json!({"thread_id":tid}), None).await["items"][0]["enabled"],
+            enabled
+        );
+    }
+    for (command, enabled) in [
+        ("service.stop", false),
+        ("service.start", true),
+        ("service.stop", false),
+    ] {
+        let id = format!("{command}-{enabled}-{}", c.next);
+        c.ok(command, json!({"service_id":vid}), Some(op(&id)))
+            .await;
+        assert_eq!(
+            c.ok("service.list", json!({"thread_id":tid}), None).await["items"][0]["enabled"],
+            enabled
+        );
+    }
+    c.ok(
+        "schedule.remove",
+        json!({"schedule_id":sid}),
+        Some(op("remove")),
+    )
+    .await;
+    assert_eq!(
+        c.ok("schedule.list", json!({"thread_id":tid}), None).await["items"],
+        json!([])
+    );
+    drop(c);
+    cancel.cancel();
+    stop_owner(&bin, &data, serve).await;
+}
+
+#[tokio::test]
 async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     let bin = PathBuf::from(
         std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),

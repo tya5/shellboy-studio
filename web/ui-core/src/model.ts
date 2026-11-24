@@ -51,7 +51,7 @@ export type SendState =
   | { kind: "unconfirmed"; operationId: string; text: string };
 
 export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info" | "settings";
-export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment" | "artifact"; id: string; replySide?: ReplySide }>;
+export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment" | "artifact" | "schedule" | "service"; id: string; replySide?: ReplySide }>;
 export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => boolean }>;
 type PanelOperation = Readonly<{ kind: "cancel" | "answer" } & (
   { disposition: "pending"; source: "pending" | ReplySide; state: string } | { disposition: "failed" | "unconfirmed"; error: string }

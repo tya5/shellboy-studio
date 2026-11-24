@@ -28,6 +28,10 @@ The desktop app opens your default browser and signs in locally. It attaches to 
 
 **Removal.** Quit Studio, then remove the extracted folder and the Studio startup shortcut if present. This leaves Studio settings, its token and logs, and Core's separate config, credentials and conversation data. Keep the Core files if another client uses them.
 
+### Schedules and services
+
+Open **Thread panel > Activity**. **Running** shows active work; **Schedules** and **Services** show existing definitions for this Thread (Core allows at most 64 combined). On a phone choose **Activity** in the section picker. Open a row for timing, command, working directory, and latest output, then go Back to **Activity**. The schedule switch controls future runs. **Remove schedule** asks for confirmation and stops the shell if it is running. For a service use **Start** or **Stop**; services have no next run time. A completed one-shot leaves the schedule list, but its shell execution remains in the Thread history.
+
 ## Connect a model
 
 If there is no model connection, choose **Connect a model service**. Select your provider or proxy, verify the address and API format, and provide a key if required. A Claude or ChatGPT subscription login is not an API key. Supported presets can offer to use a key already in the Core owner's environment. **Test connection** asks for the model list; it doesn't send a conversation or guarantee that the provider verified the key. Choose a model or enter its exact ID, then select **Save and use this connection** and **Go to Conversation**. Embeddings are optional. If you already have a portable TOML file, choose **Import settings** instead.
@@ -154,6 +158,10 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 **更新。** タブを閉じるだけでなく **終了** を選び、交換するプロセスが止まったことを確認します。新しい ZIP を展開し、同じ ZIP の 2 つの EXE を一緒に使ってください。片方だけを稼働中に上書きせず、フォルダを変えた場合はショートカットも更新します。
 
 **削除。** Studio を終了し、展開したフォルダと、あれば Studio の自動起動ショートカットを削除します。Studio の設定・トークン・ログと、Core の設定・資格情報・会話データは残ります。他のクライアントでも使う Core のファイルは残してください。
+
+### スケジュールとサービス
+
+**スレッドパネル > 動作** を開きます。**実行中** に現在の作業が、**スケジュール** と **サービス** にこのスレッドの登録内容が表示されます（Core の上限は合計64件）。スマホでは項目選択で **動作** を選びます。行を開くと実行時刻、コマンド、作業ディレクトリ、直近の出力を確認でき、**動作** に戻れます。スイッチでスケジュールの今後の実行を切り替えます。**スケジュールを削除** は確認が必要で、実行中のシェルも停止します。サービスには次回実行時刻がなく、**開始** と **停止** で操作します。一回限りのスケジュールは完了すると一覧から消えますが、シェルの実行結果はスレッドの履歴に残ります。
 
 ### モデルの初期設定
 

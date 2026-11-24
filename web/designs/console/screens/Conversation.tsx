@@ -1,3 +1,4 @@
+import { SchedulePanel } from "./SchedulePanel";
 import { ReplyAnnouncement } from "./ReplyAnnouncement";
 import { PanelPage } from "../system/components/PanelTabs/PanelPage";
 import { External, FIRST_SETUP_GUIDE } from "./SetupParts";
@@ -666,6 +667,7 @@ function PanelActivity({ model }: { model: AppModel }) {
           actions={section.kind === "message" ? [panelCancel(model, row.id)] : undefined} error={panelOperationError(model, row.id)} />;
       })}</section> : null;
     })}
+    {model.handle.value ? (["schedule", "service"] as const).map(kind => <SchedulePanel key={`${model.handle.value!.threadId}:${kind}`} model={model} kind={kind} open={(id, opener) => model.openInPanel({ kind, id }, panelFocusReturn(opener), true)} />) : null}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
     {workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted">{t("work.stale")}</div> : null}
     {!work.running.length && !work.pending.length && !work.partial ? <EmptyState compact role="empty.panelActivity" title={t("panel.empty.work")} body={t("panel.empty.workBody")} /> : null}
@@ -766,6 +768,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
   const back = <Button buttonRef={backRef} variant="ghost" aria-label={t("panel.backToTab", { tab: tabLabel })} data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;
   if (!detail) return null;
+  if (detail.kind === "schedule" || detail.kind === "service") return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t(detail.kind === "schedule" ? "schedule.heading" : "service.heading")}</h3></div><SchedulePanel model={model} kind={detail.kind} detailId={detail.id} /></section>;
   const error = panelOperationError(model, detail.id);
   if (detail.kind === "step") {
     const command = step?.command ?? running?.command;
@@ -868,6 +871,9 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
     observer.observe(panel);
     return () => observer.disconnect();
   }, []);
+  const scheduleHandle = model.handle.value;
+  const scheduleShown = (phone || panelVisible) && !panelCollapsed && selectedTab === "work";
+  useEffect(() => scheduleShown ? scheduleHandle?.observeDefinitions() : undefined, [scheduleShown, scheduleHandle]);
   const artifactId = detail?.kind === "artifact" ? detail.id : undefined;
   const artifactsShown = supportsArtifacts && (phone || panelVisible) && !panelCollapsed && model.panelTab.value === "possessions";
   useEffect(() => artifactsShown && owner.state === "connected" && threadId

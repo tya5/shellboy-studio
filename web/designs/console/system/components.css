@@ -81,6 +81,8 @@
 
 @import "./components/PanelTabs/style.css";
 @import "./components/ListRow/style.css";
+@import "./components/ScheduleLayout/style.css";
+
 @import "./components/ListDivider/style.css";
 
 @import "./components/ChildrenChip/style.css";

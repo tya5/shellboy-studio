@@ -1,3 +1,4 @@
+import type { DefinitionKind, ShellDefinition } from "./schedules";
 import type { HistoryWindowInput } from './history-input';
 import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
@@ -101,6 +102,8 @@ export interface ThreadHandle extends Handle {
   readonly detail: ReadonlySignal<Resource<ThreadDetails>>;
   readonly work: ReadonlySignal<Resource<Page<WorkItem>>>;
   setWorkActive(active: boolean): void;
+  readonly definitions: Readonly<Record<DefinitionKind, ReadonlySignal<Resource<ReadonlyMap<string, ShellDefinition>>>>>;
+  observeDefinitions(): () => void;
   readonly preview: ReadonlySignal<Preview>;
   readonly handoff: ReadonlySignal<readonly HandoffRecord[]>;
   readonly handoffOverflow: ReadonlySignal<boolean>;
@@ -146,6 +149,11 @@ class ThreadEntry {
   detail = signal<Resource<ThreadDetails>>({ value: undefined, loading: false, stale: false, error: undefined });
   work = signal<Resource<Page<WorkItem>>>({ value: undefined, loading: false, stale: false, error: undefined });
   workRefs = 0;
+  definitionRefs = 0;
+  definitions = {
+    schedule: signal<Resource<ReadonlyMap<string, ShellDefinition>>>({ value: undefined, loading: false, stale: true, error: undefined }),
+    service: signal<Resource<ReadonlyMap<string, ShellDefinition>>>({ value: undefined, loading: false, stale: true, error: undefined }),
+  };
   workGen = 0;
   workBodies = new Map<string, string>();
   /** Unsaved model text; its signal is the handle's `preview`. */
@@ -458,6 +466,18 @@ export class ShellboyData {
       detail: e.detail,
       work: e.work,
       setWorkActive,
+      definitions: e.definitions,
+      observeDefinitions: () => {
+        if (closed) return () => {};
+        if (++e.definitionRefs === 1 && readable()) this.requestDefinitions(threadId);
+        let observing = true;
+        return () => {
+          if (!observing) return;
+          observing = false;
+          if (--e.definitionRefs === 0) for (const rows of Object.values(e.definitions))
+            rows.value = { ...rows.peek(), stale: true, loading: false };
+        };
+      },
       preview: e.preview,
       handoff: e.live.records,
       handoffOverflow: e.live.overflow,
@@ -679,6 +699,7 @@ export class ShellboyData {
     for (const e of this.entries.values()) {
       const d = e.detail.value;
       if (d.value !== undefined) e.detail.value = { ...d, stale: true };
+      for (const rows of Object.values(e.definitions)) rows.value = { ...rows.peek(), stale: true, loading: false };
       const w = e.work.value;
       if (w.value !== undefined) e.work.value = { ...w, stale: true };
     }
@@ -717,10 +738,14 @@ export class ShellboyData {
     return this.link.connection.value === "open" && this.ownerSig.value.state === "connected";
   }
 
+  private requestDefinitions(id: string): Promise<void>[] {
+    return [this.refresher.request(`schedule:${id}`), this.refresher.request(`service:${id}`)];
+  }
+
   private requestThread(id: string, history = true): Promise<void> {
     if (this.entries.get(id)?.paused) return Promise.resolve();
     const readWindow = history && this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW);
-    return Promise.all([this.refresher.request(`thread:${id}`), ...(readWindow ? [this.refresher.request(`history:${id}`)] : []), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : [])]).then(
+    return Promise.all([this.refresher.request(`thread:${id}`), ...(readWindow ? [this.refresher.request(`history:${id}`)] : []), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : []), ...(this.entries.get(id)?.definitionRefs ? this.requestDefinitions(id) : [])]).then(
       () => undefined,
     );
   }
@@ -744,6 +769,19 @@ export class ShellboyData {
     const entry = this.entries.get(key.slice(sep + 1));
     if (!entry) return; // closed since the request
     if (kind === "thread") return this.readDetail(entry, onSent);
+    if (kind === "schedule" || kind === "service") {
+      const epoch = this.readQualificationEpoch;
+      const cancel = entry.cancel;
+      const valid = () => entry.definitionRefs > 0 && !entry.closed && !entry.paused && !cancel.cancelled && entry.cancel === cancel && epoch === this.readQualificationEpoch && this.canRead();
+      if (!valid()) return;
+      const rows = entry.definitions[kind];
+      rows.value = { ...rows.peek(), loading: true };
+      const out = await this.operations.definitions(kind, entry.id, { onSent, cancel });
+      if (valid()) rows.value = out.ok
+        ? { value: out.value, loading: false, stale: false, error: undefined }
+        : { ...rows.peek(), loading: false, stale: true, error: out.error };
+      return;
+    }
     if (kind === "work") return this.readWork(entry, onSent);
     if (kind !== "history" || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return;
     entry.historyTick.value++; // notification only; positional reads own history admission

@@ -1,0 +1,10 @@
+.schedule-section{min-inline-size:0}
+.schedule-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:var(--space-4)}
+.schedule-control,.schedule-remove{display:flex;justify-content:center;min-inline-size:var(--size-control)}
+.schedule-detail{display:flex;flex-direction:column;gap:var(--space-12);min-inline-size:0}
+.schedule-detail code,.schedule-output{font:var(--type-code);white-space:pre-wrap;overflow-wrap:anywhere}
+.schedule-detail-actions{display:flex;flex-wrap:wrap;gap:var(--space-8)}
+@container app (max-width:899px){
+ .schedule-control,.schedule-remove{min-inline-size:var(--size-touch);min-block-size:var(--size-touch)}
+ .schedule-row > :is(.schedule-control,.schedule-remove) > button{min-inline-size:var(--size-touch);min-block-size:var(--size-touch);padding-inline:var(--space-4)}
+}

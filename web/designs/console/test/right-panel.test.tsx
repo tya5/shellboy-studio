@@ -59,6 +59,63 @@ async function setup(capabilities?: string[]) {
 }
 
 describe('right panel purpose',()=>{
+ it.each([1280,390])('reads definitions on hints and uses exact Activity commands at %i', async width => {
+  const original = ResizeObserver;
+  let reveal: (() => void) | undefined;
+  vi.stubGlobal('ResizeObserver', class extends original {
+    constructor(cb: ResizeObserverCallback) { super(cb); reveal = () => cb([], this); }
+    override observe(node: Element) { if (node.matches('[data-panel-root]') && width === 1280) reveal?.(); }
+  });
+  const f=await setup();
+  const at='2026-11-21T00:00:00Z';
+  let schedules=[{schedule_id:'sched',enabled:true,cron:'0 9 * * *',next_at:at,cwd:'/fixture',command:'echo test',description:'Schedule fixture',latest:{state:'running',started_at:at,output_tail:'sample output'}}];
+  let service={service_id:'svc',enabled:false,cwd:'/fixture',command:'echo service',description:'Service fixture',latest:null};
+  const answer=f.db.answer.bind(f.db);
+  f.db.answer=call=>{
+   if(call.command==='schedule.list') return {ok:true,result:{thread_id:'lead',items:schedules}};
+   if(call.command==='service.list') return {ok:true,result:{thread_id:'lead',items:[service]}};
+   if(/^(schedule|service)\./.test(call.command)) return {ok:true,result:{}};
+   return answer(call);
+  };
+  const pump=async(work:()=>void)=>{await act(async()=>work());await act(async()=>{await settle(f.t,f.db);});};
+  const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
+  const click=(selector:string)=>f.host.querySelector<HTMLButtonElement>(selector)!.click();
+  const schedule='[data-schedule-row="schedule"]';
+  const serviceRow='[data-schedule-row="service"]';
+  try {
+   Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:width});
+   if(width===390) await pump(()=>click('.phone-panel-footer .shell-toggle-panel'));
+   else await pump(hint);
+   const list=f.host.querySelector('[data-panel-list="work"]')!;
+   expect(list.querySelector('[data-panel-row-id="shell-running"]')).not.toBeNull();
+   for(const command of ['schedule.list','service.list']) expect(f.t.calls(command).at(-1)?.args).toEqual({thread_id:'lead'});
+   const opener=list.querySelector<HTMLButtonElement>(`${schedule} .panel-list-main`)!;
+   await pump(()=>opener.click());
+   expect(f.host.querySelector('[data-panel-detail]')?.textContent).toContain('sample output');
+   await pump(()=>click('[data-panel-back]'));
+   expect(document.activeElement).toBe(opener);
+   await pump(()=>click(`${schedule} [role="switch"]`));
+   expect(f.t.calls('schedule.disable').at(-1)?.args).toEqual({schedule_id:'sched'});
+   expect(list.querySelector(`${schedule} [role="switch"]`)?.getAttribute('aria-checked')).toBe('true');
+   schedules=[{...schedules[0]!,enabled:false}]; await pump(hint);
+   expect(list.querySelector(`${schedule} [role="switch"]`)?.getAttribute('aria-checked')).toBe('false');
+   await pump(()=>click(`${schedule} [role="switch"]`));
+   expect(f.t.calls('schedule.enable').at(-1)?.args).toEqual({schedule_id:'sched'});
+   await pump(()=>click(`${serviceRow} button[aria-label="Service fixture を開始"]`));
+   expect(f.t.calls('service.start').at(-1)?.args).toEqual({service_id:'svc'});
+   service={...service,enabled:true}; await pump(hint);
+   await pump(()=>click(`${serviceRow} button[aria-label="Service fixture を停止"]`));
+   expect(f.t.calls('service.stop').at(-1)?.args).toEqual({service_id:'svc'});
+   await pump(()=>click(`${schedule} button[aria-label="Schedule fixture を削除"]`));
+   expect(f.host.querySelector('[role="alertdialog"]')?.textContent).toContain('実行中の場合はシェルを停止');
+   expect(f.t.calls('schedule.remove')).toHaveLength(0);
+   await pump(()=>click('[role="alertdialog"] .work-sheet-body button'));
+   expect(f.t.calls('schedule.remove').at(-1)?.args).toEqual({schedule_id:'sched'});
+   schedules=[]; await pump(hint);
+   expect(list.querySelector(schedule)).toBeNull();
+  } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
+ });
+
  it('retains pending Activity rows and the tab count while status refreshes', async () => {
   const f=await setup();
   const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});

@@ -11,6 +11,11 @@ pub enum Access {
 
 pub fn access(command: &Command) -> Access {
     match command {
+        Command::ScheduleList(args) | Command::ServiceList(args)
+            if args.thread_id.as_ref().is_some_and(|id| !id.is_empty()) => Access::Read,
+        Command::ScheduleList(..) | Command::ServiceList(..) => Access::Denied,
+        Command::ScheduleEnable(..) | Command::ScheduleDisable(..) | Command::ScheduleRemove(..)
+        | Command::ServiceStart(..) | Command::ServiceStop(..) => Access::Mutation,
         Command::Status(..)
         | Command::ModelList(..)
         | Command::ThreadList(..)
@@ -105,11 +110,7 @@ pub fn access(command: &Command) -> Access {
         | Command::Compact(..)
         | Command::ContextEdit(..)
         | Command::ScheduleAdd(..)
-        | Command::ScheduleList(..)
         | Command::ScheduleSet(..)
-        | Command::ScheduleEnable(..)
-        | Command::ScheduleDisable(..)
-        | Command::ScheduleRemove(..)
         | Command::IndexPreview(..)
         | Command::IndexBackfill(..)
         | Command::IndexRetry(..)
@@ -122,9 +123,6 @@ pub fn access(command: &Command) -> Access {
         | Command::ThreadImport(..)
         | Command::HistoryExport(..)
         | Command::ServiceAdd(..)
-        | Command::ServiceList(..)
-        | Command::ServiceStart(..)
-        | Command::ServiceStop(..)
         | Command::ServiceRemove(..) => Access::Denied,
     }
 }
