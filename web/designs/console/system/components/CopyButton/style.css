@@ -1,0 +1,2 @@
+.copy-button-status{position:absolute;inline-size:0;block-size:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.btn[data-copy-state="copied"] .i{color:var(--ok)}

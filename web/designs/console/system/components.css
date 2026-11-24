@@ -59,6 +59,8 @@
 @import "./components/BrandLogo/style.css";
 @import "./components/ConversationCharacter/style.css";
 @import "./components/Button/style.css";
+@import "./components/Tooltip/style.css";
+@import "./components/CopyButton/style.css";
 @import "./components/Check/style.css";
 @import "./components/Switch/style.css";
 @import "./components/Disclosure/style.css";

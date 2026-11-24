@@ -48,11 +48,13 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
 
 let cleanup: (() => void) | undefined;
 afterEach(() => { cleanup?.(); cleanup = undefined; });
-async function toolFixture(state?: string) {
+async function toolFixture(state?: string, abbreviated = false) {
   const r = await fixtureModel({ configure(db) {
-    db.shells.lead = state ? [{ execution_id: 'exec-1', state }] : [];
+    db.shells.lead = state ? [{ execution_id: 'exec-1', state, started_at: '2026-01-01T00:00:00Z', ...(state === 'exited' ? { ended_at: '2026-01-01T00:00:02Z', exit_code: 7 } : {}) }] : [];
     db.outputs['exec-1'] = 'Retained fixture log';
-    db.history.lead = [{ node_id: 'tool', kind: 'assistant_response', items: [{ kind: 'tool_call', item_identity: 'call', execution_ids: ['exec-1'] }], executions: [{ execution_id: 'exec-1', kind: 'shell', ...(state ? { state } : {}) }] }];
+    const answer = db.answer.bind(db);
+    db.answer = call => call.command === 'shell.get' ? { ok: true, result: { execution_id: 'exec-1', command: 'echo first\necho second' } } : answer(call);
+    db.history.lead = [{ node_id: 'tool', kind: 'assistant_response', items: [{ kind: 'tool_call', item_identity: 'call', execution_ids: ['exec-1'] }], executions: [{ execution_id: 'exec-1', kind: 'shell', cwd: '/fixture', command_excerpt: abbreviated ? 'echo first' : 'echo first\necho second', command_truncated: abbreviated, ...(state ? { state } : {}) }] }];
   } });
   const host = document.createElement('div'); document.body.append(host);
   cleanup = () => { render(null, host); host.remove(); r.model.dispose(); r.data.stop(); };
@@ -99,4 +101,44 @@ it('keeps the last readable log alongside a refresh failure', async () => {
   await act(async () => { r.t.push({ t: 'changed', thread_ids: ['lead'], config_changed: false, list: false }); await settle(r.t, r.db); });
   expect(row.textContent).toContain('Fixture read failed');
   expect(row.textContent).toContain('Retained fixture log');
+});
+
+
+it.each([false, true])('shows summary, full command once, output actions and execution facts (truncated command: %s)', async abbreviated => {
+  const r = await toolFixture('exited', abbreviated);
+  const row = await r.expand();
+  expect(row.querySelector('summary')?.textContent).toContain('Shell execution');
+  expect(row.querySelector('summary')?.textContent).not.toContain('echo first');
+  expect(row.querySelector('.shell-step-command code')?.textContent).toBe('echo first\necho second');
+  expect(r.t.calls('shell.get').length).toBe(abbreviated ? 1 : 0);
+  expect(row.querySelector('.shell-step-facts [data-status="failed"]')).not.toBeNull();
+  expect([...row.querySelectorAll('.shell-step-facts > .mono')].map(fact => fact.textContent)).toEqual(['Exit code 7', '2.0s', '/fixture']);
+  expect(row.querySelector('.output-heading')?.textContent).toBe('Output · 1 line');
+  await act(async () => { r.model.closePanelDetail(); });
+  const button = row.querySelector<HTMLButtonElement>('button[aria-label="Open execution details"]')!;
+  await act(async () => { button.click(); });
+  expect(r.model.panelDetail.peek()?.id).toBe('exec-1');
+});
+
+it('keeps execution facts and details when Core reports reclaimed output', async () => {
+  const r = await toolFixture('running');
+  const row = await r.expand();
+  const answer = r.db.answer.bind(r.db);
+  r.db.answer = call => call.command === 'shell.read' ? { ok: false, code: 'output_expired' } : answer(call);
+  await act(async () => { r.t.push({ t: 'changed', thread_ids: ['lead'], config_changed: false, list: false }); await settle(r.t, r.db); });
+  expect(row.querySelector('[role="note"]')?.textContent).toContain('no longer retained');
+  expect(row.textContent).not.toContain('Retained fixture log');
+  expect(row.querySelector('.shell-step-facts [data-status="running"]')).not.toBeNull();
+  expect(row.querySelector<HTMLButtonElement>('button[aria-label="Copy output"]')?.disabled).toBe(true);
+  expect(row.querySelector<HTMLButtonElement>('button[aria-label="Open execution details"]')?.disabled).toBe(false);
+});
+
+it('counts the retained lines and labels cut-off output without tagging unknown streams', async () => {
+  const r = await toolFixture('running');
+  const row = await r.expand();
+  await act(async () => { r.model.outputs.value = new Map(r.model.outputs.peek()).set('exec-1', { text: 'one\n\ntwo\n', loading: false, cutOff: true, error: undefined }); });
+  expect(row.querySelector('.output-heading')?.textContent).toBe('Output · 3 lines');
+  expect(row.querySelector('[role="note"]')?.textContent).toContain('cut off');
+  expect(row.querySelector('.output-log')?.textContent).toBe('one\n\ntwo\n');
+  expect(row.querySelector('[data-stream]')).toBeNull();
 });

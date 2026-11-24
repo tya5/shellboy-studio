@@ -16,17 +16,18 @@ import type { HistoryItem, AttemptOutputLimit } from "../../../data/src/protocol
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import { projectionFromDisplayPlan, type ConversationDisplayPlan } from "../../../ui-core/src/conversation-display-plan";
-import type { ComponentChildren } from "preact";
+import { createContext, type ComponentChildren } from "preact";
+import { Cancel } from "../../../data/src/operations";
 import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
 import { ConversationItems, type ConversationItem, type ConversationToolSummary, type ConversationWorkGroup } from "./ConversationItems";
 import { ConversationCharacter } from "../system/components";
 import { computed, effect } from "@preact/signals-core";
 import { memo } from "preact/compat";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
+import { BranchMark, Button, CopyButton, Tooltip, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
 
 type OpenThreadSettings = (field: SettingsDestination["field"]) => void;
 
@@ -365,7 +366,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   </>;
 }
 
-export const Output = memo(function Output({ model, id, command, complete, boxed }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean }) {
+export const Output = memo(function Output({ model, id, command, complete, boxed, onDetails }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean; onDetails?: (opener: HTMLButtonElement) => void }) {
   const [raw, setRaw] = useState(false);
   const [wrap, setWrap] = useState(() => typeof matchMedia === "function" ? matchMedia("(max-width: 899px)").matches : true);
   useEffect(() => {
@@ -379,18 +380,25 @@ export const Output = memo(function Output({ model, id, command, complete, boxed
   const output = useMemo(() => computed(() => model.outputs.value.get(id)), [model, id]);
   const out = output.value;
   const rendered = useMemo(() => !out || out.error ? undefined : renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff }), [command, out?.text, complete, out?.loading, out?.cutOff, out?.error]);
-  if (!out || (out.loading && out.text === "")) return <div class="log muted">{t("details.outputLoading")}</div>;
-  if (out.error && out.text === "") return <div class="log muted">{t("details.outputError", { message: out.error })}</div>;
-  return (
-    <>
-      <div class="output-actions"><Button onClick={() => { void navigator.clipboard.writeText(out.text).catch(() => {}); }}>{t("code.copy")}</Button><Button aria-pressed={wrap} onClick={() => setWrap(!wrap)}>{t("output.wrapLines")}</Button>
-      {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
-      </div>
+  const loading = !out || (out.loading && out.text === "");
+  const available = !!out && !!out.text && !out.expired;
+  const count = useMemo(() => available ? (out.text.match(/\n/g)?.length ?? 0) + (out.text.endsWith("\n") ? 0 : 1) : 0, [available, out?.text]);
+  const title = loading || out.expired || (out.error && !available) ? t("details.output")
+    : count === 1 ? t("output.line") : t("output.lines", { n: new Intl.NumberFormat(model.lang.value).format(count) });
+  return <>
+    <div class="output-actions output-header">
+      <span class="output-heading">{title}</span>
+      <Tooltip label={t("output.wrapLines")}><Button variant="ghost" icon label={t("output.wrapLines")} aria-pressed={wrap} disabled={!available} onClick={() => setWrap(value => !value)}><Icon role="output.wrap" size="small" /></Button></Tooltip>
+      <CopyButton text={available ? out.text : ""} label={t("output.copyOutput")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} />
+      {onDetails ? <Tooltip label={t("output.openDetails")}><Button variant="ghost" icon label={t("output.openDetails")} onClick={event => onDetails(event.currentTarget)}><Icon role="output.openDetails" size="small" /></Button></Tooltip> : null}
+    </div>
+    {loading ? <div class="log muted">{t("details.outputLoading")}</div> : out.expired ? <div class="output-reclaimed muted caption" role="note">{t("output.expired")}</div> : out.error && !available ? <div class="log muted">{t("details.outputError", { message: out.error })}</div> : <>
       <div class={`output-log${wrap ? " output-wrapped" : ""}`}>{rendered && !raw ? <OutputLines lines={rendered.lines} boxed={boxed ?? false} /> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}</div>
+      {rendered ? <div class="output-format"><Button variant="ghost" onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button></div> : null}
       {out.error ? <div class="caption muted">{t("details.outputError", { message: out.error })}</div> : null}
-      {out.cutOff ? <div class="caption muted">{t("details.outputMore")}</div> : null}
-    </>
-  );
+      {out.cutOff ? <div class="caption muted" role="note">{t("details.outputMore")}</div> : null}
+    </>}
+  </>;
 });
 
 const OUTPUT_OVERSCAN = 24;
@@ -425,25 +433,54 @@ export function OutputLines({ lines, boxed }: { lines: readonly { text: string; 
   }}>{first > 0 ? "\n".repeat(first) : null}{lines.slice(first, last).map((line, index) => <span key={first + index} class={`output-${line.kind}`}>{line.text}{first + index < lines.length - 1 ? "\n" : ""}</span>)}{last < lines.length ? "\n".repeat(lines.length - last) : null}</pre>;
 }
 
+const OpenPhoneExecution = createContext<(() => void) | undefined>(undefined);
+
 export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.toolCall.openPolicy }: { model: AppModel; step: Step; display: WorkElementDisplay; openPolicy?: CanonicalCase["openPolicy"] }) {
   const t = model.t.value;
+  const openPhoneExecution = useContext(OpenPhoneExecution);
+  const [full, setFull] = useState<{ id: string; command: string }>();
   const choice = model.toolStepChoices.value.get(step.executionId);
   const open = choice ?? (openPolicy !== "closed");
   useEffect(() => {
     if (!open || (display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")) return;
     return model.watchOutput(step.executionId);
   }, [model, open, step.executionId, display.detailPolicy]);
+  const readable = display.detailPolicy === "actual-safe-typed" || display.detailPolicy === "existing-shell-output";
+  const needCommand = step.commandTruncated || !step.command;
+  const fullCommand = full?.id === step.executionId ? full.command : undefined;
+  useEffect(() => {
+    if (!open || !readable || !needCommand || fullCommand) return;
+    const cancel = new Cancel();
+    void model.ops.shellCommand(step.executionId, { cancel }).then(out => {
+      if (out.ok && !cancel.cancelled) setFull({ id: step.executionId, command: out.value });
+    });
+    return () => cancel.cancel();
+  }, [model, open, readable, needCommand, fullCommand, step.executionId]);
   // History links carry no exit code; the shell.list fact merged into the step does.
   const merged:WorkElementDisplay=display.state&&display.state.source==="wire"&&step.exitCode!==undefined&&step.status!==undefined?{...display,state:{...display.state,executionStatus:step.status,exitCode:step.exitCode}}:display;
   const formatted=formatWorkElementDisplay(merged);
   const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,iconRole:"work.terminal" as const}:formatted;
   if(display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
-  return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={(next, opener)=>{
-    if (next && !open) model.openInPanel({ kind: "step", id: step.executionId }, panelFocusReturn(opener));
+  const command = fullCommand ?? step.command;
+  const summary = [step.description, formatted.contentLabel].find(candidate => candidate?.trim() && candidate.trim() !== step.command.trim() && candidate.trim() !== command.trim())?.trim() ?? t("output.shellSummary");
+  const elapsed = open ? stepDuration(step, step.status === "running" ? model.now.value : 0) : undefined;
+  return <WorkElementRow display={{...shellDisplay, contentLabel: summary, visibleContext: []}} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={next => {
     if(next!==open)model.toolStepChoices.value=new Map(model.toolStepChoices.peek()).set(step.executionId,next);
   }}>
-    {step.description ? <div class="mono muted caption">{step.command}</div> : null}
-    <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"}/>
+    {open ? <div class="shell-step-content">
+      {command ? <div class="shell-step-command"><code>{command}</code>{!step.commandTruncated || fullCommand ? <CopyButton text={command} label={t("output.copyCommand")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} /> : null}</div> : null}
+      {step.commandTruncated && !fullCommand ? <p class="muted caption">{t("output.commandExcerpt")}</p> : null}
+      <div class="shell-step-facts">
+        {step.status ? <StatusMark shell status={step.status} label={activityStatusLabel(t, step.status)} /> : null}
+        {typeof step.exitCode === "number" ? <span class="mono">{t("details.exit")} {step.exitCode}</span> : null}
+        {elapsed ? <span class="mono" aria-label={`${t("details.duration")}: ${elapsed}`}>{elapsed}</span> : null}
+        {step.cwd ? <span class="mono" aria-label={`${t("details.directory")}: ${step.cwd}`}>{step.cwd}</span> : null}
+      </div>
+      <div class="shell-step-output"><Output model={model} id={step.executionId} command={command} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"} boxed onDetails={opener => {
+        model.openInPanel({ kind: "step", id: step.executionId }, panelFocusReturn(opener), true);
+        openPhoneExecution?.();
+      }} /></div>
+    </div> : <span hidden />}
   </WorkElementRow>;
 }
 
@@ -923,7 +960,10 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
         {diagnostic ? <output hidden data-window-diagnostic="true"
           data-reason={diagnostic.reason} data-generation={diagnostic.generation}
           data-revision={diagnostic.revision ?? ""} data-owner-epoch={diagnostic.ownerEpoch} /> : null}
-        {handle ? <OrderedHistory model={model} handle={handle} win={win} t={t} openThreadSettings={field => openThreadPanel("settings", field)} /> :
+        {handle ? <OpenPhoneExecution.Provider value={() => {
+          const pane = root.current?.parentElement?.querySelector<HTMLElement>("[data-panel-root]");
+          if (pane && getComputedStyle(pane).display === "none") onOpenPhonePanel?.();
+        }}><OrderedHistory model={model} handle={handle} win={win} t={t} openThreadSettings={field => openThreadPanel("settings", field)} /></OpenPhoneExecution.Provider> :
           <EmptyState role="empty.noThread" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
             <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>
           </EmptyState>}

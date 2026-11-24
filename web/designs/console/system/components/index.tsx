@@ -88,3 +88,5 @@ export { Switch } from "./Switch";
 export { ThreadTagEditor } from "./ThreadTagEditor";
 
 export { ThreadMovePicker } from "./ThreadMovePicker";
+export { Tooltip } from "./Tooltip";
+export { CopyButton } from "./CopyButton";

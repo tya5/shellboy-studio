@@ -478,6 +478,12 @@ export class Operations {
   shellList(args: ShellListArgs, read?: ReadOptions): Promise<Outcome<Page<ShellEntry>>> {
     return this.run("shell.list", args, outcomeDecoder(decodeShellPage), undefined, read);
   }
+  shellCommand(executionId: string, read?: ReadOptions): Promise<Outcome<string>> {
+    return this.run("shell.get", { execution_id: executionId }, outcomeDecoder(raw =>
+      isObject(raw) && raw.execution_id === executionId && typeof raw.command === "string" && raw.command.length > 0
+        ? { ok: true, value: raw.command }
+        : { ok: false, reason: "shell.get did not return the command for this execution" }), undefined, read);
+  }
   shellRead(args: ShellReadArgs, read?: ReadOptions): Promise<Outcome<ShellOutput>> {
     return this.run("shell.read", args, outcomeDecoder(decodeShellOutput), undefined, read);
   }

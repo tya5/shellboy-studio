@@ -103,7 +103,7 @@ it.each([390, 1280])('#13 real FakeTransport Output wraps by default only at pho
   expect(host.textContent).toContain('SYNTHETIC_CHANGED_OUTPUT');
   const initiallyWrapped = width <= 899;
   const wrap = host.querySelector<HTMLButtonElement>(`button[aria-pressed="${initiallyWrapped}"]`)!;
-  expect(wrap.textContent).toContain('Wrap lines');
+  expect(wrap.getAttribute('aria-label')).toBe('Wrap lines');
   expect(host.querySelector('.output-log')?.className.includes('output-wrapped')).toBe(initiallyWrapped);
   expect(host.querySelector('.output-actions .log')).toBeNull();
   expect(host.querySelector('.output-log .log')).toBeTruthy();
@@ -111,7 +111,7 @@ it.each([390, 1280])('#13 real FakeTransport Output wraps by default only at pho
   expect(host.querySelector<HTMLButtonElement>(`button[aria-pressed="${!initiallyWrapped}"]`)).toBeTruthy();
   expect(host.querySelector('.output-log')?.className.includes('output-wrapped')).toBe(!initiallyWrapped);
   const copied = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copied } });
-  host.querySelector<HTMLButtonElement>('button')!.click();
+  host.querySelector<HTMLButtonElement>('button[aria-label="Copy output"]')!.click();
   expect(copied).toHaveBeenCalledWith('SYNTHETIC_CHANGED_OUTPUT');
  }finally{stop?.();r.model.dispose();r.data.stop();}
 });

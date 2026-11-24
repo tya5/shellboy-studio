@@ -75,6 +75,7 @@ export interface OutputState {
   loading: boolean;
   /** More output exists than this view reads. */
   cutOff: boolean;
+  expired?: boolean;
   error: string | undefined;
 }
 
@@ -1035,7 +1036,7 @@ export class AppModel {
   private async readOutputPages(executionId: string, cancel: Cancel): Promise<void> {
     const cur = this.outputs.peek().get(executionId);
     // A validated empty output is still a saved result, not first-load absence.
-    if (!cur || cur.loading || cur.error !== undefined) this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
+    if (!cur || cur.loading || (cur.error !== undefined && !cur.expired)) this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
       text: cur?.text ?? "",
       loading: true,
       cutOff: cur?.cutOff ?? false,
@@ -1045,6 +1046,7 @@ export class AppModel {
     let cursor: string | undefined;
     let error: string | undefined;
     let cutOff = false;
+    let expired = false;
     for (let page = 0; ; page++) {
       if (page === MAX_PAGES) {
         cutOff = true;
@@ -1061,6 +1063,7 @@ export class AppModel {
           this.outputs.value = next;
           return;
         }
+        expired = out.error.kind === "owner" && out.error.code === "output_expired";
         error = errorMessage(out.error);
         break;
       }
@@ -1068,9 +1071,9 @@ export class AppModel {
       cursor = out.value.cursor;
       if (out.value.text === "" || cursor === undefined) break;
     }
-    const next: OutputState = { text: error !== undefined ? (cur?.text ?? "") : text, loading: false, cutOff, error };
+    const next: OutputState = { text: expired ? "" : error !== undefined ? (cur?.text ?? "") : text, loading: false, cutOff, error, ...(expired && { expired }) };
     const current = this.outputs.peek().get(executionId);
-    if (current?.text === next.text && current.loading === next.loading && current.cutOff === next.cutOff && current.error === next.error) return;
+    if (current?.text === next.text && current.loading === next.loading && current.cutOff === next.cutOff && current.error === next.error && current.expired === next.expired) return;
     this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, next);
   }
 
