@@ -21,12 +21,17 @@ If there is no model connection, choose **Connect a model service**. Select your
 The v2 interface uses consistent headings, links, action buttons, and loading and empty states. Change Studio's display language in **Settings > Appearance > Language**; this is separate from Core's terminal language.
 
 - Use **Pin** in a Thread's row menu to put it in **Pinned**, above **All**. The pinned band can include older Threads outside the loaded **All** list, and orders them by creation time, newest first; entries without a creation time come last.
-- **Awaiting you** is a separate sidebar filter. It clears search, tag, and directory filters and hides **Pinned**. Choosing any of those filters turns **Awaiting you** off. The **Awaiting you** screen also lists requests directed to you. A count with `+` is a lower bound.
+- **Archived**, below **All**, lists archived Threads separately. **All** excludes them; archived Threads with a pin remain in **Pinned**. In **Monitor**, use **Archive scope**: **Active** excludes archived Threads, **All archives** includes them, and **Archived** shows only archived Threads. This does not change the sidebar.
+- **Awaiting you** is a separate sidebar filter. It clears search, tag, and directory filters and hides **Pinned** and **Archived**. Choosing any of those filters turns **Awaiting you** off. The **Awaiting you** screen also lists requests directed to you. A count with `+` is a lower bound.
 - In **Conversation**, send a message from the composer, expand tool output, or use **Stop** for a Run that can be stopped. A recovery wait does not clear a reply duty. If recovery offers **Retry**, it may incur additional usage; if unavailable, read the reason shown. Drafts stay with their Thread when you switch.
 
 ### Conversation side panel
 
-In **Conversation**, use **Expand right panel** when the panel is collapsed, or press `Alt+9`. On a narrower screen it opens over the conversation.
+In **Conversation**, use **Expand right panel** when the panel is collapsed, or press `Alt+9`. On a phone, the **Thread panel** picker switches sections, and details open full-screen. Use the button named after the section (for example, **Activity**) to go back. Logs offer **Wrap lines** and **Raw text**; wrapping does not change what is copied. Use **Load earlier messages** when earlier history is available. The composer adjusts to the on-screen keyboard, and the sidebar row menu has its own touch target.
+
+With a keyboard, use Tab or Shift+Tab to leave a row menu and continue outside that row. Collapsed Work rows keep a focus outline, and Tab can reach panel content with no controls. If **Stop** disappears while focused, focus returns to the composer. Global shortcuts are ignored in dialogs, while editing or composing text with an IME, and when a control has already handled the key.
+
+For v0.4.2, pending landing: higher-contrast counts on tabs such as **Reply needed** and **Awaiting reply**. The sidebar also gains screen-reader tree navigation, focused conversation rows stay mounted during scrolling, and Studio announces **Reply is arriving.** and **Reply saved.** without announcing each chunk. The page cannot guarantee where a screen reader’s independent browse cursor stays.
 
 | Tab | What to look for |
 | --- | --- |
@@ -46,6 +51,9 @@ In the sidebar use **Select Threads**, select the Threads, then choose **Delete*
 ## Inspect usage and cost
 
 Open the global **Analytics** screen and choose a **Period**. Under **By Thread**, choose **Show models** on a Thread to inspect its recorded conversation-token breakdown for that period. Summary usage is separate and is not attributed to models. **Show more usage rows** reveals more rows already read. Incomplete totals can be lower bounds; a missing value is not zero. **Cache rate** is the cached share of conversation input where the counters support a comparison. **Effective tokens** uses editable cached-input and output weights stored in this browser. Neither that value nor **Summary cost** is a currency amount or a provider bill.
+
+
+For v0.4.2, pending landing: **By Thread** adds **Comparison metric**: **Excl. cached** (default; other conversation tokens plus all summary tokens), **Total**, **Cached input** (conversation only), and **Summary tokens**. Rank, bars, exact counts and shares follow the selected metric. An incomplete scan does not show a ranking. Open a Thread's breakdown for the same **Period**, then use **Back to ranking**. The older counters and model breakdowns remain under **Detailed usage table**.
 
 ## Share settings with a colleague
 
@@ -109,12 +117,17 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 デザインシステム v2 では、見出し、移動リンク、操作ボタン、読み込み中・空の表示が各画面で統一されています。Studio の表示言語は **設定 > 外観 > 言語** で変更できます。Core のターミナル表示言語とは別です。
 
 - 行メニューの **ピン留め** で **すべて** の上にある **ピン留め** 欄に追加します。**すべて** の読み込み範囲外にある古いスレッドも表示されます。作成日時の新しい順で、日時が不明なものは最後です。
-- **あなた待ち** の絞り込みを有効にすると検索語、タグ、ディレクトリの条件が解除され、**ピン留め** 欄が隠れます。いずれかの条件を選び直すと **あなた待ち** は解除されます。**あなた待ち** 画面では自分宛ての依頼も確認できます。`+` 付きの件数は下限です。
+- **すべて** の下の **アーカイブ済み** にアーカイブしたスレッドが表示されます。**すべて** には表示されませんが、ピン留めしたものは **ピン留め** に残ります。**モニター** の **アーカイブ範囲** では、**通常** で除外し、**すべて** で含め、**アーカイブ済み** でアーカイブしたものだけを表示します。サイドバーには影響しません。
+- **あなた待ち** の絞り込みを有効にすると検索語、タグ、ディレクトリの条件が解除され、**ピン留め** と **アーカイブ済み** が隠れます。いずれかの条件を選び直すと **あなた待ち** は解除されます。**あなた待ち** 画面では自分宛ての依頼も確認できます。`+` 付きの件数は下限です。
 - **会話** では入力欄から送信し、ツール出力を展開できます。停止できる Run には **停止** を使えます。復旧待ちになっても返信義務は消えません。**再試行** では追加の利用量が発生する場合があります。使えないときは画面の理由を確認してください。書きかけはスレッドを切り替えても元のスレッドに残ります。
 
 #### 右パネル
 
-**会話** の **右パネルを展開** で右パネルを開きます。`Alt+9` でも開閉できます。幅が狭い画面では会話に重ねて表示されます。
+**会話** の **右パネルを展開** で右パネルを開きます。`Alt+9` でも開閉できます。スマートフォンでは **スレッドパネル** で表示する項目を選べます。詳細は全画面で開き、**動作** など項目名のボタンで元に戻ります。ログは **行を折り返す** と **生テキスト** を切り替えられ、折り返してもコピーする内容は変わりません。履歴が残っている場合は **以前のメッセージを読み込む** を使えます。画面キーボードに合わせて入力欄の位置が調整され、行メニューはスレッドのリンクとは別にタップできます。
+
+Tab または Shift+Tab で行メニューから出ると、その行の外の操作に移ります。閉じた作業行にもフォーカス枠が表示され、操作のないパネルにも Tab で移動できます。フォーカス中の **停止** が消えると、入力欄に戻ります。ダイアログ内、編集中、IME 変換中、または操作側が処理済みのキーでは、全体のショートカットは動作しません。
+
+v0.4.2 向け（反映待ち）：**要返信** や **返信待ち** などの件数の文字が読みやすくなります。サイドバーは読み上げでツリーとして操作でき、スクロール中もフォーカス中の会話行は維持されます。読み上げ通知は **返信を受信中です。** と **返信を保存しました。** のみで、受信のたびに通知しません。読み上げソフト独自の閲覧カーソルの位置はページ側では保証できません。
 
 | タブ | 内容 |
 | --- | --- |
@@ -134,6 +147,9 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 ### 使用量とコストを確認する
 
 全体の **分析** で **期間** を選び、**スレッド別** の **モデル別の内訳を表示** で、その期間に記録された会話トークンを確認します。要約は別集計で、モデル別には配分しません。**使用量の続きを表示** は読み込み済みの行を追加で表示します。集計が不完全な場合は下限になり、値がない場合はゼロとは限りません。**キャッシュ率** は比較できる会話入力のうちキャッシュを使った割合です。**実効トークン** のキャッシュ入力と出力の重みはブラウザに保存されます。実効トークンも **要約コスト** も金額ではありません。
+
+
+v0.4.2 向け（反映待ち）：**スレッド別** の **比較する項目** で **キャッシュを除く**（既定。会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を選べます。順位、棒、件数、割合は選んだ項目に対応します。集計が不完全な場合は順位を表示しません。行を開くと同じ **期間** の内訳を確認でき、**順位に戻る** で元の行に戻ります。従来の使用量やモデル別の内訳は **詳細な使用量の表** にあります。
 
 ### 設定を共有する
 
