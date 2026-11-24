@@ -1,8 +1,7 @@
 import { computed } from "@preact/signals-core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { connected, flush, settle, summary } from "../../data/test/harness";
 import { fixtureModel, fixturePendingAdapter } from "./fixture";
-import { MAX_AUTO_BODY_READ_KEYS } from "../src/model";
 import { canonicalAttemptId } from "../../data/test/work-fixture";
 
 describe("AppModel over the fake transport", () => {
@@ -51,26 +50,27 @@ describe("AppModel over the fake transport", () => {
       expect(model.rows.value.map(row => row.summary.thread_id)).toContain("inbox");
     } finally { model.dispose(); }
   });
-  it("bounds tried body keys and clears them when their reader or Thread is released", async () => {
+  it("fetches a tried body candidate once per reader, then permits a changed tail candidate", async () => {
     const { model } = await fixtureModel();
     const internals = model as unknown as {
-      autoBodyReads: Map<object, Map<object, Set<string>>>;
-      autoBodyReadKeys(handle: object, reader: object): Set<string>;
-      clearAutoBodyReads(handle: object, reader?: object): void;
-      rememberAutoBodyRead(keys: Set<string>, key: string): boolean;
+      composeWindowDisplay(reader: object, handle: object): void;
+      loadBody: ReturnType<typeof vi.fn>;
     };
-    const handle = {}; const reader = {};
-    const keys = internals.autoBodyReadKeys(handle, reader);
-    for (let i = 0; i < MAX_AUTO_BODY_READ_KEYS * 4; i++)
-      expect(internals.rememberAutoBodyRead(keys, `body-${i}`)).toBe(true);
-    expect(internals.rememberAutoBodyRead(keys, `body-${MAX_AUTO_BODY_READ_KEYS * 4 - 1}`)).toBe(false);
-    expect(keys.size).toBeLessThanOrEqual(MAX_AUTO_BODY_READ_KEYS);
-    internals.clearAutoBodyReads(handle, reader);
-    expect(internals.autoBodyReads.has(handle)).toBe(false);
-    internals.autoBodyReadKeys(handle, reader).add("thread-key");
-    internals.clearAutoBodyReads(handle);
-    expect(internals.autoBodyReads.has(handle)).toBe(false);
-    model.dispose();
+    const candidate = (node_id: string) => ({ node_id, kind: "assistant_response", items: [{ kind: "text", text_complete: false }] });
+    const snapshot = { total: 1, range: { last: 0 }, rows: [candidate("first")] };
+    const reader = { acceptedView: { peek: () => snapshot, isCurrent: () => true }, refreshConversationInput: () => {} };
+    const handle = {};
+    vi.spyOn(model, "bodyState").mockReturnValue(undefined);
+    const fetch = vi.spyOn(model, "loadBody").mockResolvedValue(undefined);
+    try {
+      internals.composeWindowDisplay(reader, handle);
+      internals.composeWindowDisplay(reader, handle);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      snapshot.rows = [candidate("second")];
+      internals.composeWindowDisplay(reader, handle);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls.map(([node]) => node)).toEqual(["first", "second"]);
+    } finally { model.dispose(); }
   });
 
   it("opens the newest Thread by default and shows only conversation rows", async () => {

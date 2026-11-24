@@ -5,7 +5,7 @@ import {settle,flush} from '../../../data/test/harness';
 // @vitest-environment happy-dom
 import {render} from 'preact';
 import {act} from 'preact/test-utils';
-import {describe,expect,it,afterEach} from 'vitest';
+import {describe,expect,it,afterEach,vi} from 'vitest';
 import {projectSavedItems,type NormalizedSavedItem,type SavedItemProjection} from '../../../ui-core/src/conversation-items';
 import {SnapshotViewFixture as AcceptedView} from '../../../ui-core/test/snapshot-view-fixture';
 import {ConversationItems} from '../screens/ConversationItems';
@@ -100,6 +100,9 @@ it('#13 real FakeTransport held shell.read keeps successful empty Output cache/D
   expect(r.model.outputs.value.get('transport-empty')?.text).toBe('SYNTHETIC_CHANGED_OUTPUT');
   await act(async()=>{await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));});
   expect(host.textContent).toContain('SYNTHETIC_CHANGED_OUTPUT');
+  const copied = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copied } });
+  host.querySelector<HTMLButtonElement>('button')!.click();
+  expect(copied).toHaveBeenCalledWith('SYNTHETIC_CHANGED_OUTPUT');
  }finally{stop?.();r.model.dispose();r.data.stop();}
 });
 

@@ -137,8 +137,6 @@ export const errorMessage = (e: OpError): string => e.message;
 
 export type ActionNotice = { kind: "error" | "success"; text: string };
 
-export const MAX_AUTO_BODY_READ_KEYS = 256;
-
 export class AppModel {
   readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });
   async loadPairingHosts(): Promise<void> {
@@ -352,7 +350,7 @@ export class AppModel {
   private threadReads = new Cancel();
   /** A step's output read, cancelled when its row closes. */
   private outputReads = new Map<string, Cancel>();
-  private autoBodyReads = new Map<ThreadHandle, Map<ConversationWindow, Set<string>>>;
+  private autoBodyReads = new WeakMap<ThreadHandle, WeakMap<ConversationWindow, string>>();
   private bodyReadTokens = new Map<string, BodyReadToken>();
   private bodyOwnerKeys = new WeakMap<ThreadHandle, string>();
   private nextBodyOwnerKey = 0;
@@ -766,7 +764,6 @@ export class AppModel {
     this.disposers = [];
     this.listHandle?.close();
     this.listHandle = undefined;
-    if (this.handle.value) this.clearAutoBodyReads(this.handle.value);
     this.handle.value?.close();
     this.handle.value = undefined;
     this.data.stop();
@@ -841,7 +838,6 @@ export class AppModel {
     const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
     const cur = this.longReader.peek();
     if (cur && (!want || this.readerThread !== h?.threadId || this.handle.peek() !== h || (h !== undefined && !cur.isCurrentThread(h)))) {
-      this.clearAutoBodyReader(cur);
       cur.dispose(); // leaving the view, Thread, or owner lifetime cancels its reads
       this.longReader.value = undefined;
       this.readerThread = undefined;
@@ -898,36 +894,6 @@ export class AppModel {
         && (handle.work.peek().value === input.identity.work.source || handle.work.peek().value === undefined && input.identity.work.facts.length === 0) };
   }
 
-  private autoBodyReadKeys(handle: ThreadHandle, reader: ConversationWindow): Set<string> {
-    let readers = this.autoBodyReads.get(handle);
-    if (!readers) { readers = new Map(); this.autoBodyReads.set(handle, readers); }
-    let keys = readers.get(reader);
-    if (!keys) { keys = new Set(); readers.set(reader, keys); }
-    return keys;
-  }
-
-  private rememberAutoBodyRead(keys: Set<string>, key: string): boolean {
-    if (keys.has(key)) return false;
-    if (keys.size >= MAX_AUTO_BODY_READ_KEYS) keys.delete(keys.values().next().value!);
-    keys.add(key);
-    return true;
-  }
-
-  private clearAutoBodyReader(reader: ConversationWindow): void {
-    for (const [handle, readers] of this.autoBodyReads) {
-      readers.delete(reader);
-      if (readers.size === 0) this.autoBodyReads.delete(handle);
-    }
-  }
-
-  private clearAutoBodyReads(handle: ThreadHandle, reader?: ConversationWindow): void {
-    const readers = this.autoBodyReads.get(handle);
-    if (!readers) return;
-    if (reader) readers.delete(reader);
-    else readers.clear();
-    if (!reader || readers.size === 0) this.autoBodyReads.delete(handle);
-  }
-
   private composeWindowDisplay(reader: ConversationWindow, handle: ThreadHandle): void {
     const snapshot = reader.acceptedView.peek();
     if (!reader.acceptedView.isCurrent(snapshot)) return;
@@ -941,10 +907,13 @@ export class AppModel {
       const allProse = candidate.items !== undefined && candidate.items.length > 0 && candidate.items.every(item => item.kind === "text");
       if (!allProse) return;
       const identity = undefined;
-      const keys = this.autoBodyReadKeys(handle, reader);
+      let readers = this.autoBodyReads.get(handle);
+      if (!readers) { readers = new WeakMap(); this.autoBodyReads.set(handle, readers); }
       const key = `${candidate.node_id}:${kind}:${identity ?? "deferred"}`;
-      if (this.bodyState(candidate.node_id, identity) === undefined && this.rememberAutoBodyRead(keys, key))
+      if (this.bodyState(candidate.node_id, identity) === undefined && readers.get(reader) !== key) {
+        readers.set(reader, key);
         void this.loadBody(candidate.node_id, { handle, reader, kind, identity });
+      }
     }
   }
 
@@ -1004,7 +973,6 @@ export class AppModel {
     }
     this.handlePaused = false;
     this.cancelThreadReads();
-    if (current) this.clearAutoBodyReads(current);
     current?.close();
     this.lastThread.value = id;
     this.shells.value = new Map();

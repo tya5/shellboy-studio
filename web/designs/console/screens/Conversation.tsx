@@ -345,19 +345,51 @@ export const Output = memo(function Output({ model, id, command, complete, boxed
   const t = model.t.value;
   const output = useMemo(() => computed(() => model.outputs.value.get(id)), [model, id]);
   const out = output.value;
+  const rendered = useMemo(() => !out || out.error ? undefined : renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff }), [command, out?.text, complete, out?.loading, out?.cutOff, out?.error]);
   if (!out || (out.loading && out.text === "")) return <div class="log muted">{t("details.outputLoading")}</div>;
   if (out.error && out.text === "") return <div class="log muted">{t("details.outputError", { message: out.error })}</div>;
-  const rendered = out.error ? undefined : renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff });
   return (
     <>
       <Button onClick={() => { void navigator.clipboard.writeText(out.text).catch(() => {}); }}>{t("code.copy")}</Button>
       {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
-      {rendered && !raw ? <pre class={boxed ? "log boxed" : "log"} tabIndex={0}>{rendered.lines.map((line, i) => <span key={i} class={`output-${line.kind}`}>{line.text}{i < rendered.lines.length - 1 ? "\n" : ""}</span>)}</pre> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}
+      {rendered && !raw ? <OutputLines lines={rendered.lines} boxed={boxed ?? false} /> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}
       {out.error ? <div class="caption muted">{t("details.outputError", { message: out.error })}</div> : null}
       {out.cutOff ? <div class="caption muted">{t("details.outputMore")}</div> : null}
     </>
   );
 });
+
+const OUTPUT_OVERSCAN = 24;
+const OUTPUT_WINDOW_THRESHOLD = 128;
+export function outputLineRange(total: number, start: number, count: number): { first: number; last: number } {
+  const first = Math.max(0, Math.min(total, start));
+  return { first, last: Math.min(total, first + Math.max(0, count)) };
+}
+
+export function OutputLines({ lines, boxed }: { lines: readonly { text: string; kind: string }[]; boxed: boolean }) {
+  const pre = useRef<HTMLPreElement>(null);
+  const [range, setRange] = useState({ first: 0, last: OUTPUT_WINDOW_THRESHOLD });
+  const windowed = lines.length > OUTPUT_WINDOW_THRESHOLD;
+  useLayoutEffect(() => {
+    if (!windowed) { setRange({ first: 0, last: lines.length }); return; }
+    const element = pre.current;
+    if (!element) return;
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight) || element.firstElementChild?.getBoundingClientRect().height || 1;
+    const visible = Math.ceil(element.clientHeight / lineHeight);
+    const first = Math.max(0, Math.floor(element.scrollTop / lineHeight) - OUTPUT_OVERSCAN);
+    setRange(outputLineRange(lines.length, first, visible + OUTPUT_OVERSCAN * 2));
+  }, [lines.length, windowed]);
+  const first = windowed ? range.first : 0;
+  const last = windowed ? Math.min(lines.length, range.last) : lines.length;
+  return <pre ref={pre} class={boxed ? "log boxed output-window" : "log output-window"} tabIndex={0} onScroll={event => {
+    if (!windowed) return;
+    const element = event.currentTarget;
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight) || 1;
+    const visible = Math.ceil(element.clientHeight / lineHeight);
+    const start = Math.max(0, Math.floor(element.scrollTop / lineHeight) - OUTPUT_OVERSCAN);
+    setRange(outputLineRange(lines.length, start, visible + OUTPUT_OVERSCAN * 2));
+  }}>{first > 0 ? "\n".repeat(first) : null}{lines.slice(first, last).map((line, index) => <span key={first + index} class={`output-${line.kind}`}>{line.text}{first + index < lines.length - 1 ? "\n" : ""}</span>)}{last < lines.length ? "\n".repeat(lines.length - last) : null}</pre>;
+}
 
 export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.toolCall.openPolicy }: { model: AppModel; step: Step; display: WorkElementDisplay; openPolicy?: CanonicalCase["openPolicy"] }) {
   const t = model.t.value;
