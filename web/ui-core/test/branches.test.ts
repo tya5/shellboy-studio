@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { details, flush, settle } from "../../data/test/harness";
-import { branchLayout, branchMarks, branchRowMarks, branchTitle, formatRoute, parseRoute, materializeHistoryPresentation, readFamily, readRewind, readWholeFamily } from "../src";
+import { branchMarks, branchRowMarks, branchTitle, formatRoute, parseRoute, materializeHistoryPresentation, readFamily, readRewind, readWholeFamily } from "../src";
 import { Cancel } from "../../data/src";
 import type { HistoryItem, ThreadSummary } from "../../data/src";
 import { fixtureBranches, fixtureModel, fixtureRewind } from "./fixture";
@@ -21,28 +21,6 @@ describe("reading a family", () => {
     const f = readFamily([fixtureBranches, { ...fixtureBranches, family_truncated: true }]);
     expect(f.items).toHaveLength(fixtureBranches.items.length);
     expect(f.familyTruncated).toBe(true);
-  });
-});
-
-describe("branch management", () => {
-  it("retains missing branches after a partial archive", async () => {
-    const { model, t, db } = await fixtureModel();
-    const plain = db.answer;
-    db.answer = c => c.command === "thread.archive" ? { ok: true, result: { archived: ["fork-a"], already: [], not_found: ["gone"], descendants: false } } : plain(c);
-    model.branches.toggleBranch("fork-a"); model.branches.toggleBranch("gone");
-    const pending = model.branches.archiveSelected(); await settle(t, db); await pending;
-    expect([...model.branches.selection.value]).toEqual(["gone"]);
-    expect(model.branches.actionError.value).toContain("gone");
-    model.dispose();
-  });
-  it("archives only selected branches and sends titles for the chosen branch", async () => {
-    const { model, t, db } = await fixtureModel();
-    model.branches.toggleBranch("fork-a");
-    const archive = model.branches.archiveSelected(); await settle(t, db); await archive;
-    expect(t.calls("thread.archive").at(-1)?.args).toEqual({ thread_ids: ["fork-a"] });
-    const rename = model.branches.renameBranch("fork-a", "Keep this"); await settle(t, db); await rename;
-    expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "fork-a", title: "Keep this" });
-    model.dispose();
   });
 });
 
@@ -256,75 +234,4 @@ describe("leaving these views cancels their reads", () => {
     await settle(t, db);
     expect(model.branches.state.value.family).toBeDefined();
   });
-});
-
-describe("branch excerpt budget and invalidation", () => {
-  it("admits eight rows once per batch, serializes readers, and drops late cancelled results", async () => {
-    const pending: (() => void)[] = [];
-    let calls = 0, active = 0, maxActive = 0;
-    const batch = new ExcerptBatch(async () => {
-      calls++; active++; maxActive = Math.max(maxActive, active);
-      await new Promise<void>(r => pending.push(r)); active--;
-      return { answer: "saved" };
-    });
-    const output: { answer?: string }[] = [];
-    const stops = Array.from({ length: 10 }, (_, n) => batch.show({ ...family().items[1]!, threadId: `row-${n}` }, x => output.push(x)));
-    expect(calls).toBe(1);
-    for (let n = 0; n < 8; n++) { pending.shift()!(); await flush(); }
-    expect(calls).toBe(8); expect(maxActive).toBe(1);
-    batch.show({ ...family().items[1]!, threadId: "row-0" }, () => {}); await flush(); expect(calls).toBe(8);
-    stops.forEach(f => f()); batch.reset();
-    batch.show(family().items[1]!, x => output.push(x)); await flush();
-    batch.reset(); const before = output.length;
-    pending.shift()!(); await flush(); expect(output.length).toBe(before);
-  });
-  it("long tool windows cannot manufacture a request or response; mismatched revisions clear all facts", async () => {
-    const { model, t, db } = await fixtureModel({ route: "branches" }); const base = db.answer.bind(db); let reads = 0;
-    db.answer = c => c.command === "history.window" ? { ok: true, result: {
-      thread_id: "fork-a", total: 500, revision: ++reads,
-      items: [{ node_id: "n100", kind: "tool_result", excerpt: "tool", selection: { ordinal: 100 } }],
-    } } : base(c);
-    const p = model.branches.excerpts(family().items[1]!, new Cancel()); await settle(t, db); await settle(t, db);
-    expect(await p).toEqual({}); expect(t.calls("history.window")).toHaveLength(2);
-    expect(t.calls("history.window")[0]!.args).toMatchObject({ before: 0, after: 24, excerpt_chars: 256 });
-    expect(t.calls("history.window")[1]!.args).toMatchObject({ before: 48, after: 0, excerpt_chars: 256 }); model.dispose();
-  });
-  it("a failed split read stops without tip retry; precancelled reads issue no calls", async () => {
-    const { model, t, db } = await fixtureModel({ route: "branches" }); const base = db.answer.bind(db);
-    db.answer = c => c.command === "history.window" ? { ok: false, code: "node_not_found" } : base(c);
-    const p = model.branches.excerpts(family().items[1]!, new Cancel()); await settle(t, db); expect(await p).toEqual({});
-    expect(t.calls("history.window")).toHaveLength(1);
-    const cancel = new Cancel(); cancel.cancel(); expect(await model.branches.excerpts(family().items[1]!, cancel)).toEqual({});
-    expect(t.calls("history.window")).toHaveLength(1); model.dispose();
-  });
-});
-
-it("eight admitted child rows issue exactly sixteen bounded RPCs without retries", async () => {
-  const { model, t, db } = await fixtureModel({ route: "branches" }); const base = db.answer.bind(db);
-  db.answer = c => c.command === "history.window" ? { ok: true, result: { thread_id: (c.args as {thread_id:string}).thread_id, total: 500, revision: 7, items: [] } } : base(c);
-  for (let n = 0; n < 10; n++) model.branches.excerptBatch.show({ ...family().items[1]!, threadId: `budget-${n}` }, () => {});
-  for (let n = 0; n < 20; n++) await settle(t, db);
-  expect(t.calls("history.window")).toHaveLength(16);
-  expect(new Set(t.calls("history.window").map(c => (c.args as {thread_id:string}).thread_id)).size).toBe(8);
-  model.branches.leave(); model.dispose();
-});
-
-it("same-revision tool-only windows and pre-split assistant nodes stay unknown", async () => {
-  const { model, t, db } = await fixtureModel(); const base = db.answer.bind(db);
-  db.answer = c => c.command === "history.window" ? { ok: true, result: { thread_id: "fork-a", total: 500, revision: 3, items: [
-    {node_id:"old",kind:"assistant_response",excerpt:"old ancestor answer",selection:{ordinal:1}},
-    {node_id:"tool",kind:"tool_result",excerpt:"long tool",selection:{ordinal:101}},
-  ] } } : base(c);
-  const p = model.branches.excerpts(family().items[1]!,new Cancel()); await settle(t, db); await settle(t, db);
-  expect(await p).toEqual({split:undefined,request:undefined,answer:undefined}); model.dispose();
-});
-
-it("offscreen cancellation invalidates displayed facts immediately and never retries that row in the epoch", async () => {
-  let resolve!: (v: {answer:string}) => void; let reads = 0;
-  const batch = new ExcerptBatch(async () => { reads++; return new Promise<{answer:string}>(r => {resolve = r;}); });
-  const facts: {answer?:string}[] = [];
-  const stop = batch.show(family().items[1]!, v => facts.push(v));
-  stop(); expect(facts.at(-1)).toEqual({}); const count = facts.length;
-  resolve({answer:"stale"}); await flush(); expect(facts).toHaveLength(count);
-  batch.show(family().items[1]!, v => facts.push(v)); expect(reads).toBe(1); batch.reset();
 });

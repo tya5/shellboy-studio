@@ -81,6 +81,26 @@ describe("Branches screen", () => {
     expect(el.querySelector(".loadrows")).toBeNull();
   });
 
+  it("keeps the shared excerpt anchored and hides Show more at the four-page cap", async () => {
+    const { el, model } = await open();
+    const compare = model.branchCompare;
+    const before = compare.state.peek();
+    const first = before.sides[0]!;
+    const anchor = first.pages[0]![0]!;
+    const extra = Array.from({ length: 3 }, (_, page) => [
+      { ...anchor, node_id: `page-${page}`, excerpt: `Later page ${page}`, selection: { ordinal: 3 + page } },
+      ...first.pages[0]!.slice(1),
+    ]);
+    compare.state.value = {
+      ...before,
+      sides: before.sides.map((side, index) => index === 0 ? { ...side, pages: [first.pages[0]!, ...extra], next: 200 } : side),
+    };
+    await act(async () => { await Promise.resolve(); });
+    expect(text(el.querySelector(".branch-shared"))).toContain("Compare provider behavior before writing");
+    expect(text(el.querySelector(".branch-shared"))).not.toContain("Later page");
+    expect([...el.querySelectorAll<HTMLButtonElement>(".branch-side button")].some(button => text(button).includes("Show more"))).toBe(false);
+  });
+
   it("every split draws a connector from the parent's diamond to each child's column, left or right", async () => {
     const { el, row } = await open();
     const curves = (key: string) => [...row(key)!.querySelectorAll<SVGElement>(".lanes-curve")].map((c) => ({ dir: c.dataset.dir, from: Number(c.style.getPropertyValue("--from")), span: Number(c.style.getPropertyValue("--span")), d: c.querySelector("path")!.getAttribute("d") }));

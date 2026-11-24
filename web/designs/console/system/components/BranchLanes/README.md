@@ -7,10 +7,12 @@
 
 Each lane has a colour slot from the three chart tokens (`chart-1` to `chart-3`) and is always written next to its name (`LaneName`), so colour never carries meaning alone; a fourth lane repeats a colour and keeps its name. Splits are diamonds, a lane's latest message is a ringed point, and a run of hidden messages is a dashed stretch with its count. Every split draws one curved connector per leaving lane from the parent's diamond to the child's column, to the right or, when the child reuses a column freed by an ended lane, to the left; the child's line then runs straight down from there.
 
-**No layout jumps.** Lane width is one `space-24` column per open lane (`space-16` + `space-4` at phone width), and each row kind has a fixed height: a message point is `size-control` + `space-8` on a wide frame and `size-touch` (44 px) on a phone, the name line above a tip and the split line below a split are `size-row-action`, and a run is `size-control` (`size-touch` on a phone). Text is one line with an ellipsis. Only the selected row grows, by its actions. Rows are keyed by Core IDs, so a re-read with the same facts keeps every row element, its focus and the scroll position.
+**No layout jumps.** Lane width is one `size-lane-column` per open lane (`size-lane-column` + `space-4` at phone width), and each row kind has a fixed height: a message point is `size-control` + `space-8` on a wide frame and `size-touch` (44 px) on a phone, the name line above a tip and the split line below a split are `size-row-action`, and a run is `size-control` (`size-touch` on a phone). Text is one line with an ellipsis. Only the selected row grows, by its actions. Rows are keyed by Core IDs, so a re-read with the same facts keeps every row element, its focus and the scroll position.
 
 Rows are buttons: a click or tap selects a message and opens its actions under it (never hover). A run is a button only when it can open more messages. `onVisible` reports rows entering and leaving the viewport through one IntersectionObserver, so the screen reads text only for rows on screen; without an observer every row counts as seen.
 
 Styles are colocated in `system/components/BranchLanes/style.css`.
 
 Styles: style.css in this directory
+
+Geometry uses the system `size-lane-column`, `size-lane-node`, and `size-lane-line` tokens; spacing tokens are reserved for gaps and insets.

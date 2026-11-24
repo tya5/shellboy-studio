@@ -1,8 +1,8 @@
 // Branch family reads and mutations are explicit and never optimistic.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type Outcome, type ThreadSummary } from "../../data/src";
+import { Cancel, type Operations, type OpError, type Outcome } from "../../data/src";
 import { LaneReader } from "./branch-lanes";
-import { branchLayout, readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
+import { readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
 import { CAPABILITY_TAGS, checkTag, TAGS_PER_CALL, type TagInvalid } from "./org";
 
 /** A family holds at most 256 Threads; 200 per page, so a walk needs 2. The extra allows for retries. */
@@ -59,8 +59,7 @@ export type ForkState = { kind: "idle" } | { kind: "forking" } | { kind: "done";
 
 const sameTarget = (a: BranchTarget | undefined, b: BranchTarget): boolean => a?.threadId === b.threadId && a?.nodeId === b.nodeId;
 
-// Four model-owned slots, six receipts maximum. Reads/navigation never evict
-// uncertain outcomes. Immutable keys include the initiating owner and payload.
+// Fork and rewind retain their primary and follow-up receipts across reads and navigation.
 interface Invocation {
   owner: string | undefined;
   generation: number;
@@ -102,12 +101,7 @@ const outcomeMessage = (out: Outcome<unknown>): string | undefined => out.ok ? u
 export class Branches {
   readonly state: Signal<FamilyState> = signal({ threadId: undefined, loading: false, family: undefined, error: undefined });
   readonly rewind: Signal<RewindState> = signal({ kind: "idle" });
-  readonly selection: Signal<ReadonlySet<string>> = signal(new Set());
   readonly actionError: Signal<string | undefined> = signal(undefined);
-  readonly actionBusy = signal(false);
-  toggleBranch(id: string): void { const next = new Set(this.selection.peek()); next.has(id) ? next.delete(id) : next.add(id); this.selection.value = next; }
-  private renameAttempt?: BranchAttempt;
-  private archiveAttempt?: BranchAttempt;
   private rewindAttempt?: RewindAttempt;
   private forkAttempt?: ForkAttempt;
   private previewCancel = new Cancel();
@@ -146,14 +140,6 @@ export class Branches {
       token.generation === this.ownerGeneration && token.epoch === this.projectionEpoch &&
       token.view === this.currentView() && (!token.target || sameTarget(this.target.peek(), token.target));
   }
-  private reserve(slot: BranchAttempt | undefined, threadId: string, key: string): BranchAttempt | undefined {
-    if (slot && (slot.uncertain || slot.receipt.pending) && slot.key !== key) {
-      this.refusal(`Resolve the existing mutation outcome (${slot.receipt.id}) before changing its owner, target or payload`); return;
-    }
-    if (slot?.key === key) return slot;
-    if (!this.owner()) { this.refusal("No current owner; mutation was not sent"); return; }
-    return { owner: this.owner(), key, threadId, uncertain: true, receipt: { id: this.ops.mutationId() } };
-  }
   private receipt<T>(attempt: BranchAttempt, slot: BranchReceipt<T>, send: (id: string) => Promise<Outcome<T>>): Promise<Outcome<T>> {
     if (slot.pending) return slot.pending;
     if (attempt.owner && attempt.owner === this.owner() && slot.outcome?.ok) return Promise.resolve(slot.outcome);
@@ -173,37 +159,6 @@ export class Branches {
     return pending;
   }
 
-  async archiveSelected(): Promise<void> {
-    const ids = [...this.selection.peek()].sort(); if (!ids.length) return;
-    const threadId = this.state.peek().threadId ?? ids[0]!;
-    const attempt = this.reserve(this.archiveAttempt, threadId, JSON.stringify({ thread_ids: ids })); if (!attempt) return;
-    this.archiveAttempt = attempt;
-    const token = this.invocation();
-    const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadArchive(ids, {}, id));
-    attempt.uncertain = uncertainOutcome(out);
-    if (!this.visible(attempt, token)) return;
-    if (!out.ok) this.actionError.value = outcomeMessage(out);
-    else {
-      const missing = (out.value as ArchiveResult).not_found ?? [];
-      this.selection.value = new Set(missing);
-      if (!this.visible(attempt, token)) return;
-      this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined;
-      if (!this.visible(attempt, token)) return;
-      const id = this.state.peek().threadId; if (id) void this.read(id);
-    }
-  }
-  async renameBranch(id: string, title: string): Promise<void> {
-    title = title.trim(); if (!title) return;
-    const attempt = this.reserve(this.renameAttempt, id, JSON.stringify({ thread_id: id, title })); if (!attempt) return;
-    this.renameAttempt = attempt;
-    const token = this.invocation();
-    const out = await this.receipt(attempt, attempt.receipt, op => this.ops.threadSetTitle(id, title, op));
-    attempt.uncertain = uncertainOutcome(out);
-    if (!this.visible(attempt, token)) return;
-    this.actionError.value = outcomeMessage(out);
-    if (!this.visible(attempt, token)) return;
-    if (out.ok) { const selected = this.state.peek().threadId; if (selected) void this.read(selected); }
-  }
   readonly fork: Signal<ForkState> = signal({ kind: "idle" });
   /** The point the panel acts on. A point belongs to the lane it sits on; any other node to the viewed Thread. */
   readonly target: Signal<BranchTarget | undefined> = signal(undefined);

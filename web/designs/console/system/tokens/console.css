@@ -173,5 +173,11 @@
   --space-chip-inline: 7px;
   /* Shared right inset between row/band content and the trailing action column. */
   --space-row-inset: 12px;
+  /* Branch topology lane width. */
+  --size-lane-column: 24px;
+  /* Branch topology node footprint. */
+  --size-lane-node: 10px;
+  /* Branch topology line and stroke width. */
+  --size-lane-line: 2px;
   --shadow-popover: 0px 4px 10px rgba(0, 0, 0, 0.24);
 }

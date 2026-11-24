@@ -25,7 +25,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Desktop: 260px sidebar, breadcrumb top bar, main column, optional 340px four-tab conversation inspector with a compact icon rail, status bar at the bottom. Settings and Analytics add a 230px section list beside one pane (SubView).
 - Under 1180px the right panel does not fit beside the conversation. It is hidden, and the right-panel toggle in a footer under the conversation opens the same panel as a sheet (see Shell panels). One container query, `max-width:1179px`, owns both sides.
 - Phone width (container under 900px): sidebar and status bar disappear and a bottom tab bar of three tabs takes over: Awaiting you, Conversation and More, which holds the rest. Use container queries, so the same components work in any frame.
-- The conversation opens first. Thread views are Conversation and Awaiting you. Analytics, Settings and Branches are whole-owner views.
+- The conversation opens first. Thread destinations are Conversation and Awaiting you. Analytics, Settings and Branches are whole-owner views.
 
 ## Layout contract
 
@@ -188,3 +188,5 @@ On desktop, sidebar and right-panel visibility controls live in `ShellFooter` ro
 
 When the right panel collapses, all tab panels are hidden and unfocusable; the flex middle remains to anchor the footer. Do not use this rule to remove tab state or unmount panel content.
 Settings navigation and save behavior are specified in `patterns/settings.md`.
+
+- BranchLanes has screen-specific `size-lane-column`, `size-lane-node`, and `size-lane-line` geometry tokens; keep those dimensions out of spacing roles.

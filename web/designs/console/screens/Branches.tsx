@@ -110,7 +110,7 @@ function CompareSideView({ t, side, lane, name, now, onMore }: { t: Translate; s
       <span class="caption muted mono">#{(row.selection?.ordinal ?? 0) + 1}</span>
       <span><b>{who(t, row.kind)}</b> {plainExcerpt(row.excerpt) ?? t("branches.unread")}</span>
     </li>)}</ol>
-    {side.next !== undefined ? <Button variant="ghost" disabled={side.busy} aria-busy={side.busy || undefined} onClick={onMore}>{side.busy ? t("common.loading") : t("branches.compareMore")}</Button> : null}
+    {side.next !== undefined && side.pages.length < 4 ? <Button variant="ghost" disabled={side.busy} aria-busy={side.busy || undefined} onClick={onMore}>{side.busy ? t("common.loading") : t("branches.compareMore")}</Button> : null}
     <a class="nav-link branch-open" href={conversation(side.item.threadId)}>{t("branches.openConversation")}<Icon role="app.open" size="small" /></a>
   </LaneTinted>;
 }
@@ -135,7 +135,7 @@ function Compare({ model, family, graph, name, held }: { model: AppModel; family
     return kept;
   });
   const first = sides[0];
-  const anchor = first?.pages[0]?.[0];
+  const anchor = first?.pages.flat().find((item) => item.node_id === first.anchor);
   const split = first?.ordinal;
   return <>
     {split !== undefined ? <p class="branch-shared"><Icon role="branch.mark" size="small" /><span>{anchor?.excerpt ? t("branches.shared", { n: split + 1, text: (plainExcerpt(anchor.excerpt) ?? "").replace(/[.。]+$/u, "") }) : t("branches.sharedNoText", { n: split + 1 })}</span></p> : null}

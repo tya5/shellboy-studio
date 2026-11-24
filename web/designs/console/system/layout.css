@@ -105,7 +105,7 @@
 
 /* Branches: the lines of work, where they split (BranchLanes), and how two of them differ. */
 .branches{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
-.branches-main{flex:1;min-height:0;overflow:auto;padding:var(--space-24);display:flex;flex-direction:column;gap:var(--space-16);min-width:0}
+.branches-main{flex:1;min-height:0;overflow:auto;padding:var(--space-16) var(--space-24);display:flex;flex-direction:column;gap:var(--space-16);min-width:0}
 .branches-family{display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
 .branches-h{margin:0;font:var(--type-heading)}
 .branches-key{margin:0}
@@ -120,15 +120,15 @@
 .branch-buttons{display:flex;flex-wrap:wrap;gap:var(--space-8)}
 .branch-pinned{display:flex;flex-direction:column;gap:var(--space-4);min-width:0}
 .branch-pinned p{margin:0;font:var(--type-label);overflow-wrap:anywhere}
-.branch-pinned-actions{display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-12);border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel)}
+.branch-pinned-actions{display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-16);border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel)}
 .branch-pinned-actions p{margin:0}
 .branch-pinned-actions h3{margin:0;font:var(--type-heading)}
 .branch-split-name{display:inline-flex;align-items:center;gap:var(--space-4);min-width:0}
 .branch-pinned-actions code,.branch-msgs code{font:var(--type-code);font-size:var(--size-caption)}
-.branch-shared{display:flex;align-items:flex-start;gap:var(--space-8);margin:0;padding:var(--space-8) var(--space-12);border:1px solid var(--line);border-radius:var(--radius-s);background:var(--inset);font:var(--type-label)}
+.branch-shared{display:flex;align-items:flex-start;gap:var(--space-8);margin:0;padding:var(--space-16);border:1px solid var(--line);border-radius:var(--radius-s);background:var(--inset);font:var(--type-label)}
 .branch-shared .i{flex:none;margin-block-start:var(--space-2);color:var(--muted)}
 .branch-sides{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-12);align-items:start}
-.branch-side{display:flex;flex-direction:column;gap:var(--space-8);min-width:0;padding:var(--space-12);border:1px solid var(--line);border-block-start:var(--space-4) solid var(--lane);border-radius:var(--radius);background:var(--panel)}
+.branch-side{display:flex;flex-direction:column;gap:var(--space-8);min-width:0;padding:var(--space-16);border:1px solid var(--line);border-block-start:var(--space-4) solid var(--lane);border-radius:var(--radius);background:var(--panel)}
 .branch-side p{margin:0}
 .branch-side-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8);font:var(--type-heading);min-width:0}
 .branch-msgs .mono{white-space:nowrap}
@@ -183,7 +183,7 @@
   .dock{padding:0 var(--space-12) var(--space-12)}
   .head h1{font:var(--type-heading)}
   /* Phone: a full-width lane list, the line cards below it, and Compare from a bottom bar as its own view. */
-  .branches-main{padding:var(--space-12);gap:var(--space-12)}
+  .branches-main{padding:var(--space-12) var(--space-16);gap:var(--space-12)}
   .branches-phone-only{display:block}
   .branches-lines{order:2;display:flex;flex-direction:column;gap:var(--space-8)}
   .branches-columns{order:1}
@@ -195,9 +195,7 @@
   .branches[data-phone-view=compare] .branches-family,.branches[data-phone-view=compare] .branches-lines,.branches[data-phone-view=compare] .branches-where,.branches[data-phone-view=compare] .branches-bar{display:none}
   .branches[data-phone-view=compare] .branches-compare{display:flex}
   .branch-sides{grid-template-columns:minmax(0,1fr)}
-  .branches-back .btn,.branch-pinned-actions .btn{min-block-size:var(--size-touch)}
   .branches-bar{display:flex;flex:none;align-items:center;justify-content:space-between;gap:var(--space-8);padding:var(--space-8) var(--space-12);border-block-start:1px solid var(--line);background:var(--panel)}
-  .branches-bar .btn{min-block-size:var(--size-touch)}
   .branches-bar-text{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-4);min-width:0}
   .apps-list{padding:var(--space-12)}
   .apps-alerts{padding:var(--space-8)}

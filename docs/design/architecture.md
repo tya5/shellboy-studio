@@ -650,9 +650,9 @@ lane's positions. The two-line comparison keeps its own bounded reads
 (`branch-compare.ts`: one anchor read and one 50-row page per side, four pages
 held, one page per explicit Show more).
 
-Family reads are separate: at most four pages of200 per attempt and three
+Family reads are separate: at most four pages of 200 per attempt and three
 cursor-expired restarts, hence sixteen RPCs per family invocation (stable valid
-families of at most256 normally need two), with at most one family RPC and two
+families of at most 256 normally need two), with at most one family RPC and two
 lane excerpt RPCs in flight. Repeated notifications re-read the family only;
 lane excerpts already kept are not read again. Existing WS4/global8 execution limits do not replace this
 admission bound. Shutdown cancels both owned reads. Limits describe work, not
