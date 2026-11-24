@@ -48,7 +48,7 @@ export function RestartAfterSetup({ model }: { model: DesignContext["model"] }) 
   const owner = model.data.owner.value;
   const id = owner.state === "connected" ? owner.info.instance_id : undefined;
   const managed = id && model.data.managedInstance.value === id;
-  return <Notice tone="wait" actions={managed ? <Button onClick={() => model.data.link.launcherAction("restart", id)}>{t("launcher.restart")}</Button> : undefined}>
+  return <Notice tone="wait" actions={managed ? <Button onClick={() => model.navigate({ view: "settings", section: "core" })}>{t("launcher.restart")}</Button> : undefined}>
     {t(managed ? "setup.restartManaged" : "setup.restartExternal")}
   </Notice>;
 }

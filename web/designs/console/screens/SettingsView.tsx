@@ -1,3 +1,4 @@
+import { CoreSettings } from "./CoreSettings";
 import { useEffect } from "preact/hooks";
 import { GuideRegistrationView, guideSearchRows } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, fieldOf, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, translator, type ConfigKey, type MessageKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
@@ -9,7 +10,7 @@ import { connectionCards, ConnectionModelRow, ConfigControl, ConfigPanel, Settin
 
 import { settingSearch, type SettingSearch } from "./setting-search";
 
-const ICONS: Record<SettingsSection, IconRole> = { general: "settings.general", connections: "settings.connections", appearance: "settings.appearance", compaction: "settings.compaction", storage: "settings.storage", index: "settings.index", agent: "settings.agent", studio: "settings.studio" };
+const ICONS: Record<SettingsSection, IconRole> = { general: "settings.general", connections: "settings.connections", appearance: "settings.appearance", compaction: "settings.compaction", storage: "settings.storage", index: "settings.index", agent: "settings.agent", studio: "settings.studio", core: "settings.core" };
 
 export function SettingsView({ context }: { context: DesignContext }) {
   const model = context.model;
@@ -62,6 +63,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       : { ...effortProps, ...(effortPath && facts ? { value: configRowValue(t, facts, effortPath) } : {}) };
 
     switch (section) {
+      case "core": return <CoreSettings model={model} />;
       case "general":
         return <>
           <Section title={t("set.models.defaults")}><FactList missing={missing} facts={[
@@ -137,8 +139,8 @@ export function SettingsView({ context }: { context: DesignContext }) {
   const bodies = new Map(SETTINGS_SECTIONS.map((key) => [key, body(key)]));
   const groupFor = (s: SettingsSection) => s === "general" || s === "connections" ? t("set.group.start") : s === "compaction" || s === "index" || s === "agent" ? t("set.group.agent") : s === "appearance" ? t("set.group.display") : s === "storage" ? t("set.group.data") : t("set.group.app");
   return <SubView title={t("set.title")} close={{ href: formatRoute({ view: "conversation", threadId: model.selectedId.value }), label: t("common.close") }} groupedNav searchLabel={t("set.search")} items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), role: ICONS[s], label: t(`set.section.${s}`), description: t(`set.sub.${s}`), searchTerms: (["en", "ja"] as const).flatMap((lang) => { const translate = translator(lang); return [translate(`set.section.${s}`), translate(`set.sub.${s}`)]; }), searchRows: rows.get(s), group: groupFor(s), current: s === section }))}>
-    <PageHeader title={t(`set.section.${section}`)} description={t(`set.sub.${section}`)} />
-    {section !== "studio" && section !== "agent" ? <ConfigPanel model={model} /> : null}
+    {section !== "core" ? <PageHeader title={t(`set.section.${section}`)} description={t(`set.sub.${section}`)} /> : null}
+    {section !== "studio" && section !== "agent" && section !== "core" ? <ConfigPanel model={model} /> : null}
     {bodies.get(section)}
   </SubView>;
 }

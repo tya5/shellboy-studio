@@ -88,6 +88,7 @@ pub async fn session<O: Owner>(
         data_dir: state.config.data_dir.display().to_string(),
         owner: owner_state,
         desktop: state.launcher.as_ref().map(|_| true),
+        core_management: !state.auth.is_disabled(),
     };
     if !send(&mut socket, &hello).await {
         return;
@@ -104,15 +105,31 @@ pub async fn session<O: Owner>(
             return;
         }
     }
-    let mut managed = state
+    let management = !state.auth.is_disabled();
+    let mut lifecycle = state
         .launcher
         .as_ref()
-        .map(|control| control.managed.clone());
-    if let Some(rx) = &mut managed {
-        let instance_id = rx.borrow_and_update().clone();
-        if !send(&mut socket, &ServerFrame::LauncherManaged { instance_id }).await {
+        .filter(|_| management)
+        .map(|control| control.state.clone());
+    if let Some(rx) = &mut lifecycle {
+        let state = rx.borrow_and_update().clone();
+        if !send(&mut socket, &ServerFrame::LauncherState { state }).await {
             return;
         }
+    }
+    let mut stage = state.hub.startup_stage.subscribe();
+    let initial_stage = *stage.borrow_and_update();
+    if management
+        && initial_stage.is_some()
+        && !send(
+            &mut socket,
+            &ServerFrame::StartupStage {
+                stage: initial_stage,
+            },
+        )
+        .await
+    {
+        return;
     }
     let (results_tx, mut results_rx) = mpsc::channel::<ServerFrame>(RESULT_CHANNEL);
     let in_flight = Arc::new(Semaphore::new(SESSION_IN_FLIGHT));
@@ -129,12 +146,17 @@ pub async fn session<O: Owner>(
                 let Some(message) = status else { break };
                 if !send(&mut socket, &ServerFrame::LauncherDiagnostic { message }).await { break; }
             }
-            status = async { match &mut managed {
+            update = async { match &mut lifecycle {
                 Some(rx) => { rx.changed().await.ok()?; Some(rx.borrow_and_update().clone()) },
                 None => std::future::pending().await,
             } } => {
-                let Some(instance_id) = status else { break };
-                if !send(&mut socket, &ServerFrame::LauncherManaged { instance_id }).await { break; }
+                let Some(state) = update else { break };
+                if !send(&mut socket, &ServerFrame::LauncherState { state }).await { break; }
+            }
+            changed = stage.changed(), if management => {
+                if changed.is_err() { break; }
+                let stage = *stage.borrow_and_update();
+                if !send(&mut socket, &ServerFrame::StartupStage { stage }).await { break; }
             }
             incoming = socket.recv() => {
                 let Some(Ok(message)) = incoming else { break };
@@ -275,13 +297,28 @@ fn handle_frame<O: Owner>(
             if matches!(action, crate::launcher::Action::Exit) {
                 state.cancel.cancel();
             } else {
-                let allowed = match state.hub.owner_state() {
-                    OwnerState::Unreachable => instance_id.is_none(),
-                    OwnerState::Connected { info } => {
+                use crate::launcher::{Action, Phase};
+                let lifecycle = control.state.borrow();
+                let owner = state.hub.owner_state();
+                let allowed = match (&owner, action, lifecycle.phase) {
+                    (
+                        OwnerState::Unreachable,
+                        Action::Start | Action::Restart,
+                        Phase::Stopped | Phase::Exited | Phase::Failed | Phase::External,
+                    ) => instance_id.is_none(),
+                    (OwnerState::Unreachable, Action::Stop, Phase::Starting) => {
+                        instance_id.is_none()
+                    }
+                    (
+                        OwnerState::Connected { info },
+                        Action::Stop | Action::Restart,
+                        Phase::Running,
+                    ) => {
                         instance_id.is_some()
                             && instance_id == info.instance_id
-                            && instance_id == *control.managed.borrow()
+                            && instance_id == lifecycle.instance_id
                     }
+                    _ => false,
                 };
                 if !allowed {
                     return Some(error_frame(
@@ -289,7 +326,14 @@ fn handle_frame<O: Owner>(
                         "Core is not down or is not the Core Studio started",
                     ));
                 }
-                if control.restart.try_send(instance_id).is_err() {
+                if control
+                    .requests
+                    .try_send(crate::launcher::Request {
+                        action,
+                        instance_id,
+                    })
+                    .is_err()
+                {
                     return Some(error_frame("busy", "launcher action already queued"));
                 }
             }
@@ -336,6 +380,31 @@ fn handle_frame<O: Owner>(
                 Ok(command) => command,
                 Err(e) => return Some(result_error(id, e)),
             };
+            if let Command::OwnerShutdown(args) = &command {
+                let owner = state.hub.owner_state();
+                let matches = matches!(owner, OwnerState::Connected { info } if info.instance_id.as_deref() == Some(&*args.instance_id));
+                let managed_or_starting = state.launcher.as_ref().is_some_and(|control| {
+                    matches!(
+                        control.state.borrow().phase,
+                        crate::launcher::Phase::Running
+                            | crate::launcher::Phase::Starting
+                            | crate::launcher::Phase::Stopping
+                    )
+                });
+                if state.auth.is_disabled()
+                    || !matches
+                    || managed_or_starting
+                    || operation_id.is_none()
+                {
+                    return Some(result_error(
+                        id,
+                        BridgeError::new(
+                            "not_allowed",
+                            "shutdown requires an authenticated request for the current external Core",
+                        ),
+                    ));
+                }
+            }
             if outstanding.load(Ordering::SeqCst) >= SESSION_IN_FLIGHT + SESSION_QUEUE {
                 return Some(result_error(
                     id,
@@ -450,12 +519,7 @@ mod tests {
     #[test]
     fn calls_are_decoded_strictly_and_checked_against_the_allowlist() {
         assert!(build_command("thread.list", None).is_ok());
-        assert_eq!(
-            build_command("owner.shutdown", Some(json!({"instance_id":"x"})))
-                .unwrap_err()
-                .code,
-            "not_allowed"
-        );
+        assert!(build_command("owner.shutdown", Some(json!({"instance_id":"x"}))).is_ok());
         assert_eq!(
             build_command("events.wait", None).unwrap_err().code,
             "not_allowed"

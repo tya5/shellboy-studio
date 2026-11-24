@@ -101,6 +101,17 @@ pub async fn run_with_guide<O: Owner>(
                     hub.set_owner(OwnerState::Unreachable, OwnerEvent::Unreachable);
                     announced_unreachable = true;
                 }
+                if let Some((_, data_dir)) = &guide {
+                    let stage = shellboy::app::startup_stage::read(data_dir).await;
+                    hub.startup_stage.send_if_modified(|current| {
+                        if *current == stage {
+                            false
+                        } else {
+                            *current = stage;
+                            true
+                        }
+                    });
+                }
                 connected_now = false;
                 hub.live_clear(); // the owner is gone, and with it the text it held
                 cursor = None;
@@ -113,6 +124,8 @@ pub async fn run_with_guide<O: Owner>(
                 continue;
             }
         };
+        hub.startup_stage
+            .send_if_modified(|stage| stage.take().is_some());
         backoff = config.backoff_min;
         announced_unreachable = false;
         let restarted = last_instance.is_some() && instance != last_instance;

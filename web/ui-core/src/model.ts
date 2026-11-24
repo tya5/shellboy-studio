@@ -233,6 +233,8 @@ export class AppModel {
     if (!this.pickerCurrent(session)) return;
     this.modelPicker.value = { ...this.modelPicker.peek(), saving: false, error: out.ok ? undefined : out.error.message };
   }
+  readonly coreActivityThread = signal<string>();
+  readonly coreShutdownRefusal = signal<{ instance: string; message: string }>();
   readonly data: ShellboyData;
   readonly ops: Operations;
   readonly pending: PendingAdapter;
@@ -458,6 +460,13 @@ export class AppModel {
     this.senderTitles = new SenderTitles(this.ops);
     this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
+    this.ops.onConfigWrite = fields => this.config.trackConfigWrite(fields);
+    this.disposers.push(() => { this.ops.onConfigWrite = undefined; });
+    this.disposers.push(effect(() => {
+      const owner = this.data.owner.value;
+      const instance = owner.state === "connected" ? owner.info.instance_id : undefined;
+      if (instance) this.config.observeInstance(instance);
+    }));
     const pickerConnections = computed(() => {
       const session = this.pickerSession.value;
       if (!session) return "";

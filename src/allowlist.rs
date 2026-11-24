@@ -83,6 +83,7 @@ pub fn access(command: &Command) -> Access {
         // Core's id.resolve is CLI-only; the browser never receives this identity lookup.
         Command::MessageAsk(..) | Command::IdResolve(..) => Access::Denied,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
+        Command::OwnerShutdown(args) if !args.instance_id.is_empty() => Access::Mutation,
         Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)

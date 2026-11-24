@@ -1,17 +1,60 @@
 //! The bundled launcher's lifecycle; ordinary CLI bridges have no launcher channel.
 use tokio::sync::{mpsc, watch};
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     Restart,
+    Start,
+    Stop,
     Exit,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Request {
+    pub action: Action,
+    pub instance_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Phase {
+    Starting,
+    Running,
+    Stopping,
+    Stopped,
+    Exited,
+    Failed,
+    External,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct State {
+    pub phase: Phase,
+    pub instance_id: Option<String>,
+    pub ready_at_ms: Option<u64>,
+    pub automatic_restart_available: bool,
+    pub restarted_after: Option<String>,
+    pub failure: Option<String>,
+}
+
+impl State {
+    pub fn starting() -> Self {
+        Self {
+            phase: Phase::Starting,
+            instance_id: None,
+            ready_at_ms: None,
+            automatic_restart_available: true,
+            restarted_after: None,
+            failure: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Control {
     pub diagnostic: watch::Receiver<Option<String>>,
-    pub restart: mpsc::Sender<Option<String>>,
-    pub managed: watch::Receiver<Option<String>>,
+    pub requests: mpsc::Sender<Request>,
+    pub state: watch::Receiver<State>,
     pub marker: String,
 }
 

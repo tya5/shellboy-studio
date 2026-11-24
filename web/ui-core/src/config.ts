@@ -199,6 +199,28 @@ export class ConfigEditor {
     this.fieldSaving.value = false;
   }
 
+  private pendingInstance: string | undefined;
+  readonly pendingRestart = signal<readonly string[]>([]);
+  observeInstance(instance: string): void {
+    if (this.pendingInstance === instance) return;
+    this.pendingInstance = instance;
+    this.pendingRestart.value = [];
+  }
+
+  trackConfigWrite(fields: readonly string[]): ((result: Record<string, unknown>) => void) | undefined {
+    const instance = this.pendingInstance;
+    if (!instance) return;
+    return result => {
+      if (instance !== this.pendingInstance || result.written === false) return;
+      const changed = Array.isArray(result.changes) ? result.changes.map(record) : [];
+      const keys = fields.filter(field => {
+        const exact = changed.find(change => change?.field === field)?.restart_required;
+        return exact === true || (exact === undefined && result.restart_required === true);
+      });
+      if (keys.length) this.pendingRestart.value = [...new Set([...this.pendingRestart.peek(), ...keys])];
+    };
+  }
+
   constructor(private readonly ops: Operations) {}
 
   async testConnection(name: string): Promise<void> {

@@ -114,7 +114,7 @@ export class Link {
     return this.transport.send({ t: "watch", thread_ids: threadIds, list });
   }
 
-  launcherAction(action: "restart" | "exit", instance?: string): boolean {
+  launcherAction(action: import("./protocol").LauncherAction, instance?: string): boolean {
     return this.conn.peek() === "open" && this.transport.send({ t: "launcher", action, ...(instance ? { instance_id: instance } : {}) });
   }
 

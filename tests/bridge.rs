@@ -934,19 +934,25 @@ async fn ordinary_bridge_cannot_run_launcher_actions() {
 
 #[tokio::test]
 async fn desktop_restart_follows_owner_transition_for_each_instance() {
-    use shellboy_studio::{launcher::Control, server::serve};
+    use shellboy_studio::{
+        launcher::{Action, Control, Phase, Request, State},
+        server::serve,
+    };
     use tokio::sync::{mpsc, watch};
     let (owner, tx) = mock(list_handler);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let mut state = app_state(owner, false, addr);
     let (_diagnostic_tx, diagnostic) = watch::channel(None);
-    let (restart, mut requests) = mpsc::channel(1);
-    let (managed_tx, managed) = watch::channel(None);
+    let (send, mut requests) = mpsc::channel(1);
+    let (state_tx, lifecycle) = watch::channel(State {
+        phase: Phase::External,
+        ..State::starting()
+    });
     std::sync::Arc::get_mut(&mut state).unwrap().launcher = Some(Control {
         diagnostic,
-        restart,
-        managed,
+        requests: send,
+        state: lifecycle,
         marker: "test-marker".into(),
     });
     let cancel = state.cancel.clone();
@@ -972,7 +978,11 @@ async fn desktop_restart_follows_owner_transition_for_each_instance() {
             "invalid_state"
         );
         if instance == "spawned" {
-            managed_tx.send_replace(Some(instance.to_owned()));
+            state_tx.send_replace(State {
+                phase: Phase::Running,
+                instance_id: Some(instance.to_owned()),
+                ..State::starting()
+            });
             put(
                 &mut ws,
                 json!({"t":"launcher","action":"restart","instance_id":"attached"}),
@@ -991,9 +1001,16 @@ async fn desktop_restart_follows_owner_transition_for_each_instance() {
                 tokio::time::timeout(Duration::from_secs(2), requests.recv())
                     .await
                     .unwrap(),
-                Some(Some(instance.to_owned()))
+                Some(Request {
+                    action: Action::Restart,
+                    instance_id: Some(instance.to_owned())
+                })
             );
         }
+        state_tx.send_replace(State {
+            phase: Phase::Exited,
+            ..State::starting()
+        });
         tx.send(unreachable_owner()).unwrap();
         let down = next_t(&mut ws, "owner").await;
         assert_eq!(down["owner"], json!({"state":"unreachable"}));
@@ -1002,7 +1019,10 @@ async fn desktop_restart_follows_owner_transition_for_each_instance() {
             tokio::time::timeout(Duration::from_secs(2), requests.recv())
                 .await
                 .unwrap(),
-            Some(None)
+            Some(Request {
+                action: Action::Restart,
+                instance_id: None
+            })
         );
     }
     put(&mut ws, json!({"t":"launcher","action":"exit"})).await;

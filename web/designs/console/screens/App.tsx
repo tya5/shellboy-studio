@@ -1,3 +1,4 @@
+import { CoreBanner, CoreStatusLink } from "./CoreSettings";
 import { SidebarTree, siblingPositions } from "./SidebarTree";
 import { normalizeFilter, type ListFilter } from "../../../data/src/store";
 import { sidebarGroups } from "../../../ui-core/src/sidebar";
@@ -30,6 +31,14 @@ export function App({ context }: { context: DesignContext }) {
   const appRef = useRef<HTMLDivElement>(null);
   const panelVisible = () => (appRef.current?.clientWidth ?? 0) >= 1180;
   const [phonePanel, setPhonePanel] = useState<string>();
+  const activityThread = model.coreActivityThread.value;
+  const openThread = model.handle.value?.threadId;
+  useEffect(() => {
+    if (!activityThread || activityThread !== openThread) return;
+    model.coreActivityThread.value = undefined;
+    model.setPanelTab("work");
+    if (matchMedia("(max-width: 899px)").matches) setPhonePanel(activityThread);
+  }, [activityThread, model, openThread]);
   const togglePanelSheet = () => {
     const thread = model.handle.peek()?.threadId;
     if (thread) setPhonePanel(current => current === thread ? undefined : thread);
@@ -209,10 +218,10 @@ export function App({ context }: { context: DesignContext }) {
   const title = route.view === "conversation" ? (details?.title ?? row?.summary.title) : t(`view.${route.view}`);
 
   const statusFooter = <footer class="status">
-            <StatusMark feedback
+            {desktop && model.data.coreManagement.value ? <CoreStatusLink model={model} /> : <StatusMark feedback
               status={conn === "connected" ? "completed" : conn === "ownerDown" ? "recovery" : "waiting"}
               label={t(conn === "connected" ? "conn.connected" : conn === "ownerDown" ? "conn.ownerDown" : "conn.connecting")}
-            />
+            />}
             {model.data.dataDir.value ? (
               <span class="owner-dir">
                 {t("conn.ownerDir")} <span class="mono" title={model.data.dataDir.value}><bdi>{model.data.dataDir.value}</bdi></span>
@@ -224,7 +233,7 @@ export function App({ context }: { context: DesignContext }) {
               {desktop ? <Button onClick={() => model.data.link.launcherAction("exit")}>{t("launcher.exit")}</Button> : null}
             </div>
           </footer>;
-  if (route.view === "settings") return <div class="app"><SettingsView context={context} />{statusFooter}</div>;
+  if (route.view === "settings") return <div class="app"><CoreBanner model={model} /><SettingsView context={context} />{statusFooter}</div>;
 
   return (
     <div class="app" ref={appRef}>
@@ -338,7 +347,8 @@ export function App({ context }: { context: DesignContext }) {
           {settings ? <Settings context={context} onClose={() => setSettings(false)} /> : null}
           <div class="alerts">
             {conn === "authNeeded" ? <AuthPrompt context={context} /> : null}
-            {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}{desktop ? <Button onClick={() => model.data.link.launcherAction("restart")}>{t("launcher.restart")}</Button> : null}</Notice> : null}
+            <CoreBanner model={model} />
+            {conn === "ownerDown" && !model.data.coreManagement.value ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
             {desktopDiagnostic ? <Notice tone="wait">{desktopDiagnostic}</Notice> : null}
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>

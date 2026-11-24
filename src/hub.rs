@@ -64,6 +64,7 @@ struct Inner {
 
 pub struct Hub {
     inner: Mutex<Inner>,
+    pub(crate) startup_stage: tokio::sync::watch::Sender<Option<shellboy::app::StartupStage>>,
 }
 
 /// Removes the session when dropped.
@@ -82,6 +83,7 @@ impl Drop for SessionGuard {
 impl Hub {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
+            startup_stage: tokio::sync::watch::channel(None).0,
             inner: Mutex::new(Inner {
                 next: 0,
                 owner: OwnerState::Unreachable,

@@ -1553,3 +1553,67 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test]
+async fn core_management_status_and_shutdown_are_instance_bound() {
+    use shellboy::protocol::{Command, ErrorCode, OwnerShutdownArgs};
+    let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN"));
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let data = root.join("data");
+    let mut serve = start_owner(&bin, &root, &data);
+    let owner = IpcOwner::new(data);
+    let status = owner
+        .call(
+            Command::Status(serde_json::from_value(json!({"limit": 200})).unwrap()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(status.ok);
+    let status = status.result.unwrap();
+    assert_eq!(status["instance_id"], serve.instance);
+    assert_eq!(status["items"], json!([]));
+    assert_eq!(status["filters"]["limit"], 200);
+    let wrong = owner
+        .call(
+            Command::OwnerShutdown(OwnerShutdownArgs {
+                instance_id: "wrong".into(),
+            }),
+            Some("wrong-shutdown".into()),
+            None,
+        )
+        .await;
+    let wrong = match wrong {
+        Ok(response) => response.error.unwrap(),
+        Err(error) => error,
+    };
+    assert_eq!(wrong.code, ErrorCode::ProtocolMismatch);
+    let accepted = owner
+        .call(
+            Command::OwnerShutdown(OwnerShutdownArgs {
+                instance_id: serve.instance.clone().into(),
+            }),
+            Some("correct-shutdown".into()),
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(accepted.ok);
+    assert_eq!(
+        accepted.result.unwrap(),
+        json!({"state":"accepted", "instance_id": serve.instance, "shutdown_complete":false})
+    );
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(status) = serve.child.try_wait().unwrap() {
+                assert!(status.success());
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("isolated Core should exit after receipt");
+}

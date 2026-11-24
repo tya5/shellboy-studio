@@ -119,8 +119,8 @@ pub struct Launch {
     marker: PathBuf,
     _lock: File,
     owner: ManagedOwner,
-    restart: mpsc::Receiver<Option<String>>,
-    managed: watch::Sender<Option<String>>,
+    requests: mpsc::Receiver<super::Request>,
+    state: watch::Sender<super::State>,
     diagnostic: watch::Sender<Option<String>>,
     crashes: std::collections::VecDeque<String>,
 }
@@ -178,8 +178,8 @@ impl Launch {
             let _ = fs::remove_file(&temporary);
         }
         write.map_err(io)?;
-        let (send, restart) = mpsc::channel(1);
-        let (managed, managed_rx) = watch::channel(None);
+        let (send, requests) = mpsc::channel(1);
+        let (state, state_rx) = watch::channel(super::State::starting());
         let (diagnostic, receiver) = watch::channel(None);
         let owner = ManagedOwner {
             bundled,
@@ -200,21 +200,22 @@ impl Launch {
             auth: Some(auth),
             control: Control {
                 diagnostic: receiver,
-                restart: send,
-                managed: managed_rx,
+                requests: send,
+                state: state_rx,
                 marker: identity,
             },
             marker: marker_path,
             _lock: lock,
             owner,
-            restart,
-            managed,
+            requests,
+            state,
             diagnostic,
             crashes: std::collections::VecDeque::new(),
         }))
     }
 
     pub async fn supervise(&mut self, cancel: CancellationToken) {
+        use super::{Action, Phase, State};
         use crate::launcher::supervisor::{Decision, RestartState};
         let mut restart_state = RestartState::new();
         self.start().await;
@@ -223,11 +224,12 @@ impl Launch {
                 tokio::select! {
                     biased;
                     _ = cancel.cancelled() => break,
-                    restart = self.restart.recv() => {
-                        match restart {
-                            None => break,
-                            Some(None) => { restart_state.manual_start(); self.start().await; }
-                            Some(Some(_)) => {}
+                    request = self.requests.recv() => {
+                        let Some(request) = request else { break };
+                        if request.instance_id.is_none() && matches!(request.action, Action::Start | Action::Restart) {
+                            restart_state.manual_start();
+                            self.state.send_replace(State::starting());
+                            self.start().await;
                         }
                     }
                 }
@@ -235,25 +237,24 @@ impl Launch {
             }
             let mut ready = false;
             let mut ready_closed = false;
-            let mut manual_restart = false;
+            let mut manual = None;
             let exit = loop {
                 let child = &mut self.owner.child;
                 let ready_signal = &mut self.owner.ready;
                 tokio::select! {
                     biased;
                     _ = cancel.cancelled() => break None,
-                    restart = self.restart.recv() => {
-                        let Some(requested) = restart else { break None; };
-                        if requested.is_some() && requested == self.owner.instance_id {
-                            self.managed.send_replace(None);
-                            platform::stop_child(self.owner.child.take(), &self.owner.data, requested.as_deref()).await;
-                            manual_restart = true;
+                    request = self.requests.recv() => {
+                        let Some(request) = request else { break None; };
+                        // An accepted manual action leaves through a separate branch before exit classification.
+                        if matches!(request.action, Action::Stop | Action::Restart)
+                            && request.instance_id == self.owner.instance_id
+                            && (request.instance_id.is_some() || request.action == Action::Stop)
+                        {
+                            self.state.send_modify(|state| state.phase = Phase::Stopping);
+                            platform::stop_child(self.owner.child.take(), &self.owner.data, request.instance_id.as_deref()).await;
+                            manual = Some(request.action);
                             break None;
-                        }
-                        if requested.is_none() {
-                            // Preserve the down-owner action during pre-ready startup.
-                            restart_state.manual_start();
-                            self.start().await;
                         }
                     },
                     result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {
@@ -264,7 +265,11 @@ impl Launch {
                         if changed.is_ok() {
                             if let Some(instance_id) = ready_signal.borrow_and_update().clone() {
                                 ready = true;
-                                self.managed.send_replace(Some(instance_id.clone()));
+                                self.state.send_modify(|state| {
+                                    state.phase = Phase::Running;
+                                    state.instance_id = Some(instance_id.clone());
+                                    state.ready_at_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().and_then(|elapsed| elapsed.as_millis().try_into().ok());
+                                });
                                 self.owner.instance_id = Some(instance_id);
                                 self.crashes.clear();
                                 let warning = self.owner.env.as_ref().and_then(|env| env.warning.clone());
@@ -276,8 +281,7 @@ impl Launch {
                     },
                 }
             };
-            self.managed.send_replace(None);
-            if manual_restart {
+            if let Some(action) = manual {
                 if let Some(output) = self.owner.output.take() {
                     let _ = output.await;
                 }
@@ -285,8 +289,16 @@ impl Launch {
                 if cancel.is_cancelled() {
                     break;
                 }
-                restart_state.manual_start();
-                self.start().await;
+                if restart_state.explicit_exit(action == Action::Restart) {
+                    self.state.send_replace(State::starting());
+                    self.start().await;
+                } else {
+                    self.state.send_replace(State {
+                        phase: Phase::Stopped,
+                        automatic_restart_available: restart_state.available(),
+                        ..State::starting()
+                    });
+                }
                 continue;
             }
             let Some(result) = exit else { break };
@@ -317,12 +329,30 @@ impl Launch {
             );
             let decision = restart_state.exited(ready, child_exit);
             match decision {
-                Decision::Stop => continue,
+                Decision::Stop => {
+                    self.state.send_replace(State {
+                        phase: Phase::Exited,
+                        automatic_restart_available: restart_state.available(),
+                        ..State::starting()
+                    });
+                    continue;
+                }
                 Decision::ShowFailure(reason) => {
+                    self.state.send_modify(|state| {
+                        state.phase = Phase::Failed;
+                        state.instance_id = None;
+                        state.ready_at_ms = None;
+                        state.failure = Some(reason.clone());
+                    });
                     self.publish_crash(reason);
                     continue;
                 }
                 Decision::Retry { reason } => {
+                    self.state.send_replace(State {
+                        automatic_restart_available: false,
+                        restarted_after: Some(reason.clone()),
+                        ..State::starting()
+                    });
                     self.publish_crash(format!(
                         "Core crashed after ready ({reason}); restarting now"
                     ));
@@ -355,6 +385,10 @@ impl Launch {
     async fn start(&mut self) {
         match self.owner.start().await {
             Ok(warning) => {
+                if self.owner.child.is_none() {
+                    self.state
+                        .send_modify(|state| state.phase = super::Phase::External);
+                }
                 self.crashes.clear();
                 self.diagnostic.send_replace(warning);
             }
@@ -363,6 +397,10 @@ impl Launch {
                     "shellboy-studio: bundled owner start refused or failed: {}",
                     reason.reason
                 );
+                self.state.send_modify(|state| {
+                    state.phase = super::Phase::Failed;
+                    state.failure = Some(reason.message().into());
+                });
                 self.publish_crash(reason.message().into());
             }
         }

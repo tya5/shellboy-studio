@@ -512,6 +512,18 @@ export class Operations {
       Object.freeze(out.value.items); for(const item of out.value.items){if(item.response_nodes)Object.freeze(item.response_nodes);Object.freeze(item);} Object.freeze(out.value); return out.value;});
     return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, owned, undefined, read);
   }
+  coreStatus(instance: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
+    return this.run("status", { limit: ACTIVE_STATUS_PAGE_LIMIT, ...(cursor ? { cursor } : {}) }, outcomeDecoder(raw => {
+      const page = workPage(raw);
+      return isObject(raw) && raw.instance_id === instance && page.ok && page.value.items.length <= ACTIVE_STATUS_PAGE_LIMIT
+        ? page : { ok: false, reason: "invalid work status for this Core instance" };
+    }), undefined, read);
+  }
+  ownerShutdown(instance: string, operationId = this.newId()): Promise<Outcome<true>> {
+    return this.run("owner.shutdown", { instance_id: instance }, outcomeDecoder(raw =>
+      isObject(raw) && raw.instance_id === instance && raw.state === "accepted" && raw.shutdown_complete === false
+        ? { ok: true, value: true as const } : { ok: false, reason: "invalid owner.shutdown receipt" }), { operationId });
+  }
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("status", { limit: 1 }, outcomeDecoder(decodeRecord), undefined, read);
   }
@@ -605,9 +617,13 @@ export class Operations {
   configGet(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("config.get", {}, outcomeDecoder(decodeRecord), undefined, read);
   }
+  onConfigWrite?: (fields: readonly string[]) => ((result: Record<string, unknown>) => void) | undefined;
   /** Not cancellable: a started write finishes and is reported. A missing `value` removes the key. */
-  configSet(expectedHash: string, changes: { field: string; value?: unknown }[], operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("config.set", { expected_hash: expectedHash, changes }, outcomeDecoder(decodeRecord), { operationId });
+  async configSet(expectedHash: string, changes: { field: string; value?: unknown }[], operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+    const settle = this.onConfigWrite?.(changes.map(change => change.field));
+    const out = await this.run("config.set", { expected_hash: expectedHash, changes }, outcomeDecoder(decodeRecord), { operationId });
+    if (out.ok) settle?.(out.value);
+    return out;
   }
   /** One model-list GET against a saved connection or a candidate. Needs the `connection.setup` capability. */
   connectionTest(target: TestTarget, read?: ReadOptions): Promise<Outcome<TestFacts>> {

@@ -348,7 +348,8 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const errorActivity = status === "error" && (activity === "recovery" || activity === "failed") ? activity : undefined;
   const character = errorActivity ?? status;
   const label = errorActivity ? t(`status.${errorActivity}`) : status === "running" && activity ? activityLabel(model.lang.value, activity) : status ? activityStatusLabel(t, status) : "";
-  const line = <div key="conversation-status" class="work-row conversation-status">{status === "idle" ? <StatusMark status="idle" label={statusLabel(t, "idle")} /> : status ? <><ConversationCharacter name={statusCharacter(character ?? "neutral")} running={status === "running"} /><span>{label}</span>
+  const interrupted = status !== "running" && row?.summary.latest_run_stop_reason === "app_shutdown";
+  const line = <div key="conversation-status" class="work-row conversation-status">{status === "idle" ? <StatusMark status="idle" label={interrupted ? t("core.runInterrupted") : statusLabel(t, "idle")} /> : status ? <><ConversationCharacter name={statusCharacter(character ?? "neutral")} running={status === "running"} /><span>{interrupted ? t("core.runInterrupted") : label}</span>
     {running ? <>
       <span data-status-description>{running.label}</span>
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
@@ -359,7 +360,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   // Supporting text under the one-line status (Material 3 supporting text): it wraps in full, never ellipsized.
   return <>{line}{recovery && model.canRetry.value ? <div key="conversation-retry-note" id="conversation-retry-note" class="conversation-retry-note muted" data-retry-note>{t("recovery.body")}</div> : null}
     <span key="conversation-announcement" class="conversation-announcement" data-conversation-announcement role="status" aria-live="polite" aria-atomic="true">
-      {status === "idle" ? statusLabel(t, "idle") : label}
+      {interrupted ? t("core.runInterrupted") : status === "idle" ? statusLabel(t, "idle") : label}
     </span>
   </>;
 }

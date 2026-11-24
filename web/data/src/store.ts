@@ -14,6 +14,8 @@ import type {
   HistoryWindowArgs,
   HistoryWindowResult,
   OwnerState,
+  LauncherState,
+  StartupStage,
   ThreadDetails,
   ThreadListArgs,
   ThreadSummary,
@@ -203,8 +205,18 @@ export class ShellboyData {
 
   private readonly desktopSig = signal(false);
   readonly desktop: ReadonlySignal<boolean> = this.desktopSig;
-  private readonly managedInstanceSig = signal<string | null>(null);
-  readonly managedInstance: ReadonlySignal<string | null> = this.managedInstanceSig;
+  readonly launcher = signal<LauncherState | null>(null);
+  readonly managedInstance = computed(() => this.launcher.value?.instance_id ?? null);
+  readonly startupStage = signal<StartupStage | null>(null);
+  readonly coreManagement = signal(false);
+  readonly coreStatusHint = signal(0);
+  private coreStatusRefs = 0;
+  watchCoreStatus(): Handle {
+    this.coreStatusRefs++;
+    this.scheduleWatch();
+    let closed = false;
+    return { close: () => { if (!closed) { closed = true; this.coreStatusRefs--; this.scheduleWatch(); } } };
+  }
   private readonly desktopDiagnosticSig = signal<string | null>(null);
   readonly desktopDiagnostic: ReadonlySignal<string | null> = this.desktopDiagnosticSig;
 
@@ -543,7 +555,9 @@ export class ShellboyData {
         batch(() => {
           this.desktopSig.value = false;
           this.desktopDiagnosticSig.value = null;
-          this.managedInstanceSig.value = null;
+          this.launcher.value = null;
+          this.startupStage.value = null;
+          this.coreManagement.value = false;
           this.ownerSig.value = { state: "unknown" };
           this.markAllStale();
           this.discardAllPreviews("connection_closed");
@@ -567,6 +581,7 @@ export class ShellboyData {
       case "hello":
         this.invalidateDeletePreviews();
         this.desktopSig.value = f.desktop === true;
+        this.coreManagement.value = f.core_management === true;
         this.bridgeVersionSig.value = f.bridge_version;
         this.dataDirSig.value = f.data_dir;
         this.listenSig.value = typeof f.listen === "string" ? f.listen : undefined;
@@ -574,8 +589,11 @@ export class ShellboyData {
         this.setOwner(f.owner);
         if (f.owner.state === "connected") { this.notifyHints(); void this.resyncAll(); }
         break;
-      case "launcher_managed":
-        this.managedInstanceSig.value = f.instance_id;
+      case "startup_stage":
+        this.startupStage.value = f.stage;
+        return;
+      case "launcher_state":
+        this.launcher.value = f.state;
         return;
       case "launcher_diagnostic":
         this.desktopDiagnosticSig.value = f.message;
@@ -589,6 +607,7 @@ export class ShellboyData {
         if (f.event === "restarted") { this.notifyHints(); void this.resyncAll(); }
         break;
       case "resync":
+        this.coreStatusHint.value++;
         this.invalidateDeletePreviews();
         this.configChanged.value++;
         this.listHint.value++;
@@ -597,6 +616,7 @@ export class ShellboyData {
         void this.resyncAll();
         break;
       case "changed":
+        if (f.list || f.thread_ids.length) this.coreStatusHint.value++;
         if (f.thread_ids.length) this.deletionHint.value = { ids: f.thread_ids };
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
         if (f.config_changed) this.configChanged.value++;
@@ -688,7 +708,7 @@ export class ShellboyData {
 
   private flushWatch(): void {
     const watched = [...new Set([...this.entries.values()].filter((e) => !e.paused).map((e) => e.id).concat([...this.hintWatchers.keys()]))];
-    this.link.watch(watched, this.listRefs > 0);
+    this.link.watch(watched, this.listRefs > 0 || this.coreStatusRefs > 0);
   }
 
   // ---- reads ----

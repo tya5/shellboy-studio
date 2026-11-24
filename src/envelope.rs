@@ -85,9 +85,13 @@ pub enum ServerFrame {
         owner: OwnerState,
         #[serde(skip_serializing_if = "Option::is_none")]
         desktop: Option<bool>,
+        core_management: bool,
     },
-    LauncherManaged {
-        instance_id: Option<String>,
+    LauncherState {
+        state: crate::launcher::State,
+    },
+    StartupStage {
+        stage: Option<shellboy::app::StartupStage>,
     },
     LauncherDiagnostic {
         message: Option<String>,

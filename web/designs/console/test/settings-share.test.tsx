@@ -72,9 +72,9 @@ it.each([false, true])("imports an exported profile and opens a conversation (ex
     expect(host.textContent).toContain('First conversation: proxy / chat');
     expect(host.textContent).toContain('A key is available; the provider has not verified it.');
     expect(select("Restart owner")).toBeUndefined();
-    await step(() => f.t.push({ t: "launcher_managed", instance_id: "i1" }));
+    await step(() => f.t.push({ t: "launcher_state", state: { phase: "running", instance_id: "i1", ready_at_ms: null, automatic_restart_available: true, restarted_after: null, failure: null } }));
     await step(() => select("Restart owner").click());
-    expect(f.t.sent).toContainEqual({ t: "launcher", action: "restart", instance_id: "i1" });
+    expect(f.model.route.value).toEqual({ view: "settings", section: "core" });
     const start = host.querySelector('a[href="#/conversation"]');
     expect(start?.textContent).toBe("Start a conversation");
     await act(async () => { f.model.applyRoute(parseRoute(start!.getAttribute("href")!)); void f.model.createThread(); await settle(f.t, f.db); });

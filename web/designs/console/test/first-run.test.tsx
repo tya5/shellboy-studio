@@ -69,9 +69,9 @@ it.each([404, 405, 200, 401, 204])('catalog HTTP %s only permits manual model sa
     expect(f.t.calls('config.set')[0]?.args).toMatchObject({ changes: expect.arrayContaining([{ field: 'default_model', value: 'company/chat' }]) });
     expect(f.t.calls('credentials.set')).toHaveLength(1);
     expect(button(host, 'Restart owner')).toBeUndefined();
-    await step(() => f.t.push({ t: 'launcher_managed', instance_id: 'i1' }));
+    await step(() => f.t.push({ t: "launcher_state", state: { phase: "running", instance_id: "i1", ready_at_ms: null, automatic_restart_available: true, restarted_after: null, failure: null } }));
     await step(() => button(host, 'Restart owner').click());
-    expect(f.t.sent).toContainEqual({ t: 'launcher', action: 'restart', instance_id: 'i1' });
+    expect(f.model.route.value).toEqual({ view: "settings", section: "core" });
   });
 });
 

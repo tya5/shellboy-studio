@@ -87,7 +87,9 @@ On macOS, manage or approve the app in **System Settings > General > Login Items
 
 Closing the browser tab does not stop Studio. Use **Quit Studio** to stop the bridge and request a normal shutdown of the Core child it started. Studio force-terminates that child only if shutdown fails or it does not exit within the grace period. An independently started Core keeps running.
 
-If a bundled Core crashes after it is ready, Studio tries one immediate automatic restart per launch or manual start. Becoming ready again does not reset the allowance. A second crash shows the last failure; use **Restart owner** to try again. A clean exit or failure before initial readiness is not retried. **Restart owner** checks for an already running owner before starting Core; Studio doesn't stop or automatically restart an independent owner. For diagnostics, see `studio.log` and `owner.log` under `~/Library/Application Support/shellboy-studio` on macOS or `%APPDATA%\shellboy-studio` on Windows. Don't share tokens or private log contents.
+Open **Settings › Core** from the desktop status bar or the banner shown when Core is starting, stopped, or unable to start. Startup shows the last stage reported by Core, not a percentage or finish time. **Running now** links to the work’s Thread; a shell opens Activity. **Restart owner** or **Stop Core** confirms when Runs or shells are running. Interrupted Runs do not resume. **Start Core** starts the bundled owner again. An explicit Stop or Restart never triggers automatic restart. After an unexpected exit following readiness, Studio tries once; a manual Start or Restart resets that allowance.
+
+For an independently started Core, the page offers **Stop Core** and a terminal start command but does not restart it. If a TUI-hosted Core refuses shutdown, quit the TUI in its terminal. **Restart pending** lists only settings saved in this tab that Core marked as requiring a restart. For diagnostics, see `studio.log` and `owner.log` under `~/Library/Application Support/shellboy-studio` on macOS or `%APPDATA%\shellboy-studio` on Windows. Don't share tokens or private log contents.
 
 ## Open on another device
 
@@ -201,7 +203,9 @@ macOS では **システム設定 > 一般 > ログイン項目と機能拡張 >
 
 ブラウザのタブを閉じても Studio は停止しません。**終了** は Studio を止め、Studio が起動した Core に通常終了を要求します。要求に失敗した場合や猶予時間内に終了しない場合だけ強制終了します。別途起動したオーナーはそのまま動きます。
 
-同梱 Core が準備完了後に異常終了した場合、Studio の起動または手動で起動し直してから一度だけ、すぐに自動再起動します。再び準備完了になっても回数は戻りません。次に失敗したら最後のエラーを表示するので **オーナーを再起動** を選んでください。正常終了や最初の準備完了前の失敗では自動再起動しません。**オーナーを再起動** は稼働中のオーナーを先に確認し、Studio が起動していないオーナーを停止・自動再起動しません。診断ログ `studio.log` と `owner.log` は macOS では `~/Library/Application Support/shellboy-studio`、Windows では `%APPDATA%\shellboy-studio` にあります。トークンや非公開ログを共有しないでください。
+デスクトップのステータスバー、または起動中・停止中・起動失敗時に表示されるバナーから **設定 › Core** を開きます。起動中は Core が最後に報告した段階を表示し、進捗率や残り時間は表示しません。**実行中の作業** の行を選ぶと、そのスレッドを開きます。シェルの場合は右パネルの「動作」も開きます。実行中の Run やシェルがある場合、**オーナーを再起動** または **Core を停止** の前に確認します。中断された Run は再開されません。**Core を起動** で同梱 Core を起動できます。明示的な停止や再起動では自動再起動しません。準備完了後の予期しない終了に対して自動再起動は一度だけで、手動で起動または再起動すると回数が戻ります。
+
+別途起動した Core には **Core を停止** と端末で起動するコマンドを表示しますが、Studio は再起動しません。TUI が停止を拒否した場合は、その端末で TUI を終了してください。**再起動待ち** には、このタブで保存した設定のうち、Core が再起動を必要と判定したものだけを表示します。診断ログ `studio.log` と `owner.log` は macOS では `~/Library/Application Support/shellboy-studio`、Windows では `%APPDATA%\shellboy-studio` にあります。トークンや非公開ログを共有しないでください。
 
 ### スマホなど別の端末で開く
 

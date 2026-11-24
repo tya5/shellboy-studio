@@ -34,14 +34,27 @@ export interface OwnerResponse {
   error?: ApiError;
 }
 
+export const STARTUP_STAGES = ["configuration", "owner_lock", "database", "database_pragmas", "database_migration", "database_validate", "database_foreign_keys", "database_quick_check", "interrupted_work", "control", "endpoint", "closing"] as const;
+export type StartupStage = typeof STARTUP_STAGES[number];
+const launcherPhases = ["starting", "running", "stopping", "stopped", "exited", "failed", "external"] as const;
+export interface LauncherState {
+  phase: typeof launcherPhases[number];
+  instance_id: string | null;
+  ready_at_ms: number | null;
+  automatic_restart_available: boolean;
+  restarted_after: string | null;
+  failure: string | null;
+}
+export type LauncherAction = "start" | "stop" | "restart" | "exit";
+
 export type ClientFrame =
   | { t: "call"; id: number; command: string; args?: unknown; operation_id?: string }
   | { t: "watch"; thread_ids: string[]; list: boolean }
   | { t: "cancel"; id: number }
-  | { t: "launcher"; action: "restart" | "exit"; instance_id?: string };
+  | { t: "launcher"; action: LauncherAction; instance_id?: string };
 
 export type ServerFrame =
-  | { t: "hello"; bridge_version: string; listen?: string; apps_dir?: string | null; data_dir?: string; owner: OwnerState; desktop?: boolean }
+  | { t: "hello"; bridge_version: string; listen?: string; apps_dir?: string | null; data_dir?: string; owner: OwnerState; desktop?: boolean; core_management?: boolean }
   | { t: "result"; id: number; response?: OwnerResponse; error?: BridgeError }
   | { t: "changed"; thread_ids: string[]; list: boolean; config_changed: boolean }
   | { t: "live"; thread_id: string; attempt_id: string; input_through_node_id?: string | null; gap: boolean; deltas: { offset: number; reasoning: boolean; text: string }[] }
@@ -50,7 +63,8 @@ export type ServerFrame =
   | { t: "resync" }
   | { t: "owner"; event: OwnerEvent; owner: OwnerState }
   | { t: "error"; error: BridgeError }
-  | { t: "launcher_managed"; instance_id: string | null }
+  | { t: "launcher_state"; state: LauncherState }
+  | { t: "startup_stage"; stage: StartupStage | null }
   | { t: "launcher_diagnostic"; message: string | null };
 
 export type ParsedFrame = { ok: true; frame: ServerFrame } | { ok: false; reason: string; code?: "frame_too_large" };
@@ -127,8 +141,16 @@ export function parseServerFrame(text: string): ParsedFrame {
       return { ok: true, frame: v as unknown as ServerFrame };
     case "resync":
       return { ok: true, frame: { t: "resync" } };
-    case "launcher_managed":
-      if (v.instance_id !== null && typeof v.instance_id !== "string") return bad("bad fields");
+    case "launcher_state": {
+      const state = v.state;
+      if (!isObject(state) || !launcherPhases.some(phase => phase === state.phase)
+        || ![state.instance_id, state.restarted_after, state.failure].every(x => x === null || typeof x === "string")
+        || !(state.ready_at_ms === null || Number.isSafeInteger(state.ready_at_ms))
+        || typeof state.automatic_restart_available !== "boolean") return bad("bad fields");
+      return { ok: true, frame: v as unknown as ServerFrame };
+    }
+    case "startup_stage":
+      if (v.stage !== null && !STARTUP_STAGES.some(stage => stage === v.stage)) return bad("bad fields");
       return { ok: true, frame: v as unknown as ServerFrame };
     case "launcher_diagnostic":
       if (v.message !== null && typeof v.message !== "string") return bad("bad fields");
@@ -300,6 +322,7 @@ export interface ThreadDetails {
 export interface ResponseNodeRef { ordinal: number; item_id?: string | null; kind: string; phase?: string | null; node_id: string }
 
 export interface WorkItem {
+  thread_title?: string;
   attempt_id?: string | null;
   turn_id?: string | null;
   response_nodes?: ResponseNodeRef[];

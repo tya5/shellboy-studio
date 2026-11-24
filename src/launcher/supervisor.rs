@@ -41,6 +41,17 @@ impl RestartState {
         }
     }
 
+    pub(super) fn explicit_exit(&mut self, restart: bool) -> bool {
+        if restart {
+            self.manual_start();
+        }
+        restart
+    }
+
+    pub(super) fn available(&self) -> bool {
+        self.automatic_restart_available
+    }
+
     pub(super) fn manual_start(&mut self) {
         self.automatic_restart_available = true;
     }
@@ -151,6 +162,28 @@ mod tests {
             state.exited(false, ChildExit::BeforeReady("bad config".into())),
             Decision::ShowFailure("bad config".into())
         );
+    }
+
+    #[test]
+    fn explicit_stop_never_spawns_and_explicit_restart_restores_one_crash_retry() {
+        let mut state = RestartState::new();
+        let crash = || ChildExit::Crash("fixture exit".into());
+        assert!(matches!(
+            state.exited(true, crash()),
+            Decision::Retry { .. }
+        ));
+        assert!(!state.explicit_exit(false));
+        assert!(!state.available());
+        assert!(state.explicit_exit(true));
+        assert!(state.available());
+        assert!(matches!(
+            state.exited(true, crash()),
+            Decision::Retry { .. }
+        ));
+        assert!(matches!(
+            state.exited(true, crash()),
+            Decision::ShowFailure(_)
+        ));
     }
 
     #[test]
