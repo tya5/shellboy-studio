@@ -5,9 +5,9 @@ import { Icon } from "../Icon";
 import { Button } from "../Button";
 import { ButtonGroup } from "../ButtonGroup";
 
-export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; allowWhitespace?: boolean; above?: ComponentChildren; interrupt?: { label: string; run: () => void }; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
+export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; allowWhitespace?: boolean; above?: ComponentChildren; routing?: Omit<Parameters<typeof ComposerRouting>[0], "target" | "onTarget">; interrupt?: { label: string; run: () => void }; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; onDraftTarget?: (target: string) => void; start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
   const [, renderDraft] = useState(0);
-  const drafts = useRef(new Map<string | undefined, string>());
+  const drafts = useRef(new Map<string | undefined, { text: string; target: string }>());
   const textarea = useRef<HTMLTextAreaElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
   const removingFocusedStop = !props.stop && stopButton.current
@@ -20,27 +20,42 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
   const latestScope = useRef(props.draftScope);
   const scopeGeneration = useRef(0);
   if (latestScope.current !== props.draftScope) { latestScope.current = props.draftScope; scopeGeneration.current++; }
-  const text = drafts.current.get(props.draftScope) ?? "";
+  const draft = drafts.current.get(props.draftScope) ?? { text: "", target: "model" };
+  const text = draft.text;
   const updateDraft = (value: string) => {
     const scope = props.draftScope;
-    if ((drafts.current.get(scope) ?? "") === value) return;
+    const current = drafts.current.get(scope) ?? { text: "", target: "model" };
+    if (current.text === value) return;
     drafts.current.delete(scope);
-    if (value !== "") drafts.current.set(scope, value);
+    if (value !== "" || current.target !== "model") drafts.current.set(scope, { ...current, text: value });
     if (drafts.current.size > 16) drafts.current.delete(drafts.current.keys().next().value);
     renderDraft(++generation.current);
   };
+  const setDraftTarget = (target: string) => {
+    const scope = props.draftScope;
+    const current = drafts.current.get(scope) ?? { text: "", target: "model" };
+    drafts.current.delete(scope);
+    if (current.text !== "" || target !== "model") drafts.current.set(scope, { ...current, target });
+    if (drafts.current.size > 16) drafts.current.delete(drafts.current.keys().next().value);
+    props.onDraftTarget?.(target);
+    renderDraft(++generation.current);
+  };
+  useLayoutEffect(() => { props.onDraftTarget?.(draft.target); }, [props.draftScope]);
   const status=props.draftStatus?.(text);
   const hasContent = text.length > 0 && (props.allowWhitespace === true || text.trim() !== "");
   const submitting = useRef(false);
   const submit = async () => {
     const submittedScope = props.draftScope;
-    const submittedText = drafts.current.get(submittedScope) ?? "";
+    const submittedDraft = drafts.current.get(submittedScope) ?? { text: "", target: "model" };
+    const submittedText = submittedDraft.text;
     if (submitting.current || !props.canSend || props.draftStatus?.(submittedText).blocked || props.busy || submittedText.length === 0 || (!props.allowWhitespace && submittedText.trim() === "")) return;
     const submittedGeneration = generation.current;
     const submittedScopeGeneration = scopeGeneration.current;
     const clearOriginal = () => {
       if (generation.current !== submittedGeneration || latestScope.current !== submittedScope || scopeGeneration.current !== submittedScopeGeneration) return;
-      updateDraft("");
+      drafts.current.delete(submittedScope);
+      props.onDraftTarget?.("model");
+      renderDraft(++generation.current);
       if (textarea.current) textarea.current.value = "";
     };
     submitting.current = true;
@@ -59,7 +74,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
   };
   return (
     <div class="composer-root">
-      {props.above ? <div class="composer-above">{props.above}</div> : null}
+      {props.routing ? <div class="composer-above"><ComposerRouting {...props.routing} target={draft.target} onTarget={setDraftTarget} /></div> : props.above ? <div class="composer-above">{props.above}</div> : null}
       <textarea
         ref={textarea}
         id="composer"

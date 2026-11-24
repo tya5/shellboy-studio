@@ -30,7 +30,7 @@ import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } fro
 import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, projectStderrLines, type OutputLine, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, CopyButton, IconButton, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow, ComposerRouting } from "../system/components";
+import { BranchMark, Button, CopyButton, IconButton, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
 
 type OpenThreadSettings = (field: SettingsDestination["field"]) => void;
 
@@ -976,7 +976,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
     const bForeground = details?.turn_id !== undefined && b.turn_id === details.turn_id;
     return Number(bForeground) - Number(aForeground) || (b.started_at ?? "").localeCompare(a.started_at ?? "");
   });
-  const [shellTargets, setShellTargets] = useState<Record<string, string | undefined>>({});
+  const [shellTarget, setShellTarget] = useState<string | undefined>(undefined);
   const [delivery, setDelivery] = useState<"next" | "now">("next");
   const [shellStopTarget, setShellStopTarget] = useState<{ executionId: string; command: string }>();
   const shellStopReturnFocus = useRef<HTMLElement | null>(null);
@@ -984,12 +984,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
     shellStopReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setShellStopTarget(target);
   };
-  const currentTarget = handle ? shellTargets[handle.threadId] : undefined;
-  const setShellTarget = (target: string | undefined) => {
-    if (!handle) return;
-    const threadId = handle.threadId;
-    setShellTargets(previous => ({ ...previous, [threadId]: target }));
-  };
+  const currentTarget = shellTarget;
   const selectedShell = typeof currentTarget === "string" && currentTarget !== "model" ? activeShells.find(shell => shell.execution_id === currentTarget) : undefined;
   const unavailableShellTarget = typeof currentTarget === "string" && currentTarget !== "model" && selectedShell === undefined;
   useLayoutEffect(() => {
@@ -1071,13 +1066,13 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             busy={send.kind === "sending"}
             allowWhitespace={selectedShell !== undefined}
             draftScope={handle.threadId}
-            above={<ComposerRouting label={t("composer.sendInputTo")} modelLabel={t("composer.modelTarget")} target={currentTarget ?? "model"}
-              shells={activeShells.map(shell => ({ id: shell.execution_id, command: shell.command_excerpt || t("composer.shellTarget") }))}
-              unavailableTarget={unavailableShellTarget ? t("composer.shellUnavailable") : undefined}
-              onTarget={value => setShellTarget(value === "model" ? "model" : value)}
-              eof={selectedShell ? { label: `${t("composer.sendEof")}: ${selectedShell.command_excerpt || t("composer.shellTarget")}`, run: () => void model.sendShellEof(selectedShell.execution_id) } : undefined}
-              timingLabel={t("composer.sendTiming")} timing={delivery} timingDisabled={selectedShell !== undefined}
-              onTiming={setDelivery} nextLabel={t("composer.nextBoundary")} nowLabel={t("composer.now")} nextExplanation={t("composer.nextBoundaryHelp")} nowExplanation={t("composer.nowHelp")} />}
+            onDraftTarget={value => setShellTarget(value === "model" ? undefined : value)}
+            routing={{ label: t("composer.sendInputTo"), modelLabel: t("composer.modelTarget"),
+              shells: activeShells.map(shell => ({ id: shell.execution_id, command: shell.command_excerpt || t("composer.shellTarget") })),
+              unavailableTarget: unavailableShellTarget ? t("composer.shellUnavailable") : undefined,
+              eof: selectedShell ? { label: `${t("composer.sendEof")}: ${selectedShell.command_excerpt || t("composer.shellTarget")}`, run: () => void model.sendShellEof(selectedShell.execution_id) } : undefined,
+              timingLabel: t("composer.sendTiming"), timing: delivery, timingDisabled: selectedShell !== undefined,
+              onTiming: setDelivery, nextLabel: t("composer.nextBoundary"), nowLabel: t("composer.now"), nextExplanation: t("composer.nextBoundaryHelp"), nowExplanation: t("composer.nowHelp") }}
             onSend={(text,onReserved) => selectedShell ? model.sendShellInput(selectedShell.execution_id,text) : unavailableShellTarget ? Promise.resolve(false) : model.send(text,onReserved,delivery)}
             interrupt={model.details.value?.turn_id ? { label: t("composer.interruptTurn"), run: () => void model.interruptTurn() } : undefined}
             stop={model.canStop.value ? { label: t("composer.stop"), run: () => void model.stop() } : undefined}

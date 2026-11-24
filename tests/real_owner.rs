@@ -393,7 +393,7 @@ async fn hints_and_restart_against_a_real_owner() {
     let first_instance = first.instance.clone();
 
     let owner = Arc::new(IpcOwner::new(data.clone()));
-    let (addr, state, cancel) = start(owner, true).await;
+    let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
     let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
     request
@@ -671,12 +671,62 @@ impl Client {
         assert_eq!(reply["response"]["ok"], true, "{command}: {reply}");
         reply["response"]["result"].clone()
     }
-    /// A Thread's activity word, from the saved list.
-    async fn wait_shell_fact<F>(&mut self, thread: &str, execution: &str, mut ready: F) -> Value
+    async fn event_cursor(owner: &IpcOwner) -> String {
+        let response = owner
+            .call(
+                shellboy::protocol::Command::EventsWait(shellboy::protocol::EventsWaitArgs {
+                    after: None,
+                    thread_ids: vec![],
+                    timeout_ms: 0,
+                    include_text: false,
+                    include_reasoning_activity: false,
+                }),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        serde_json::to_value(response).unwrap()["result"]["cursor"]
+            .as_str()
+            .expect("owner event cursor")
+            .to_owned()
+    }
+
+    async fn wait_owner_change(owner: &IpcOwner, thread: &str, cursor: &mut String) {
+        let response = owner
+            .call(
+                shellboy::protocol::Command::EventsWait(shellboy::protocol::EventsWaitArgs {
+                    after: Some(cursor.clone()),
+                    thread_ids: vec![thread.to_owned()],
+                    timeout_ms: 10_000,
+                    include_text: false,
+                    include_reasoning_activity: false,
+                }),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["ok"], true, "{value}");
+        *cursor = value["result"]["cursor"]
+            .as_str()
+            .expect("owner event cursor")
+            .to_owned();
+    }
+
+    async fn wait_shell_fact<F>(
+        &mut self,
+        owner: &IpcOwner,
+        thread: &str,
+        execution: &str,
+        mut ready: F,
+    ) -> Value
     where
         F: FnMut(&Value) -> bool,
     {
         tokio::time::timeout(Duration::from_secs(10), async {
+            let mut cursor = Self::event_cursor(owner).await;
             loop {
                 let listed = self
                     .ok("shell.list", json!({"thread_id":thread,"limit":20}), None)
@@ -688,7 +738,7 @@ impl Client {
                 {
                     return item.clone();
                 }
-                tokio::task::yield_now().await;
+                Self::wait_owner_change(owner, thread, &mut cursor).await;
             }
         })
         .await
@@ -697,17 +747,44 @@ impl Client {
         })
     }
 
-    async fn wait_turn_state<F>(&mut self, turn: &str, mut ready: F) -> Value
+    async fn wait_running_shell(&mut self, owner: &IpcOwner, thread: &str) -> Value {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let mut cursor = Self::event_cursor(owner).await;
+            loop {
+                let listed = self
+                    .ok("shell.list", json!({"thread_id":thread,"limit":20}), None)
+                    .await;
+                if let Some(item) = listed["items"]
+                    .as_array()
+                    .and_then(|items| items.iter().find(|item| item["state"] == "running"))
+                {
+                    return item.clone();
+                }
+                Self::wait_owner_change(owner, thread, &mut cursor).await;
+            }
+        })
+        .await
+        .expect("owner must publish an interactive running shell within the deadline")
+    }
+
+    async fn wait_turn_state<F>(
+        &mut self,
+        owner: &IpcOwner,
+        thread: &str,
+        turn: &str,
+        mut ready: F,
+    ) -> Value
     where
         F: FnMut(&Value) -> bool,
     {
         tokio::time::timeout(Duration::from_secs(10), async {
+            let mut cursor = Self::event_cursor(owner).await;
             loop {
                 let got = self.ok("turn.get", json!({"turn_id":turn}), None).await;
                 if ready(&got) {
                     return got;
                 }
-                tokio::task::yield_now().await;
+                Self::wait_owner_change(owner, thread, &mut cursor).await;
             }
         })
         .await
@@ -957,7 +1034,7 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     let op = |n: &str| Some(format!("{instance}:web-it-{n}"));
 
     let owner = Arc::new(IpcOwner::new(data.clone()));
-    let (addr, state, cancel) = start(owner, true).await;
+    let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
     let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
     request
@@ -1352,7 +1429,7 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
     let instance = serve.instance.clone();
     let op = |n: &str| Some(format!("{instance}:web-it-{n}"));
     let owner = Arc::new(IpcOwner::new(data.clone()));
-    let (addr, state, cancel) = start(owner, true).await;
+    let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
     let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
     request
@@ -1466,7 +1543,7 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
     let instance = serve.instance.clone();
     let op = |n: &str| Some(format!("{instance}:web-config-{n}"));
     let owner = Arc::new(IpcOwner::new(data.clone()));
-    let (addr, state, cancel) = start(owner, true).await;
+    let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
     let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
     request
@@ -1706,7 +1783,7 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
     let op = |n: &str| Some(format!("{instance}:web-live-{n}"));
 
     let owner = Arc::new(IpcOwner::new(data.clone()));
-    let (addr, state, cancel) = start(owner, true).await;
+    let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
     let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
     request
@@ -2044,7 +2121,7 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let url = intervention_provider(gate.clone(), continued_tx).await;
     let serve = start_owner_with(&bin, &root, &data, &url);
     let owner = Arc::new(IpcOwner::new(data.clone()));
-    let (addr, state, cancel) = start(owner, true).await;
+    let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
     let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
     request
@@ -2073,23 +2150,9 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
             Some(format!("{}:intervene-send", serve.instance)),
         )
         .await;
-    let execution = tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            let listed = client
-                .ok("shell.list", json!({"thread_id":thread,"limit":20}), None)
-                .await;
-            if let Some(item) = listed["items"].as_array().and_then(|items| {
-                items
-                    .iter()
-                    .find(|item| item["state"] == "running" && item["stdin_open"] == true)
-            }) {
-                break item["execution_id"].as_str().unwrap().to_owned();
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("owner must publish an interactive running shell within the deadline");
+    let started = client.wait_running_shell(owner.as_ref(), &thread).await;
+    let execution = started["execution_id"].as_str().unwrap().to_owned();
+    let mut shell_cursor = Client::event_cursor(owner.as_ref()).await;
     let wrote = client
         .ok(
             "shell.write",
@@ -2114,7 +2177,7 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
             {
                 break read;
             }
-            tokio::task::yield_now().await;
+            Client::wait_owner_change(owner.as_ref(), &thread, &mut shell_cursor).await;
         }
     })
     .await
@@ -2131,7 +2194,9 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
         .await;
     assert_eq!(eof["accepted"], true, "{eof}");
     let closed = client
-        .wait_shell_fact(&thread, &execution, |item| item["stdin_open"] == false)
+        .wait_shell_fact(owner.as_ref(), &thread, &execution, |item| {
+            item["stdin_open"] == false
+        })
         .await;
     assert_eq!(
         closed["state"], "running",
@@ -2163,11 +2228,15 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     assert_eq!(interrupted["requested"], true, "{interrupted}");
     assert_eq!(interrupted["turn_id"], turn);
     let stopped_turn = client
-        .wait_turn_state(&turn, |item| item["state"] == "stopped")
+        .wait_turn_state(owner.as_ref(), &thread, &turn, |item| {
+            item["state"] == "stopped"
+        })
         .await;
     assert_eq!(stopped_turn["thread_id"], thread);
     let still_running = client
-        .wait_shell_fact(&thread, &execution, |item| item["state"] == "running")
+        .wait_shell_fact(owner.as_ref(), &thread, &execution, |item| {
+            item["state"] == "running"
+        })
         .await;
     assert_eq!(
         still_running["execution_id"], execution,
@@ -2178,7 +2247,7 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
         .await;
     assert_eq!(stopped["accepted"], true, "{stopped}");
     let stopped_shell = client
-        .wait_shell_fact(&thread, &execution, |item| {
+        .wait_shell_fact(owner.as_ref(), &thread, &execution, |item| {
             matches!(item["state"].as_str(), Some("stopped" | "exited"))
         })
         .await;

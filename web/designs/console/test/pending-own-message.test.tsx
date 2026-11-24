@@ -2,6 +2,7 @@
 import '@preact/signals';
 import {signal} from '@preact/signals-core';
 import {render} from 'preact';
+import {useState} from 'preact/hooks';
 import {act} from 'preact/test-utils';
 import {describe,expect,it} from 'vitest';
 import {fixtureConversation,fixtureModel} from '../../../ui-core/test/fixture';
@@ -408,7 +409,7 @@ it('recomputes local byte hint from the edited draft without reservation or clea
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  const scope=f.model.ownMutationScope();
  f.model.acceptedOwnMessages.value=[{threadId:'lead',scope,operationId:'retained',text:'x'.repeat(4194301),phase:'accepted',plainMessageSend:true,clientOrdinal:1}];
- const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend busy={false} draftScope={scope} draftStatus={text=>{const reason=f.model.localSendAdmission(text);return {blocked:reason!=='ready',hint:reason};}} onSend={(text,notify)=>f.model.send(text,notify)}/>,host);
+ const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend={true} busy={false} allowWhitespace={true} draftScope={scope} draftStatus={text=>{const reason=f.model.localSendAdmission(text);return {blocked:reason!=='ready',hint:reason};}} onSend={(text,notify)=>f.model.send(text,notify)}/>,host);
  try{
   await act(async()=>show());const input=host.querySelector('textarea')!;
   for(const [text,reason,blocked] of [['あx','bytesfull',true],['あ','ready',false],['xx','ready',false]] as const){
@@ -732,6 +733,8 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
   await act(async()=>{composer.value="printf hello\\n";composer.dispatchEvent(new Event("input",{bubbles:true}));composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
   const write=f.t.calls("shell.write").at(-1)!;expect(write.args).toMatchObject({execution_id:"exec-2",text:"printf hello\\n",encoding:"UTF-8"});
   f.db.answered.add(write.id);await act(async()=>{f.t.ok(write.id,{});await flush(8);});
+  expect(target.value).toBe("model");
+  await act(async()=>{target.value="exec-2";target.dispatchEvent(new Event("change",{bubbles:true}));await flush();});
   await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Send EOF: python -m http.server"]')!.click();await flush(8);});
   const eof=f.t.calls("shell.eof").at(-1)!;expect(eof.args).toMatchObject({execution_id:"exec-2"});
   f.db.answered.add(eof.id);await act(async()=>{f.t.ok(eof.id,{});await flush(8);});
@@ -818,4 +821,31 @@ it("keeps a shell draft blocked when its owner fact disappears until explicit re
   await act(async()=>{composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
   expect(f.t.calls("message.send").at(-1)?.args).toMatchObject({text:"do not send to a different recipient"});
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+
+it("Composer resets a draft's destination after send and bounded eviction", async () => {
+ const host=document.createElement("div");document.body.append(host);
+ let accepted: string[]=[];
+ function Harness(){
+  const [scope,setScope]=useState("thread-0");
+  return <><button aria-label="Next scope" onClick={()=>setScope(value=>`thread-${Number(value.slice(7))+1}`)}>Next</button><Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend={true} busy={false} allowWhitespace={true} draftScope={scope} onSend={async text=>{accepted.push(text);return true}} routing={{label:"Send input to:",modelLabel:"Model",shells:[{id:"shell-1",command:"sleep 30"}],timingLabel:"Send timing",timing:"next",onTiming:()=>{},nextLabel:"Next boundary",nowLabel:"Now",nextExplanation:"Next",nowExplanation:"Now"}} /></>;
+ }
+ try{
+  await act(async()=>{render(<Harness/>,host);await flush();});
+  const chooseShell=async()=>{const select=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;select.value="shell-1";select.dispatchEvent(new Event("change",{bubbles:true}));await flush();};
+  await act(async()=>{await chooseShell();});
+  const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
+  await act(async()=>{composer.value="send to shell";composer.dispatchEvent(new Event("input",{bubbles:true}));await flush();expect(composer.value).toBe("send to shell");composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(4);});
+  expect(accepted).toEqual(["send to shell"]);
+  expect(host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!.value).toBe("model");
+  await act(async()=>{await chooseShell();composer.value="draft to shell";composer.dispatchEvent(new Event("input",{bubbles:true}));await flush();});
+  for(let index=0;index<17;index++){
+   await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Next scope"]')!.click();await flush();});
+   await act(async()=>{await chooseShell();const field=host.querySelector<HTMLTextAreaElement>("#composer")!;field.value=`draft ${index}`;field.dispatchEvent(new Event("input",{bubbles:true}));await flush();});
+  }
+  for(let index=0;index<17;index++)await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Next scope"]')!.click();await flush();});
+  expect(host.querySelector<HTMLTextAreaElement>("#composer")!.value).toBe("");
+  expect(host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!.value).toBe("model");
+ }finally{render(null,host);host.remove();}
 });
