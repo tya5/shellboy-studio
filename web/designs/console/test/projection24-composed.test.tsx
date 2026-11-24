@@ -1,3 +1,5 @@
+import "@preact/signals";
+
 import {publicConversationFixture,CurrentSavedView} from './conversation-fixture';
 import {settle,flush} from '../../../data/test/harness';
 // @vitest-environment happy-dom

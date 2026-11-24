@@ -18,10 +18,10 @@ import type { ComponentChildren } from "preact";
 import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
 import { ConversationItems, type ConversationItem, type ConversationToolSummary, type ConversationWorkGroup } from "./ConversationItems";
 import { ConversationCharacter } from "../system/components";
-import { effect } from "@preact/signals-core";
+import { computed, effect } from "@preact/signals-core";
 import { memo } from "preact/compat";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, outputExcerpt, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
@@ -343,21 +343,16 @@ export function ConversationStatus({ model }: { model: AppModel }) {
 export const Output = memo(function Output({ model, id, command, complete, boxed }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean }) {
   const [raw, setRaw] = useState(false);
   const t = model.t.value;
-  const output = useMemo(() => model.outputState(id), [model, id]);
-  const [out, setOut] = useState(output.peek());
-  useLayoutEffect(() => {
-    setOut(output.peek());
-    return output.subscribe(() => setOut(output.peek()));
-  }, [output]);
+  const output = useMemo(() => computed(() => model.outputs.value.get(id)), [model, id]);
+  const out = output.value;
   if (!out || (out.loading && out.text === "")) return <div class="log muted">{t("details.outputLoading")}</div>;
   if (out.error && out.text === "") return <div class="log muted">{t("details.outputError", { message: out.error })}</div>;
-  const displayText = outputExcerpt(out.text);
-  const rendered = out.error ? undefined : renderOutput({ command, text: displayText, complete: complete && !out.loading && !out.cutOff });
+  const rendered = out.error ? undefined : renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff });
   return (
     <>
-      <Button onClick={() => { void navigator.clipboard.writeText(rendered && !raw ? rendered.lines.map((line) => line.text).join("\n") : out.text).catch(() => {}); }}>{t("code.copy")}</Button>
+      <Button onClick={() => { void navigator.clipboard.writeText(out.text).catch(() => {}); }}>{t("code.copy")}</Button>
       {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
-      {rendered && !raw ? <pre class={boxed ? "log boxed" : "log"} tabIndex={0}>{rendered.lines.map((line, i) => <span key={i} class={`output-${line.kind}`}>{line.text}{i < rendered.lines.length - 1 ? "\n" : ""}</span>)}</pre> : <LogBlock text={displayText === "" ? t("details.outputEmpty") : displayText} boxed={boxed ?? false} />}
+      {rendered && !raw ? <pre class={boxed ? "log boxed" : "log"} tabIndex={0}>{rendered.lines.map((line, i) => <span key={i} class={`output-${line.kind}`}>{line.text}{i < rendered.lines.length - 1 ? "\n" : ""}</span>)}</pre> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}
       {out.error ? <div class="caption muted">{t("details.outputError", { message: out.error })}</div> : null}
       {out.cutOff ? <div class="caption muted">{t("details.outputMore")}</div> : null}
     </>

@@ -300,21 +300,6 @@ export class AppModel {
 
   readonly shells: Signal<ReadonlyMap<string, ShellEntry>> = signal(new Map());
   readonly outputs: Signal<ReadonlyMap<string, OutputState>> = signal(new Map());
-  private outputSignals = new Map<string, Signal<OutputState | undefined>>();
-  outputState(executionId: string): ReadonlySignal<OutputState | undefined> {
-    let state = this.outputSignals.get(executionId);
-    if (!state) { state = signal(this.outputs.peek().get(executionId)); this.outputSignals.set(executionId, state); }
-    return state;
-  }
-  private publishOutputs(next: ReadonlyMap<string, OutputState>): void {
-    batch(() => {
-      this.outputs.value = next;
-      for (const [id, state] of this.outputSignals) {
-        const value = next.get(id);
-        if (state.peek() !== value) state.value = value;
-      }
-    });
-  }
   readonly bodies: Signal<ReadonlyMap<string, BodyState>> = signal(new Map());
   private bodyReaderKeys = new WeakMap<ConversationWindow, string>();
   private bodyRouteKeys = new WeakMap<Route, string>();
@@ -1078,7 +1063,6 @@ export class AppModel {
       this.watchedOutputs.set(executionId, watch);
       void this.readOutput(executionId);
     }
-    const state = this.outputSignals.get(executionId);
     let released = false;
     return () => {
       if (released || this.watchedOutputs.get(executionId) !== watch) return;
@@ -1088,10 +1072,9 @@ export class AppModel {
       const cancel = this.outputReads.get(executionId);
       this.outputReads.delete(executionId);
       if (this.outputs.peek().get(executionId)?.loading) {
-        const next = new Map(this.outputs.peek()); next.delete(executionId); this.publishOutputs(next);
+        const next = new Map(this.outputs.peek()); next.delete(executionId); this.outputs.value = next;
       }
       cancel?.cancel();
-      if (this.outputSignals.get(executionId) === state) this.outputSignals.delete(executionId);
     };
   }
 
@@ -1113,12 +1096,12 @@ export class AppModel {
   private async readOutputPages(executionId: string, cancel: Cancel): Promise<void> {
     const cur = this.outputs.peek().get(executionId);
     // A validated empty output is still a saved result, not first-load absence.
-    if (!cur || cur.loading || cur.error !== undefined) this.publishOutputs(setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
+    if (!cur || cur.loading || cur.error !== undefined) this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
       text: cur?.text ?? "",
       loading: true,
       cutOff: cur?.cutOff ?? false,
       error: undefined,
-    }));
+    });
     let text = "";
     let cursor: string | undefined;
     let error: string | undefined;
@@ -1136,7 +1119,7 @@ export class AppModel {
           if (cur && !cur.loading && cur.error === undefined) return;
           const next = new Map(this.outputs.peek());
           next.delete(executionId);
-          this.publishOutputs(next);
+          this.outputs.value = next;
           return;
         }
         error = errorMessage(out.error);
@@ -1149,7 +1132,7 @@ export class AppModel {
     const next: OutputState = { text: error !== undefined ? (cur?.text ?? "") : text, loading: false, cutOff, error };
     const current = this.outputs.peek().get(executionId);
     if (current?.text === next.text && current.loading === next.loading && current.cutOff === next.cutOff && current.error === next.error) return;
-    this.publishOutputs(setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, next));
+    this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, next);
   }
 
   /** Read one message beyond its excerpt. On request only. */
