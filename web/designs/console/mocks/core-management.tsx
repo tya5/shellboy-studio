@@ -102,8 +102,9 @@ function Owner({ s }: { s: State }) {
 
 function WorkList({ compact }: { compact?: boolean }) {
   return <div class="panel-list cm-work" data-compact={compact || undefined}>
-    <section><ListDivider label="Runs" count={RUNS.length} />{RUNS.map(r => <ListRow key={r.id} id={r.id} title={r.title} subtitle={r.subtitle} icon="nav.conversation" onSelect={() => {}}><StatusMark status="running" word={false} label="Running" /></ListRow>)}</section>
-    <section><ListDivider label="Shells" count={SHELLS.length} />{SHELLS.map(r => <ListRow key={r.id} id={r.id} title={r.title} subtitle={r.subtitle} icon="work.command" onSelect={() => {}}><StatusMark shell status="running" word={false} label="Running" /></ListRow>)}</section>
+    {/* A row opens its Thread's conversation; a shell row also opens the right panel's Activity tab. */}
+    <section><ListDivider label="Runs" count={RUNS.length} />{RUNS.map(r => <ListRow key={r.id} id={r.id} title={r.title} subtitle={r.subtitle} icon="nav.conversation" onSelect={() => { location.hash = `#conversation/${r.id}`; }}><StatusMark status="running" word={false} label="Running" /></ListRow>)}</section>
+    <section><ListDivider label="Shells" count={SHELLS.length} />{SHELLS.map(r => <ListRow key={r.id} id={r.id} title={r.title} subtitle={r.subtitle} icon="work.command" onSelect={() => { location.hash = `#conversation/${r.id}?panel=work`; }}><StatusMark shell status="running" word={false} label="Running" /></ListRow>)}</section>
   </div>;
 }
 
@@ -111,7 +112,7 @@ function LiveWork({ s }: { s: State }) {
   const body = s.life === "running"
     ? <WorkList />
     : <p class="muted cm-plain">{s.life === "starting" ? "Shown once Core is ready." : "Nothing runs while Core is stopped. Threads show the last saved state, and messages can't be sent."}</p>;
-  return <Section title="Running now" sub={s.life === "running" ? "2 Runs and 3 shells" : undefined} actions={s.life === "running" ? <a class="nav-link" href="#monitor">Open Monitor</a> : undefined}>{body}</Section>;
+  return <Section title="Running now" sub={s.life === "running" ? "2 Runs and 3 shells. Select one to open its Thread; a shell opens with the Activity tab." : undefined}>{body}</Section>;
 }
 
 function Supervision({ s }: { s: State }) {
@@ -128,7 +129,7 @@ function Supervision({ s }: { s: State }) {
 
 function RecoveredNotice({ open }: { open?: boolean }) {
   return <Notice tone="wait" title="Core exited unexpectedly at 09:12, and Studio started it again">
-    <span>Exit: <code>exit status 101</code>. That was the one automatic start. If Core exits unexpectedly again, Studio shows why and waits for you to press Start. Runs that were running at 09:12 show "Interrupted" in the Monitor.</span>
+    <span>Exit: <code>exit status 101</code>. That was the one automatic start. If Core exits unexpectedly again, Studio shows why and waits for you to press Start. Runs that were running at 09:12 show "Interrupted" in their Thread.</span>
     <Disclosure class="cm-log" open={open}><summary>Last lines of owner.log</summary><LogBlock boxed text={"09:12:03 shell s-41 exited 0\n09:12:07 error: storage worker stopped: disk I/O error\n09:12:07 owner exiting with status 101"} /></Disclosure>
   </Notice>;
 }

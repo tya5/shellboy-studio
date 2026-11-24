@@ -44,6 +44,7 @@ The m3.material.io and developer.apple.com pages render with script. Apple's tex
 
 ## Interaction rules shown in the mock
 
+- **Running now:** lists each Run and shell. A row opens its Thread's conversation; a shell row also opens the right panel's Activity tab. No separate screen is needed.
 - **Restart:** confirm, then owner.shutdown (stop admission, save, stop work), wait for the Core process to close, then start it through the launcher. The confirmation lists the 2 Runs and 3 shells that stop and says that stopped Runs show "Interrupted by app exit" and don't resume. It also says the restart never triggers the automatic start and makes that start available again. The action is primary, not destructive-styled, because it is the person's deliberate choice (HIG). Cancel is first and focused, and outside clicks don't dismiss (the ThreadDeleteDialog convention).
 - **Stop:** the same list. It says Core stays stopped until Start and that the stop never triggers the automatic start. The action is `warn`, because it ends work and nothing comes back by itself.
 - **Confirmation only when work would stop:** with nothing running, Restart and Stop act without a dialog (HIG: no alert for an action people can reverse). This is the only condition.
