@@ -9,10 +9,11 @@ import { DESIGNS } from '../../../registry';
 const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
 const ownSendFixture = params.get('view') === 'own-send';
+const cpuStatusFixture = params.get('view') === 'cpu-status';
 const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
 const sectionGeometryFixture = params.get('view') === 'section-geometry';
-const fixtureOptions = sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
+const fixtureOptions = cpuStatusFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const initialRoute = parseRoute(location.hash);
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, route: initialRoute.view, ...(initialRoute.view === 'conversation' && initialRoute.threadId ? { threadId: initialRoute.threadId } : {}), configure(db) {
@@ -22,6 +23,25 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, route: initialR
     db.threads.hold = { ...db.threads.hold!, title: 'Waiting — next review window' };
     db.threads.done = { ...db.threads.done!, title: 'Completed — inspect storage' };
     db.replies = [pendingReply('mark-question', 'child', {kind:'name',name:'human'}, 'Review query path?')];
+  }
+  if (cpuStatusFixture) {
+    const active = params.get('active') === '1';
+    const count = Math.max(0, Math.min(8, Number(params.get('marks') ?? 2)));
+    const otherCount = active ? Math.max(0, count - 1) : count;
+    db.threads = { lead: summary('lead', { title: active ? 'Running synthetic conversation' : 'Idle synthetic conversation', cwd: '/fixture/cpu', state: active ? 'running' : 'completed', activity: active ? 'tools' : 'completed' }) };
+    for (let i = 0; i < otherCount; i++) {
+      const id = `cpu-running-${i}`;
+      db.threads[id] = summary(id, { title: `Synthetic running Thread ${i + 1}`, cwd: '/fixture/cpu', state: 'running', activity: 'tools' });
+    }
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id, { run_id: active ? 'run-cpu-lead' : undefined });
+    if (active) {
+      if (params.get('context') === '1') db.details.lead = { ...db.details.lead!, summarizing: true, context_usage: { last_successful_attempt: { input_tokens: 42000 } } };
+      db.work.lead = [{ kind: 'shell', id: 'cpu-active-shell', thread_id: 'lead', run_id: 'run-cpu-lead', execution_id: 'cpu-active-shell', state: 'running', started_at: '2026-11-20T00:00:00Z', command_excerpt: 'synthetic command' }]; db.shells.lead = [{ execution_id: 'cpu-active-shell', state: 'running', description: 'Synthetic CPU fixture shell' }]; }
+    db.history.lead = Array.from({ length: 60 }, (_, i) => ({
+      node_id: `cpu-idle-${i}`, kind: 'user', excerpt: `Synthetic idle conversation node ${i}`,
+      selection: { ordinal: i }, provenance: { created_at: new Date(Date.UTC(2026, 10, 20, 0, i)).toISOString(), kind: 'user', sender: { kind: 'human' } },
+    }));
+    return;
   }
   if (sectionGeometryFixture) {
     db.threads = {
