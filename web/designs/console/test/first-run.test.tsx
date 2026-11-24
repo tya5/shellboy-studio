@@ -26,14 +26,15 @@ function input(el: HTMLInputElement, value: string) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-it.each([404, 401])('catalog HTTP %s only permits manual model save when the route is absent', async status => {
+it.each([404, 405, 200, 401, 204])('catalog HTTP %s only permits manual model save when the route is absent', async status => {
+  const keepDefault = status === 204;
   const f = await fixtureModel({ route: 'setup', capabilities: ['connection.setup'], configure(db) {
     const other = db.answer.bind(db);
     db.answer = call => {
       switch (call.command) {
-        case 'config.get': return { ok: true, result: { file: { valid: true, content_hash: 'fresh', values: {} } } };
-        case 'connection.test': return { ok: true, result: { ok: false, http_status: status, models: [], failure: status === 404 ? 'url' : 'auth' } };
-        case 'config.set': return { ok: true, result: { written: true, content_hash: 'saved', changes: [], restart_required: false } };
+        case 'config.get': return { ok: true, result: { file: { present: keepDefault, valid: true, content_hash: 'fresh', values: keepDefault ? { default_connection: 'other', default_model: 'existing' } : {} } } };
+        case 'connection.test': return { ok: true, result: { ok: status === 200 || keepDefault, http_status: status, models: [], ...(status === 200 || keepDefault ? {} : { failure: status === 404 ? 'url' : status === 405 ? 'other' : 'auth' }) } };
+        case 'config.set': return { ok: true, result: { written: true, content_hash: 'saved', changes: [], restart_required: true } };
         case 'credentials.set': return { ok: true, result: { connection: 'litellm', stored: true, replaced: false, key_source: 'stored', credentials_path: '/fixture/credentials.toml', permissions_tightened: false, changed_by: null } };
         default: return other(call);
       }
@@ -51,11 +52,26 @@ it.each([404, 401])('catalog HTTP %s only permits manual model save when the rou
       return;
     }
     expect(host.textContent).toContain('not verified for conversations');
+    if (keepDefault) {
+      const toggle = host.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+      await step(() => toggle.click());
+      await step(() => toggle.click());
+      expect(host.querySelector('input[aria-label="Or type a model ID"]')).toBeNull();
+      const save = button(host, 'Save and use this connection');
+      await step(() => save.click());
+      expect(f.t.calls('config.set')).toHaveLength(1);
+      expect(f.t.calls('config.set')[0]?.args).not.toMatchObject({ changes: expect.arrayContaining([{ field: 'default_model' }]) });
+      return;
+    }
     expect(button(host, 'Save and use this connection').disabled).toBe(true);
     await step(() => input(model!, 'company/chat'));
     await step(() => button(host, 'Save and use this connection').click());
     expect(f.t.calls('config.set')[0]?.args).toMatchObject({ changes: expect.arrayContaining([{ field: 'default_model', value: 'company/chat' }]) });
     expect(f.t.calls('credentials.set')).toHaveLength(1);
+    expect(button(host, 'Restart owner')).toBeUndefined();
+    await step(() => f.t.push({ t: 'launcher_managed', instance_id: 'i1' }));
+    await step(() => button(host, 'Restart owner').click());
+    expect(f.t.sent).toContainEqual({ t: 'launcher', action: 'restart', instance_id: 'i1' });
   });
 });
 

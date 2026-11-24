@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { formatRoute, type DesignContext, type MessageKey } from "../../../ui-core/src";
 import { Button, ChoiceList, Field, Notice, Section } from "../system/components";
 import { Rich } from "./Rich";
-import { TestResult } from "./SetupParts";
+import { RestartAfterSetup, TestResult } from "./SetupParts";
 
 /** Longest model list drawn at once; the filter narrows the rest. */
 const MODELS_SHOWN = 50;
@@ -22,7 +22,7 @@ export function SetupEmbedding({ context }: { context: DesignContext }) {
   const matching = e.models.value.filter((m) => m.toLowerCase().includes(needle));
   const shown = matching.slice(0, MODELS_SHOWN);
 
-  const restart = save.kind === "saved" ? (
+  const restart = save.kind === "saved" ? save.restart === "required" ? <RestartAfterSetup model={model} /> : (
     <Notice tone={save.restart === "none" ? undefined : "wait"}>
       <Rich text={t(`setup.saved.restart.${save.restart}` as MessageKey)} />
     </Notice>

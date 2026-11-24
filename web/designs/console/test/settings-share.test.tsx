@@ -23,7 +23,7 @@ it.each([false, true])("imports an exported profile and opens a conversation (ex
     db.answer = call => {
       switch (call.command) {
         case "config.get": return { ok: true, result: { config_path: "/fixture/target/config.toml", file: { present: hash !== "fresh", valid: true, content_hash: hash, values, credential_source: sources }, loaded: { values, credential_source: sources } } };
-        case "config.set": hash = "imported"; values = profile; sources = { proxy: existing ? "stored" : "none" }; return { ok: true, result: { written: true, content_hash: hash, changes: [] } };
+        case "config.set": hash = "imported"; values = profile; sources = { proxy: existing ? "stored" : "none" }; return { ok: true, result: { written: true, content_hash: hash, changes: [], restart_required: true } };
         case "credentials.set": sources = { proxy: "stored" }; return { ok: true, result: { connection: "proxy", stored: true, replaced: false, key_source: "stored", credentials_path: "/fixture/target/credentials.toml", permissions_tightened: false, changed_by: null } };
         case "thread.create": return { ok: true, result: details("lead") };
         default: return other(call);
@@ -55,6 +55,10 @@ it.each([false, true])("imports an exported profile and opens a conversation (ex
     expect(host.querySelector('input[type="password"]')).toBeNull();
     await step(() => f.t.push({ t: "changed", config_changed: true, thread_ids: [], list: false }));
     if (!existing) {
+      await step(() => select("This connection does not need a key").click());
+      expect(host.textContent).toContain("You marked this connection as not needing a key.");
+      expect(f.t.calls("credentials.set")).toHaveLength(0);
+      await step(() => select("Enter a key instead").click());
       const key = host.querySelector<HTMLInputElement>('input[type="password"]')!;
       expect(key).not.toBeNull();
       key.value = "fixture-key";
@@ -67,6 +71,10 @@ it.each([false, true])("imports an exported profile and opens a conversation (ex
     }
     expect(host.textContent).toContain('First conversation: proxy / chat');
     expect(host.textContent).toContain('A key is available; the provider has not verified it.');
+    expect(select("Restart owner")).toBeUndefined();
+    await step(() => f.t.push({ t: "launcher_managed", instance_id: "i1" }));
+    await step(() => select("Restart owner").click());
+    expect(f.t.sent).toContainEqual({ t: "launcher", action: "restart", instance_id: "i1" });
     const start = host.querySelector('a[href="#/conversation"]');
     expect(start?.textContent).toBe("Start a conversation");
     await act(async () => { f.model.applyRoute(parseRoute(start!.getAttribute("href")!)); void f.model.createThread(); await settle(f.t, f.db); });

@@ -250,6 +250,11 @@ impl Launch {
                             manual_restart = true;
                             break None;
                         }
+                        if requested.is_none() {
+                            // Preserve the down-owner action during pre-ready startup.
+                            restart_state.manual_start();
+                            self.start().await;
+                        }
                     },
                     result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {
                         self.owner.child = None;
@@ -713,6 +718,15 @@ async fn endpoint_matches(marker: &Marker) -> bool {
     })
     .await
     .is_ok_and(|result| result.unwrap_or(false))
+}
+
+#[cfg(target_os = "macos")]
+pub async fn show_macos_startup_error() {
+    // Use static text: an error can include a private path or browser URL.
+    let _ = Process::new("/usr/bin/osascript")
+        .args(["-e", r#"display alert "Shellboy Studio could not open" message "Check that the app was fully extracted and that your default browser works. If it still does not open, look for studio.log in ~/Library/Application Support/shellboy-studio or see the Studio user guide on GitHub." as critical"#])
+        .status()
+        .await;
 }
 
 #[cfg(test)]
@@ -1275,13 +1289,4 @@ mod tests {
         server.abort();
         let _ = server.await;
     }
-}
-
-#[cfg(target_os = "macos")]
-pub async fn show_macos_startup_error() {
-    // Use static text: an error can include a private path or browser URL.
-    let _ = Process::new("/usr/bin/osascript")
-        .args(["-e", r#"display alert "Shellboy Studio could not open" message "Check that the app was fully extracted and that your default browser works. If it still does not open, look for studio.log in ~/Library/Application Support/shellboy-studio or see the Studio user guide on GitHub." as critical"#])
-        .status()
-        .await;
 }

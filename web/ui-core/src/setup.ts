@@ -164,7 +164,7 @@ export class ConnectionSetup {
       const test = this.test.value;
       return test.kind === "failed" && ((test.failure === "url" && test.status === 404) || (test.failure === "other" && test.status === 405) || (test.failure === "empty" && test.status !== undefined && test.status >= 200 && test.status < 300));
     });
-    this.canSave = computed(() => (this.test.value.kind === "ok" || (this.catalogMissing.value && this.model.value.trim() !== "")) && (!this.makeDefault.value || this.model.value.trim() !== "") && this.nameProblem.value === undefined && (!this.replaces.value || this.confirmReplace.value) && this.saveState.value.kind !== "saving" && this.saveState.value.kind !== "saved");
+    this.canSave = computed(() => (this.test.value.kind === "ok" || this.catalogMissing.value) && (!this.makeDefault.value || this.model.value.trim() !== "") && this.nameProblem.value === undefined && (!this.replaces.value || this.confirmReplace.value) && this.saveState.value.kind !== "saving" && this.saveState.value.kind !== "saved");
   }
 
   /** True once, when the screen should open by itself. */

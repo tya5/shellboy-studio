@@ -189,9 +189,9 @@ export function Setup({ context }: { context: DesignContext }) {
         ) : null}
 
         {service && (test.kind === "ok" || manualModel) ? (
-          <Section title={t((s.makeDefault.value || manualModel) ? "setup.step.model" : "setup.step.default")} sub={manualModel ? t("setup.model.manual") : s.makeDefault.value ? t("setup.model.hint") : t("setup.default.off")}>
+          <Section title={t(s.makeDefault.value ? "setup.step.model" : "setup.step.default")} sub={s.makeDefault.value ? t(manualModel ? "setup.model.manual" : "setup.model.hint") : t("setup.default.off")}>
             {s.hasDefault.value ? <Check checked={s.makeDefault.value} onChange={(on) => s.setMakeDefault(on)} note={t("setup.default.have")}>{t("setup.default.label")}</Check> : null}
-            {s.makeDefault.value || manualModel ? <>
+            {s.makeDefault.value ? <>
             {service.id === "local" ? (
               <Notice tone="wait" actions={<External href={OLLAMA_CONTEXT_URL}>{t("setup.model.localLink")}</External>}>
                 {t("setup.model.localWarn")}
