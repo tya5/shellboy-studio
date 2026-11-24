@@ -38,7 +38,7 @@ If there is no model connection, choose **Connect a model service**. Select your
 
 ## Find Threads and read a conversation
 
-The v2 interface uses consistent headings, links, action buttons, and loading and empty states. Change Studio's display language in **Settings > Appearance > Language**; this is separate from Core's terminal language.
+The v2 interface uses consistent headings, links, action buttons, and loading and empty states. Change Studio's display language in **Settings > Appearance > Language**; this is separate from Core's terminal language. On desktop, global **Settings** keeps the Thread sidebar. Select a Thread there to leave Settings and open its conversation.
 
 - Use **Pin** in a Thread's row menu to put it in **Pinned**, above **All**. The pinned band can include older Threads outside the loaded **All** list, and orders them by creation time, newest first; entries without a creation time come last.
 - **Archived**, below **All**, lists archived Threads separately. **All** excludes them; archived Threads with a pin remain in **Pinned**. To archive several Threads, select them in the sidebar and use **Archive** in the selection bar; press **Archive** again to confirm. **Unarchive** is available for selected archived Threads. **Include descendants** controls whether the owner applies the action to their descendants.
@@ -171,7 +171,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 
 ### スレッド一覧と会話
 
-デザインシステム v2 では、見出し、移動リンク、操作ボタン、読み込み中・空の表示が各画面で統一されています。Studio の表示言語は **設定 > 外観 > 言語** で変更できます。Core のターミナル表示言語とは別です。
+デザインシステム v2 では、見出し、移動リンク、操作ボタン、読み込み中・空の表示が各画面で統一されています。Studio の表示言語は **設定 > 外観 > 言語** で変更できます。Core のターミナル表示言語とは別です。デスクトップでは、全体の **設定** を開いてもスレッドのサイドバーが残ります。そこでスレッドを選ぶと、設定を離れてその会話を開きます。
 
 - 行メニューの **ピン留め** で **すべて** の上にある **ピン留め** 欄に追加します。**すべて** の読み込み範囲外にある古いスレッドも表示されます。作成日時の新しい順で、日時が不明なものは最後です。
 - **すべて** の下の **アーカイブ済み** にアーカイブしたスレッドが表示されます。**すべて** には表示されませんが、ピン留めしたものは **ピン留め** に残ります。複数のスレッドを選択し、サイドバーの選択バーで **アーカイブ** を押します。確認のためもう一度押してください。選択したアーカイブ済みスレッドには **アーカイブ解除** を使えます。**子孫も含める** は子孫への適用を切り替えます。

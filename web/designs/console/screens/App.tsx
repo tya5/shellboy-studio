@@ -231,7 +231,6 @@ export function App({ context }: { context: DesignContext }) {
               {desktop ? <Button onClick={() => model.data.link.launcherAction("exit")}>{t("launcher.exit")}</Button> : null}
             </div>
           </footer>;
-  if (route.view === "settings") return <div class="app"><CoreBanner model={model} /><SettingsView context={context} />{statusFooter}</div>;
 
   return (
     <div class="app" ref={appRef}>

@@ -11,7 +11,7 @@ import { WindowOwner } from "../../../ui-core/test/window-owner";
 import { fixtureDb, fixtureModel, fixturePendingAdapter, usageItem, usagePage } from "../../../ui-core/test/fixture";
 import { ShellboyData, type ServerFrame } from "../../../data/src";
 import { connected, FakeTransport, settle, summary } from "../../../data/test/harness";
-import { AppModel, noPending, type AnalyticsSection, type DesignContext, type Prefs } from "../../../ui-core/src";
+import { AppModel, noPending, parseRoute, type AnalyticsSection, type DesignContext, type Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 import { Conversation } from "../screens/Conversation";
@@ -64,6 +64,44 @@ describe("Desktop navigation", () => {
       expect(footers()[0]?.textContent).toContain("/temp/owner-a");
       expect(footers()[0]?.querySelector("button")?.textContent).toBe(model.t.value("launcher.exit"));
     } finally { model.dispose(); data.stop(); }
+  });
+
+  it("keeps the desktop Thread sidebar in Settings and opens the selected Conversation", async () => {
+    const { model, t, db, data } = await fixtureModel({ route: "analytics" });
+    const previousUrl = location.href;
+    history.replaceState(null, "", "#/settings/general");
+    const applyHash = () => model.applyRoute(parseRoute(location.hash));
+    addEventListener("hashchange", applyHash);
+    try {
+      const el = draw(model);
+      Object.defineProperty(el.querySelector(".app"), "clientWidth", { configurable: true, value: 1300 });
+      const sidebar = el.querySelector("#thread-sidebar");
+      expect(sidebar).not.toBeNull();
+      await act(async () => {
+        model.applyRoute({ view: "settings", section: "general" });
+        await settle(t, db);
+      });
+      expect(el.querySelector("#thread-sidebar")).toBe(sidebar);
+      expect(el.querySelector(".main > .top .crumb")?.textContent).toBe("Settings");
+      expect(el.querySelector('.main .view .subview-nav a[href="#/settings/general"]')).not.toBeNull();
+      expect(el.querySelector(".main .tabbar")).not.toBeNull();
+      const link = sidebar!.querySelector<HTMLAnchorElement>('a[id^="thread-link-sidebar-"][href="#/conversation/lead"]')!;
+      expect(link).toBeTruthy();
+      await act(async () => {
+        const changed = new Promise<void>(resolve => addEventListener("hashchange", () => resolve(), { once: true }));
+        link.click();
+        await changed;
+        await settle(t, db);
+      });
+      expect(location.hash).toBe("#/conversation/lead");
+      expect(model.route.value).toMatchObject({ view: "conversation", threadId: "lead" });
+      expect(el.querySelector(".view .subview-nav")).toBeNull();
+      expect(el.querySelector("#thread-sidebar")).toBe(sidebar);
+    } finally {
+      removeEventListener("hashchange", applyHash);
+      history.replaceState(null, "", previousUrl);
+      model.dispose(); data.stop();
+    }
   });
 
   it("toggles the rail and keeps named, titled destinations", async () => {
