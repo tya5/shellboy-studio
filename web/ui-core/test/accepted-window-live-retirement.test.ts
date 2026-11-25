@@ -508,3 +508,37 @@ it("retires adopted attempts skipped by the bounded tail without dropping unconf
     expect(f.w.acceptedView.peek().displayPlan?.localRegion.tailRows.flatMap(row => row.kind === "live" ? [row.item.source.attemptId] : [])).toEqual([unconfirmed, active]);
   } finally { f.w.dispose(); f.data.stop(); }
 });
+
+
+it("handles a detached burst beyond handoff capacity and retires only from the accepted tail", async () => {
+  const f = await rig(150);
+  const burst = Array.from({ length: 10 }, (_, i) => canonicalAttemptId(i + 1));
+  const active = canonicalAttemptId(11);
+  const live = () => f.w.acceptedView.peek().displayPlan?.localRegion.tailRows.flatMap(row => row.kind === "live" ? [row.item.source.attemptId] : []);
+  try {
+    await f.settle();
+    f.w.following.value = false;
+    for (const [index, attempt] of burst.entries()) {
+      f.owner.append(2);
+      f.producer.advance(attempt);
+      f.t.push({ t: "attempt_end", thread_id: "t", attempt_id: attempt, outcome: "adopted", seq: index + 1 });
+      expect(f.handle.handoff.peek()).toHaveLength(Math.min(index + 1, 8));
+    }
+    f.owner.append(220);
+    f.producer.advance(active);
+    expect(f.handle.handoff.peek().map(row => row.attemptId)).toEqual([...burst.slice(3), active]);
+    f.w.jumpToEnd();
+    await f.settle();
+    expect(f.w.acceptedView.peek().range?.first).toBeGreaterThan(169);
+    expect(live()).toEqual([active]);
+    expect(f.handle.handoff.peek().map(row => row.attemptId)).toEqual([active]);
+    f.owner.append(1);
+    f.owner.decorate = (i, row) => i === 390 ? { ...row, kind: "assistant_response", provenance: { attempt_id: active } } : row;
+    f.t.push({ t: "attempt_end", thread_id: "t", attempt_id: active, outcome: "adopted", seq: 11 });
+    f.w.changed();
+    await f.settle();
+    expect(f.w.acceptedView.peek().rows.some(row => row.provenance?.attempt_id === active)).toBe(true);
+    expect(live()).toEqual([]);
+    expect(f.handle.handoff.peek()).toEqual([]);
+  } finally { f.w.dispose(); f.data.stop(); }
+});
