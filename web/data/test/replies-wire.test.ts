@@ -102,3 +102,23 @@ it("retains reply rows and allows More after a failed hint, until Core expires t
   expect(t.calls("message.list")).toHaveLength(before);
   stop(); data.stop();
 });
+
+
+it("keeps a next cursor on an empty page and reads its continuation", async () => {
+  const t = new FakeTransport(); const data = new ShellboyData({ transport: t });
+  data.start(); t.open(); t.push({ t: "hello", bridge_version: "test", data_dir: "/synthetic", owner: connected });
+  const pages = new ReplyPages(data); pages.observe("thread"); await flush();
+  const [owed, asked] = t.calls("message.list");
+  const filters = { owed_by_thread_id: "thread" };
+  t.ok(owed!.id, { items: [], limit: 16, filters, next_cursor: "still-more" });
+  t.ok(asked!.id, { items: [], limit: 16, filters: { asked_by_thread_id: "thread" } });
+  await flush();
+  expect(pages.owed_by.value).toMatchObject({ items: [], cursor: "still-more", complete: false });
+  const more = pages.more("owed_by"); await flush();
+  const call = t.calls("message.list").at(-1)!;
+  expect(call.args).toMatchObject({ owed_by_thread_id: "thread", cursor: "still-more" });
+  const row = pendingReply("m", "sender", { kind: "thread", thread_id: "thread" }, "Review");
+  t.ok(call.id, { items: [row], limit: 16, filters }); await more;
+  expect(pages.owed_by.value).toMatchObject({ items: [row], complete: true });
+  pages.close(); data.stop();
+});

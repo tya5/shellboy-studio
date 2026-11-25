@@ -617,6 +617,8 @@ export interface HistoryWindowResult {
 }
 export interface HistoryReadArgs {
   end_message_only?: boolean;
+  parts?: boolean;
+  encoding?: string;
   node_id: string;
   cursor?: string;
   limit_bytes?: number;
