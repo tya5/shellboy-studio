@@ -10,4 +10,6 @@ heading is not appropriate. Pass existing details attributes, summary and childr
 this primitive adds no styling, state, identity, or authority. Callers own controlled
 open choices. Keep raw details markup inside this system boundary.
 
+Disclosure owns one native `toggle` listener per mounted details element. The listener reads the latest caller callback from a ref rather than being re-registered on each render. On teardown, remove the listener and clear the callback so a detached element cannot retain or invoke a retired render callback.
+
 Styles: style.css in this directory

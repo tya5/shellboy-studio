@@ -7,6 +7,8 @@
 
 Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-to-glyph map are module-private in `Icon`; only the semantic role list is exported. A theme may reuse a glyph for distinct roles or assign a different glyph without changing call sites. Choose `size="default"`, `size="small"`, or `size="menu"`; the SVG dimensions come from `--size-icon`, `--size-icon-small` (15px), and `--size-icon-menu` (16px), respectively.
 
+The module-private glyph registry stores factories, not SVG VNodes. Invoke a factory for each render so every Icon receives a fresh SVG subtree. Do not cache or reuse rendered glyph VNodes: their Preact parent links can retain an obsolete render.
+
 | IconRole | Meaning and use | Current glyph |
 | --- | --- | --- |
 | `action.archive` | Archive the current Thread; row action before it is archived. | `archive` |
