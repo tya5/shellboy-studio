@@ -522,6 +522,7 @@ async fn saved_shell_result(owner: &IpcOwner, thread_id: &str, command: &str) ->
     let output = owner
         .call(
             CoreCommand::ShellRead(ShellReadArgs {
+                tail: false,
                 execution_id: items[0]["execution_id"].as_str().unwrap().into(),
                 segments: true,
                 cursor: None,
@@ -2630,6 +2631,125 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
     std::fs::remove_dir_all(&root).unwrap();
 }
 
+#[tokio::test]
+async fn message_delivered_wait_and_operation_receipt_match_the_exact_pinned_owner() {
+    use shellboy::protocol::{
+        Command as CoreCommand, MessageSendArgs, ThreadCreateArgs, WaitArgs, WaitCondition,
+    };
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
+    let root = temp_root();
+    let data = root.join("data");
+    let url = mock_provider().await;
+    let serve = start_owner_with(&bin, &root, &data, &url);
+    let owner = IpcOwner::new(data);
+    let created = owner
+        .call(
+            CoreCommand::ThreadCreate(ThreadCreateArgs {
+                agents: None,
+                connection: None,
+                cwd: Some(root.to_string_lossy().into_owned()),
+                model: None,
+                effort: None,
+                parent_thread_id: None,
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let thread = serde_json::to_value(created).unwrap()["result"]["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let operation_id = format!("{}:message-delivery-evidence", serve.instance);
+    let accepted = owner
+        .call(
+            CoreCommand::MessageSend(MessageSendArgs {
+                max_model_requests: None,
+                human: false,
+                resume_recovery: false,
+                sender_label: None,
+                thread_id: Some(thread),
+                text: "apply this exact message".into(),
+                deliver: shellboy::protocol::Deliver::Next,
+            }),
+            Some(operation_id.clone()),
+            None,
+        )
+        .await
+        .unwrap();
+    let message_id = accepted.result.as_ref().unwrap()["message_id"]
+        .as_str()
+        .expect("accepted message id")
+        .to_owned();
+
+    let receipt = owner
+        .call(
+            CoreCommand::OperationGet(shellboy::protocol::OperationTarget {
+                operation_id: operation_id.clone(),
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let receipt = serde_json::to_value(receipt).unwrap()["result"].clone();
+    assert_eq!(receipt["operation_id"], operation_id);
+    assert_eq!(receipt["replay_policy"], "return_saved_outcome");
+    assert_eq!(receipt["targets"]["message_id"], message_id);
+    assert!(
+        receipt.get("outcome").is_some(),
+        "receipt retains its opaque outcome slot: {receipt}"
+    );
+
+    let delivered = owner
+        .call(
+            CoreCommand::Wait(WaitArgs {
+                conditions: vec![WaitCondition::MessageDelivered {
+                    message_id: message_id.clone(),
+                }],
+                timeout_ms: 30_000,
+                after: None,
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let delivered = serde_json::to_value(delivered).unwrap()["result"].clone();
+    assert_eq!(
+        delivered["status"], "satisfied",
+        "message delivery wait: {delivered}"
+    );
+    assert!(
+        delivered["matched"].as_array().is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| item["type"] == "message_delivered" && item["message_id"] == message_id)
+        }),
+        "wait must match this exact message: {delivered}"
+    );
+
+    let message = owner
+        .call(
+            CoreCommand::MessageGet(shellboy::protocol::MessageTarget {
+                message_id: message_id.clone(),
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let message = serde_json::to_value(message).unwrap()["result"].clone();
+    assert_eq!(message["delivery_status"], "applied");
+    assert!(
+        message.get("held_by").is_none(),
+        "applied message has no live held_by: {message}"
+    );
+}
+
 /// First model response invokes a real long-lived shell; the next one waits on a
 /// test-controlled gate so the owner remains in a live Turn during intervention calls.
 async fn intervention_provider(
@@ -2754,6 +2874,23 @@ async fn intervention_commands_reach_the_pinned_owner() {
         .await;
     let started = client.wait_running_shell(owner.as_ref(), &thread).await;
     let execution = started["execution_id"].as_str().unwrap().to_owned();
+    let tail = owner
+        .call(
+            CoreCommand::ShellRead(shellboy::protocol::ShellReadArgs {
+                execution_id: execution.clone(),
+                tail: true,
+                segments: false,
+                cursor: None,
+                encoding: Some("UTF-8".into()),
+                limit_bytes: 65_536,
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let tail = serde_json::to_value(tail).unwrap()["result"].clone();
+    assert_eq!(tail["execution_id"], execution, "tail shell.read: {tail}");
     let live = client
         .ok("thread.get", json!({"thread_id":thread}), None)
         .await;
@@ -2761,6 +2898,55 @@ async fn intervention_commands_reach_the_pinned_owner() {
         .as_str()
         .expect("foreground live turn")
         .to_owned();
+    let queued_operation = format!("{}:held-message-evidence", serve.instance);
+    let queued = client
+        .call(
+            "message.send",
+            json!({"thread_id":thread,"text":"verify held evidence"}),
+            Some(queued_operation.clone()),
+        )
+        .await;
+    assert_eq!(queued["response"]["ok"], true, "queued message: {queued}");
+    let message_id = queued["response"]["result"]["message_id"]
+        .as_str()
+        .expect("message acceptance ID")
+        .to_owned();
+
+    let message = owner
+        .call(
+            CoreCommand::MessageGet(shellboy::protocol::MessageTarget {
+                message_id: message_id.clone(),
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let message = serde_json::to_value(message).unwrap()["result"].clone();
+    assert_eq!(message["held_by"]["kind"], "foreground_shell", "{message}");
+    assert_eq!(message["held_by"]["execution_id"], execution, "{message}");
+
+    let receipt = owner
+        .call(
+            CoreCommand::OperationGet(shellboy::protocol::OperationTarget {
+                operation_id: queued_operation,
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let receipt = serde_json::to_value(receipt).unwrap()["result"].clone();
+    assert_eq!(
+        receipt["state"], "completed",
+        "operation receipt: {receipt}"
+    );
+    assert_eq!(
+        receipt["replay_policy"], "return_saved_outcome",
+        "{receipt}"
+    );
+    assert_eq!(receipt["targets"]["message_id"], message_id, "{receipt}");
+
     let background = client
         .ok("shell.background", json!({"execution_id":execution}), None)
         .await;
@@ -2771,8 +2957,8 @@ async fn intervention_commands_reach_the_pinned_owner() {
         .expect("backgrounded shell must release its foreground wait before deadline")
         .expect("continuation request");
     assert!(
-        continued.contains("human_backgrounded"),
-        "provider continuation lacked the owner-recorded background release: {continued}"
+        continued.contains("shell_backgrounded"),
+        "provider continuation lacked the owner-recorded Background release: {continued}"
     );
     let interrupted = owner
         .call(

@@ -27,7 +27,7 @@ windows-desktop = []
 # Explicit integration suite: never part of owner-free unit/synthetic checks.
 real-owner-tests = []
 default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
-# Published Core v0.17.0 exact pair: 5a164b37deac681520362a8b93b6ca08a47eb3a9, protocol 36.
+# Core main snapshot exact pair: 83c2d54f7166141a2908115658b3b2d54a244d2c, protocol 40.
 next-shellboy = []
 # #262 owner branch adds message.ask; never forward it from Studio.
 next-reply = ["next-shellboy"]

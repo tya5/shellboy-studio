@@ -25,6 +25,8 @@ import type {
   MessageSendArgs,
   MessageAccepted,
   MessageReplied,
+  OperationReceiptDetails,
+  OperationReplayPolicy,
   PendingReply,
   ReplyDirection,
   AttachmentDetails,
@@ -298,6 +300,28 @@ const decodeTagResult: Decoder<TagResult> = (v) =>
     : { ok: false, reason: "thread.tag result lacks changed, unchanged or not_found" };
 const decodeRecord: Decoder<Record<string, unknown>> = (v) =>
   isObject(v) ? { ok: true, value: v } : { ok: false, reason: "expected an object result" };
+const decodeOperationReceipt = (expectedOperationId: string): Decoder<OperationReceiptDetails> => (v) => {
+  const policies: OperationReplayPolicy[] = ["do_not_reexecute", "operation_expired", "return_saved_outcome"];
+  if (!isObject(v) || v.operation_id !== expectedOperationId
+    || typeof v.instance_id !== "string" || !v.instance_id || typeof v.created_at !== "string"
+    || typeof v.current_instance !== "boolean" || typeof v.state !== "string"
+    || !Object.hasOwn(v, "outcome")
+    || typeof v.result_uncertain !== "boolean" || typeof v.result_expired !== "boolean"
+    || !policies.includes(v.replay_policy as OperationReplayPolicy) || !isObject(v.targets)
+    || !Object.values(v.targets).every(target => typeof target === "string"))
+    return { ok: false, reason: "invalid operation receipt evidence" };
+  if (v.downstream !== undefined) {
+    const downstream = v.downstream;
+    const common = isObject(downstream) && typeof downstream.state === "string";
+    const validMessage = common && downstream.kind === "message"
+      && (downstream.hold_reason === undefined || typeof downstream.hold_reason === "string");
+    const validCompact = common && downstream.kind === "compact"
+      && (downstream.ended_at === undefined || typeof downstream.ended_at === "string")
+      && (downstream.result_uncertain === undefined || typeof downstream.result_uncertain === "boolean");
+    if (!validMessage && !validCompact) return { ok: false, reason: "invalid operation receipt downstream" };
+  }
+  return { ok: true, value: v as unknown as OperationReceiptDetails };
+};
 
 export interface ProcessMetric {
   name: string;
@@ -673,8 +697,8 @@ export class Operations {
       ["return_saved_outcome", "do_not_reexecute"].includes(String(v.replay_policy));
     return { ok: false, error: { kind: "invalid_response", message: known ? "Opaque original receipt remains unconfirmed" : "Receipt identity, state or policy is invalid" }, operationId };
   }
-  operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("operation.get", { operation_id: operationId }, outcomeDecoder(decodeRecord));
+  operationGet(operationId: string): Promise<Outcome<OperationReceiptDetails>> {
+    return this.run("operation.get", { operation_id: operationId }, outcomeDecoder(decodeOperationReceipt(operationId)));
   }
 
   // ---- mutations: pass `operationId` to retry the same logical mutation idempotently ----

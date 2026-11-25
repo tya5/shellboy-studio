@@ -26,8 +26,8 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_36_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 36);
+fn exact_protocol_40_has_directional_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 40);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_thread_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
@@ -119,18 +119,61 @@ fn old_run_ownership_and_create_inputs_are_not_wire_aliases() {
 }
 
 #[test]
-fn protocol_nine_fails_closed_without_downgrade() {
+fn core_main_pin_exposes_operation_evidence_held_messages_delivery_wait_and_shell_tail() {
+    use shellboy::protocol::{
+        MessageDetails, MessageHeldBy, OperationReceiptDetails, WaitCondition,
+    };
+
+    let receipt: OperationReceiptDetails = serde_json::from_value(json!({
+        "operation_id":"instance:op","instance_id":"instance","created_at":"2026-11-25T00:00:00Z",
+        "current_instance":true,"state":"completed","outcome":{"accepted":true},"result_uncertain":false,
+        "result_expired":false,"replay_policy":"return_saved_outcome","targets":{"message_id":"m"},
+        "downstream":{"kind":"message","state":"accepted","hold_reason":"foreground_shell"}
+    })).unwrap();
+    assert_eq!(
+        receipt.replay_policy,
+        shellboy::protocol::OperationReplayPolicy::ReturnSavedOutcome
+    );
+    assert!(matches!(
+        receipt.downstream,
+        Some(shellboy::protocol::OperationReceiptDownstream::Message { .. })
+    ));
+
+    let held: MessageDetails = serde_json::from_value(json!({
+        "sender":{"kind":"human"},"context":{"state":"running"},"message_id":"m","thread_id":"t",
+        "delivery_status":"accepted","assignment":"pending","held_by":{"kind":"foreground_shell","execution_id":"exec"}
+    })).unwrap();
+    assert!(
+        matches!(held.held_by, Some(MessageHeldBy::ForegroundShell { ref execution_id }) if execution_id == "exec")
+    );
+    let delivered: WaitCondition =
+        serde_json::from_value(json!({"type":"message_delivered","message_id":"m"})).unwrap();
+    assert!(
+        matches!(delivered, WaitCondition::MessageDelivered { ref message_id } if message_id == "m")
+    );
+    let shell_read: shellboy::protocol::ShellReadArgs =
+        serde_json::from_value(json!({"execution_id":"exec","tail":true})).unwrap();
+    assert!(shell_read.tail);
+    let background: Command = serde_json::from_value(
+        json!({"command":"shell.background","args":{"execution_id":"exec"}}),
+    )
+    .unwrap();
+    assert_eq!(access(&background), Access::Mutation);
+}
+
+#[test]
+fn mismatched_protocol_fails_closed_without_downgrade() {
     let command: Command =
         serde_json::from_value(json!({"command":"thread.get","args":{"thread_id":"t"}})).unwrap();
     let mut request = shellboy::protocol::Request::new("synthetic", command);
     assert!(request.validate().is_ok());
-    request.protocol_version = 9;
+    request.protocol_version = 39;
     assert_eq!(
         request.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
     );
     let mut response = shellboy::protocol::Response::success("synthetic", json!({}));
-    response.protocol_version = 9;
+    response.protocol_version = 39;
     assert_eq!(
         response.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
@@ -194,7 +237,7 @@ fn core_schedule_and_service_reads_require_a_thread() {
 #[test]
 fn message_acceptance_and_reply_match_the_pinned_result_schemas() {
     use shellboy::protocol::{MessageAccepted, MessageReplied};
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 36);
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 40);
     let schema: serde_json::Value =
         serde_json::from_str(&shellboy::protocol::schema_json()).unwrap();
     let results = &schema["operation_results"];

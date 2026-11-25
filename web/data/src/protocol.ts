@@ -533,6 +533,38 @@ export interface ThreadRewindArgs {
   node_id: string;
 }
 
+export type OperationReplayPolicy = "do_not_reexecute" | "operation_expired" | "return_saved_outcome";
+export type OperationReceiptDownstream =
+  | { kind: "message"; state: string; hold_reason?: string }
+  | { kind: "compact"; state: string; outcome?: unknown; ended_at?: string; result_uncertain?: boolean };
+export interface OperationReceiptDetails {
+  operation_id: string;
+  instance_id: string;
+  created_at: string;
+  current_instance: boolean;
+  state: string;
+  outcome: unknown | null;
+  result_uncertain: boolean;
+  result_expired: boolean;
+  replay_policy: OperationReplayPolicy;
+  targets: Record<string, string>;
+  downstream?: OperationReceiptDownstream;
+}
+
+export type WaitCondition =
+  | { type: "message_delivered"; message_id: string }
+  | { type: "reply_received"; message_id: string }
+  | { type: "thread_settled"; thread_ids: string[]; states: string[] }
+  | { type: "run_ended"; run_id: string }
+  | { type: "turn_completed"; turn_id: string }
+  | { type: "shell_ended"; execution_id: string }
+  | { type: "shell_output"; execution_id: string; cursor: string };
+export interface WaitResult {
+  status: "satisfied" | "timeout" | "interrupted" | "recovery_wait" | "unavailable";
+  matched: unknown[];
+  snapshot?: unknown;
+}
+
 export interface ModelListArgs {
   connection?: string;
   thread_id?: string;
@@ -560,7 +592,7 @@ export interface ShellOutput {
 }
 
 export type ArchivedFilter = "exclude" | "include" | "only";
-export type Deliver = "next" | "now";
+export type Deliver = "next" | "complete";
 
 export interface ThreadListArgs {
   /** Return exact summaries without paging. */
@@ -635,6 +667,8 @@ export interface ShellListArgs {
 export interface ShellReadArgs {
   execution_id: string;
   segments?: boolean;
+  /** Read the final retained page without requiring a cursor. Not yet used by Studio. */
+  tail?: boolean;
   cursor?: string;
   limit_bytes?: number;
 }
