@@ -65,7 +65,7 @@ try {
   await call('Emulation.setTouchEmulationEnabled', { enabled: true });
   await call('Runtime.enable');
   await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await call('Page.navigate', { url: `http://127.0.0.1:${appPort}/designs/console/test/browser/integration-fixture.html?view=footer-lifecycle` });
+  await call('Page.navigate', { url: `http://127.0.0.1:${appPort}/designs/console/test/browser/integration-fixture.html?view=footer-lifecycle&panel=all-tabs` });
   await until("!!document.querySelector('.app .tabbar') && !!document.querySelector('.phone-panel-footer button')", 'mounted phone fixture');
 
   await click('.phone-panel-footer button');
