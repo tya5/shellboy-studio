@@ -692,16 +692,19 @@ function panelOperationError(model: AppModel, id: string): string | undefined {
 function PanelActivity({ model }: { model: AppModel }) {
   const t = model.t.value;
   const [runStopConfirm, setRunStopConfirm] = useState<{ runId: string; opener: HTMLButtonElement }>();
-  const runStopOpener = useRef<HTMLButtonElement | null>(null);
   const requestStop = useContext(RequestShellStop);
   const work = model.work.value;
   const selected = model.panelOpener.value.work;
   const now = model.now.value;
-  const runLive = !!model.details.value?.run_id && model.selectedRow.value?.summary.state === "running";
+  const runId = model.details.value?.run_id;
+  const runStopAvailable = !!runId;
   return <div class="panel-list" data-panel-list="work">
     {activitySections.map(section => {
       const rows = work[section.key];
-      return rows.length || section.key === "running" && runLive ? <section key={section.key}>{section.key === "running" && runLive ? <ListDivider label={t(section.label)} count={rows.length} action={<Button variant="stop" buttonRef={runStopOpener} onClick={event => { const runId = model.details.value?.run_id; if (runId) setRunStopConfirm({ runId, opener: event.currentTarget }); }}>{t("action.stopEverything")}</Button>} description={t("action.stopEverythingDescription")} /> : null}{rows.map(row => {
+      const showRunStop = section.key === "running" && runStopAvailable;
+      return rows.length || showRunStop ? <section key={section.key}>{showRunStop
+        ? <ListDivider label={t(section.label)} count={rows.length} action={<Button variant="stop" onClick={event => { const targetRunId = model.details.value?.run_id; if (targetRunId) setRunStopConfirm({ runId: targetRunId, opener: event.currentTarget }); }}>{t("action.stopEverything")}</Button>} description={t("action.stopEverythingDescription")} />
+        : <ListDivider label={t(section.label)} count={rows.length} />}{rows.map(row => {
         const elapsed = panelElapsed(now, row.startedAt);
         const state = row.state === "accepted" ? t("work.accepted") : t("work.held");
         const command = section.kind === "step" ? row.command : undefined;
@@ -718,7 +721,7 @@ function PanelActivity({ model }: { model: AppModel }) {
     {model.handle.value ? (["schedule", "service"] as const).map(kind => <SchedulePanel key={`${model.handle.value!.threadId}:${kind}`} model={model} kind={kind} open={(id, opener) => model.openInPanel({ kind, id }, panelFocusReturn(opener), true)} />) : null}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
     {workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted">{t("work.stale")}</div> : null}
-    {!work.running.length && !work.pending.length && !work.partial && !runLive ? <EmptyState compact role="empty.panelActivity" title={t("panel.empty.work")} body={t("panel.empty.workBody")} /> : null}
+    {!work.running.length && !work.pending.length && !work.partial && !runStopAvailable ? <EmptyState compact role="empty.panelActivity" title={t("panel.empty.work")} body={t("panel.empty.workBody")} /> : null}
     {runStopConfirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("action.stopEverything")} closeLabel={t("thread.deleteCancel")} describedBy="run-stop-description" onClose={() => setRunStopConfirm(undefined)} getReturnFocusTarget={() => runStopConfirm?.opener}>
       <div class="shell-stop-confirmation"><p id="run-stop-description">{t("action.stopEverythingDescription")}</p><Button variant="stop" onClick={() => { const { runId } = runStopConfirm!; setRunStopConfirm(undefined); void model.stopRun(runId); }}>{t("action.stopEverything")}</Button></div>
     </WorkSheet> : null}

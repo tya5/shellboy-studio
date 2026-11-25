@@ -145,7 +145,7 @@ describe('right panel purpose',()=>{
   const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
   const text=f.model.t.value;
   try {
-   f.db.threads.lead=summary('lead',{state:'running'});
+   f.db.threads.lead=summary('lead',{state:'completed'});
    await act(async()=>{hint();await settle(f.t,f.db);});
    const trigger=[...f.host.querySelectorAll<HTMLButtonElement>('[data-panel-list="work"] button')].find(button=>button.textContent===text('action.stopEverything'));
    expect(trigger).toBeDefined();
@@ -214,7 +214,7 @@ describe('right panel purpose',()=>{
    await act(async()=>{await settle(f.t,f.db);});
    expect(row()).toBeNull();
    expect(count()).toBeUndefined();
-   expect(activity()).toContain(text('panel.empty.work'));
+   expect(activity()).toContain(text('action.stopEverything'));
   } finally {f.model.dispose();f.data.stop();}
  });
 
