@@ -94,6 +94,9 @@ function replyPage(direction: ReplyDirection): Decoder<Page<PendingReply, Messag
       || !isObject(row.sender) || !["model", "external_cli", "human", "unknown"].includes(String(row.sender.kind))
       || (row.sender.label !== undefined && typeof row.sender.label !== "string")
       || !isObject(row.recipient)) return "invalid pending reply";
+    if (row.held_by !== undefined && (!isObject(row.held_by)
+      || row.held_by.kind === "foreground_shell" && (typeof row.held_by.execution_id !== "string" || !row.held_by.execution_id)
+      || row.held_by.kind !== "foreground_shell" && !["response_generation", "run_completion", "recovery_wait", "stopping", "unknown"].includes(String(row.held_by.kind)))) return "invalid pending reply held_by";
     if (row.sender.kind === "model" ? (typeof row.sender.thread_id !== "string" || row.sender.thread_id !== row.asked_by) : row.asked_by !== null)
       return "invalid pending reply sender";
     const recipient = row.recipient;

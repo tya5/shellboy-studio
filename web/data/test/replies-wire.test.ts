@@ -122,3 +122,18 @@ it("keeps a next cursor on an empty page and reads its continuation", async () =
   expect(pages.owed_by.value).toMatchObject({ items: [row], complete: true });
   pages.close(); data.stop();
 });
+
+
+it("preserves typed held_by facts and rejects malformed foreground execution IDs", async () => {
+  const transport = new FakeTransport(); const data = new ShellboyData({ transport });
+  data.start(); transport.open(); transport.push({ t: "hello", bridge_version: "test", data_dir: "/synthetic", owner: connected });
+  const read = data.operations.messageList({ owed_by: "t" }); await flush();
+  const call = transport.calls("message.list").at(-1)!;
+  const row = { message_id: "m", asked_by: null, created_at: "now", sender: { kind: "human" }, recipient: { kind: "thread", thread_id: "t" }, excerpt: "held", held_by: { kind: "foreground_shell", execution_id: "exec-exact" } };
+  transport.ok(call.id, { items: [row] });
+  expect(await read).toMatchObject({ ok: true, value: { items: [{ held_by: { kind: "foreground_shell", execution_id: "exec-exact" } }] } });
+  const invalid = data.operations.messageList({ owed_by: "t" }); await flush();
+  transport.ok(transport.calls("message.list").at(-1)!.id, { items: [{ ...row, held_by: { kind: "foreground_shell", execution_id: "" } }] });
+  expect(await invalid).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  data.stop();
+});
