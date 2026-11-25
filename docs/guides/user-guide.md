@@ -30,7 +30,7 @@ The desktop app opens your default browser and signs in locally. It attaches to 
 
 ### Schedules and services
 
-Open **Thread panel > Activity**. **Running** shows active work; **Schedules** and **Services** show existing definitions for this Thread (Core allows at most 64 combined). On a phone choose **Activity** in the section picker. Open a row for timing, command, working directory, and latest output, then go Back to **Activity**. The schedule switch controls future runs. **Remove schedule** asks for confirmation and stops the shell if it is running. For a service use **Start** or **Stop**; services have no next run time. A completed one-shot leaves the schedule list, but its shell execution remains in the Thread history.
+Open **Thread panel > Activity**. **Running** shows active work; **Schedules** and **Services** show existing definitions for this Thread (Core allows at most 64 combined). On a phone open the **Thread panel** sheet and select the **Activity** tab. Open a row for timing, command, working directory, and latest output, then go Back to **Activity**. The schedule switch controls future runs. **Remove schedule** asks for confirmation and stops the shell if it is running. For a service use **Start** or **Stop**; services have no next run time. A completed one-shot leaves the schedule list, but its shell execution remains in the Thread history.
 
 ## Connect a model
 
@@ -47,7 +47,7 @@ The v2 interface uses consistent headings, links, action buttons, and loading an
 
 ### Conversation side panel
 
-With a Thread open in **Conversation**, use **Expand right panel** when the panel is collapsed, or press the number row `9` key with `Alt` (Option on Mac). On a phone, the **Thread panel** picker switches sections, and details open full-screen. Use the button named after the section (for example, **Activity**) to go back. When formatted output is available in an expanded shell step, turn **Formatted** off to see raw text. When Core supplies stream information, the expanded step counts lines containing standard error. It marks those lines with a `stderr` label and an edge line where the display preserves the original line boundaries. Output without stream information is not labeled. Raw view and Copy keep the original text without labels. **Wrap lines** does not change what is copied. Use **Load earlier messages** when earlier history is available. The composer adjusts to the on-screen keyboard, and the sidebar row menu has its own touch target.
+With a Thread open in **Conversation**, use **Expand right panel** when the panel is collapsed, or press the number row `9` key with `Alt` (Option on Mac). On a phone, open the **Thread panel** sheet and use its tabs to switch sections. When only icons fit, the sheet title names the selected tab. Details open full-screen. Use the button named after the section (for example, **Activity**) to go back. When formatted output is available in an expanded shell step, turn **Formatted** off to see raw text. When Core supplies stream information, the expanded step counts lines containing standard error. It marks those lines with a `stderr` label and an edge line where the display preserves the original line boundaries. Output without stream information is not labeled. Raw view and Copy keep the original text without labels. **Wrap lines** does not change what is copied. Use **Load earlier messages** when earlier history is available. The composer adjusts to the on-screen keyboard, and the sidebar row menu has its own touch target.
 
 With a keyboard, use Tab or Shift+Tab to leave a row menu and continue outside that row. Collapsed Work rows keep a focus outline, and Tab can reach panel content with no controls. If **Stop** disappears while focused, focus returns to the composer. Global shortcuts are ignored in dialogs, while editing or composing text with an IME, and when a control has already handled the key.
 
@@ -177,7 +177,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 
 ### スケジュールとサービス
 
-**スレッドパネル > 動作** を開きます。**実行中** に現在の作業が、**スケジュール** と **サービス** にこのスレッドの登録内容が表示されます（Core の上限は合計64件）。スマホでは項目選択で **動作** を選びます。行を開くと実行時刻、コマンド、作業ディレクトリ、直近の出力を確認でき、**動作** に戻れます。スイッチでスケジュールの今後の実行を切り替えます。**スケジュールを削除** は確認が必要で、実行中のシェルも停止します。サービスには次回実行時刻がなく、**開始** と **停止** で操作します。一回限りのスケジュールは完了すると一覧から消えますが、シェルの実行結果はスレッドの履歴に残ります。
+**スレッドパネル > 動作** を開きます。**実行中** に現在の作業が、**スケジュール** と **サービス** にこのスレッドの登録内容が表示されます（Core の上限は合計64件）。スマホでは **スレッドパネル** のシートを開き、**動作** タブを選びます。行を開くと実行時刻、コマンド、作業ディレクトリ、直近の出力を確認でき、**動作** に戻れます。スイッチでスケジュールの今後の実行を切り替えます。**スケジュールを削除** は確認が必要で、実行中のシェルも停止します。サービスには次回実行時刻がなく、**開始** と **停止** で操作します。一回限りのスケジュールは完了すると一覧から消えますが、シェルの実行結果はスレッドの履歴に残ります。
 
 ### モデルの初期設定
 
@@ -194,7 +194,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 
 #### 右パネル
 
-**会話** でスレッドを開いているとき、**右パネルを展開** で右パネルを開きます。数字列の `9` キーと `Alt`（Mac では Option）でも開閉できます。スマートフォンでは **スレッドパネル** で表示する項目を選べます。詳細は全画面で開き、**動作** など項目名のボタンで元に戻ります。展開したシェルステップで整形済みの出力がある場合、**整形表示** をオフにすると生テキストを表示します。Core が出力の種別を返した場合、展開したステップに標準エラーを含む行数を表示します。元の行の区切りを保つ表示では、該当する行に `stderr` と左端の線を付けます。種別が不明な出力にはラベルを付けません。生テキスト表示とコピーにはラベルを含めません。**行を折り返す** を切り替えてもコピーする内容は変わりません。履歴が残っている場合は **以前のメッセージを読み込む** を使えます。画面キーボードに合わせて入力欄の位置が調整され、行メニューはスレッドのリンクとは別にタップできます。
+**会話** でスレッドを開いているとき、**右パネルを展開** で右パネルを開きます。数字列の `9` キーと `Alt`（Mac では Option）でも開閉できます。スマートフォンでは **スレッドパネル** のシートを開き、タブで項目を切り替えます。アイコンだけが収まる幅では、選択中のタブ名がシートの見出しに表示されます。詳細は全画面で開き、**動作** など項目名のボタンで元に戻ります。展開したシェルステップで整形済みの出力がある場合、**整形表示** をオフにすると生テキストを表示します。Core が出力の種別を返した場合、展開したステップに標準エラーを含む行数を表示します。元の行の区切りを保つ表示では、該当する行に `stderr` と左端の線を付けます。種別が不明な出力にはラベルを付けません。生テキスト表示とコピーにはラベルを含めません。**行を折り返す** を切り替えてもコピーする内容は変わりません。履歴が残っている場合は **以前のメッセージを読み込む** を使えます。画面キーボードに合わせて入力欄の位置が調整され、行メニューはスレッドのリンクとは別にタップできます。
 
 Tab または Shift+Tab で行メニューから出ると、その行の外の操作に移ります。閉じた作業行にもフォーカス枠が表示され、操作のないパネルにも Tab で移動できます。フォーカス中の **停止** が消えると、入力欄に戻ります。ダイアログ内、編集中、IME 変換中、または操作側が処理済みのキーでは、全体のショートカットは動作しません。
 
