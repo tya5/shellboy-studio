@@ -808,7 +808,20 @@ it.each(["idle", "turn-running", "shell-waiting", "both"] as const)("Studio #158
   expect(dock.querySelector('button[aria-label^="Send EOF"]')).toBeNull();
   expect(dock.querySelector("textarea")?.placeholder).not.toMatch(/shell|stdin|input to/i);
   expect(!!dock.querySelector('button[aria-label="Stop"]')).toBe(turnRunning);
-  expect(!!dock.querySelector('button[aria-label="Interrupt Turn"]')).toBe(turnRunning);
+  expect(dock.querySelector('button[aria-label="Interrupt Turn"]')).toBeNull();
+  const before=f.t.calls("message.send").length;
+  const area=dock.querySelector<HTMLTextAreaElement>("textarea")!;
+  area.value=`send-${state}`;area.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertText"}));
+  await act(async()=>{await flush(4);});
+  const sendButton=dock.querySelector<HTMLButtonElement>(".composer-row .right button.btn-primary")!;
+  expect(sendButton.disabled).toBe(false);
+  await act(async()=>{sendButton.click();await flush(8);});
+  const call=f.t.calls("message.send")[before]!;
+  expect(call.args).toMatchObject({thread_id:"lead",text:`send-${state}`,deliver:"next"});
+  expect(f.t.calls("shell.write")).toHaveLength(0);
+  expect(f.t.calls("shell.eof")).toHaveLength(0);
+  f.db.answered.add(call.id);
+  await act(async()=>{f.t.ok(call.id,{message_id:`msg-${state}`,thread_id:"lead"});await flush(8);});
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
@@ -831,18 +844,18 @@ it("Studio #158: simple composer keeps model delivery while Activity shell contr
   expect(dock.querySelector('button[aria-label^="Send EOF"]')).toBeNull();
   expect(host.querySelector<HTMLTextAreaElement>("#composer")?.placeholder).not.toMatch(/shell|stdin|input to/i);
   const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
-  let send!:Promise<boolean>;
-  await act(async()=>{composer.value="model-default";composer.dispatchEvent(new Event("input",{bubbles:true}));send=f.model.send("model-default");await flush(8);});
-  const defaultSend=f.t.calls("message.send").at(-1)!;
+  const sentBefore=f.t.calls("message.send").length;
+  composer.value="model-default";composer.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertText"}));
+  await act(async()=>{await flush(4);});
+  const sendButton=host.querySelector<HTMLButtonElement>('.composer-row .right button.btn-primary')!;
+  expect(sendButton.disabled).toBe(false);
+  await act(async()=>{sendButton.click();await flush(8);});
+  const defaultSend=f.t.calls("message.send")[sentBefore]!;
   expect(defaultSend.args).toMatchObject({thread_id:"lead",text:"model-default",deliver:"next"});
   expect(f.t.calls("shell.write")).toHaveLength(0);
   expect(f.t.calls("shell.eof")).toHaveLength(0);
   f.db.answered.add(defaultSend.id);
-  await act(async()=>{f.t.ok(defaultSend.id,{message_id:"msg-default",thread_id:"lead"});expect(await send).toBe(true);await flush(8);});
-  const interrupt=host.querySelector<HTMLButtonElement>('button[aria-label="Interrupt Turn"]')!;
-  expect(interrupt).toBeDefined();
-  await act(async()=>{interrupt.click();await flush(8);});
-  expect(f.t.calls("turn.interrupt").at(-1)?.args).toMatchObject({turn_id:"turn-1"});
+  await act(async()=>{f.t.ok(defaultSend.id,{message_id:"msg-default",thread_id:"lead"});await flush(8);});
   const activity=host.querySelector<HTMLButtonElement>('[role="tab"][data-panel-tab="work"]')!;
   expect(activity).toBeDefined();
   const shellRow=host.querySelector('[data-panel-row-id="exec-2"]')!;

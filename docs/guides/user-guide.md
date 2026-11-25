@@ -43,7 +43,7 @@ The v2 interface uses consistent headings, links, action buttons, and loading an
 - Use **Pin** in a Thread's row menu to put it in **Pinned**, above **All**. The pinned band can include older Threads outside the loaded **All** list, and orders them by creation time, newest first; entries without a creation time come last.
 - **Archived**, below **All**, lists archived Threads separately. **All** excludes them; archived Threads with a pin remain in **Pinned**. To archive several Threads, select them in the sidebar and use **Archive** in the selection bar; press **Archive** again to confirm. **Unarchive** is available for selected archived Threads. **Include descendants** controls whether the owner applies the action to their descendants.
 - **Awaiting you** is a separate sidebar filter. It clears search, tag, and directory filters and hides **Pinned** and **Archived**. Choosing any of those filters turns **Awaiting you** off. The **Awaiting you** screen also lists requests directed to you. A count with `+` is a lower bound.
-- In **Conversation**, the composer sends text to the model using the default next-safe-boundary delivery. Sending input to a shell and choosing **Now** are not available in Studio for now. The model can still write to a shell. Use **Move to background** and **Stop this shell** in the right panel to manage shell execution. **Stop** stops the Run; **Interrupt Turn** interrupts the active Turn. A recovery wait does not clear a reply duty. If recovery offers **Retry**, it may incur additional usage; if unavailable, read the reason shown. Drafts stay with their Thread when you switch.
+- In **Conversation**, the composer sends text to the model using the default next-safe-boundary delivery. Sending input to a shell and choosing **Now** are not available in Studio for now. The model can still write to a shell. Use **Move to background** and **Stop this shell** in the right panel to manage shell execution. **Stop** stops the Run while it is active. A recovery wait does not clear a reply duty. If recovery offers **Retry**, it may incur additional usage; if unavailable, read the reason shown. Drafts stay with their Thread when you switch.
 
 ### Conversation side panel
 
@@ -190,7 +190,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 - 行メニューの **ピン留め** で **すべて** の上にある **ピン留め** 欄に追加します。**すべて** の読み込み範囲外にある古いスレッドも表示されます。作成日時の新しい順で、日時が不明なものは最後です。
 - **すべて** の下の **アーカイブ済み** にアーカイブしたスレッドが表示されます。**すべて** には表示されませんが、ピン留めしたものは **ピン留め** に残ります。複数のスレッドを選択し、サイドバーの選択バーで **アーカイブ** を押します。確認のためもう一度押してください。選択したアーカイブ済みスレッドには **アーカイブ解除** を使えます。**子孫も含める** は子孫への適用を切り替えます。
 - **あなた待ち** の絞り込みを有効にすると検索語、タグ、ディレクトリの条件が解除され、**ピン留め** と **アーカイブ済み** が隠れます。いずれかの条件を選び直すと **あなた待ち** は解除されます。**あなた待ち** 画面では自分宛ての依頼も確認できます。`+` 付きの件数は下限です。
-- **会話** の入力欄は、既定の次の安全な区切りでモデルにメッセージを送ります。Studio ではシェルへの入力送信と **今すぐ** の指定は現在利用できません。モデルからシェルへの書き込みは引き続き可能です。右パネルの **バックグラウンドに移動** と **このシェルを停止** でシェルを操作します。**停止** は Run を停止し、**ターンを中断** は Turn を中断します。復旧待ちになっても返信義務は消えません。**再試行** では追加の利用量が発生する場合があります。使えないときは画面の理由を確認してください。書きかけはスレッドを切り替えても元のスレッドに残ります。
+- **会話** の入力欄は、既定の次の安全な区切りでモデルにメッセージを送ります。Studio ではシェルへの入力送信と **今すぐ** の指定は現在利用できません。モデルからシェルへの書き込みは引き続き可能です。右パネルの **バックグラウンドに移動** と **このシェルを停止** でシェルを操作します。実行中の Run は **停止** で停止できます。復旧待ちになっても返信義務は消えません。**再試行** では追加の利用量が発生する場合があります。使えないときは画面の理由を確認してください。書きかけはスレッドを切り替えても元のスレッドに残ります。
 
 #### 右パネル
 

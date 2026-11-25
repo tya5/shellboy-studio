@@ -1081,7 +1081,6 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             busy={send.kind === "sending"}
             draftScope={handle.threadId}
             onSend={(text,onReserved) => model.send(text,onReserved)}
-            interrupt={model.details.value?.turn_id ? { label: t("composer.interruptTurn"), run: () => void model.interruptTurn() } : undefined}
             stop={model.canStop.value ? { label: t("composer.stop"), run: () => void model.stop() } : undefined}
           />
         </div> : null}

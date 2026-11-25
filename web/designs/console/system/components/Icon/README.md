@@ -12,7 +12,6 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.archive` | Archive the current Thread; row action before it is archived. | `archive` |
 | `action.unarchive` | Restore an archived Thread; archive-toggle row action. | `archiveRestore` |
 | `action.stop` | Stop the active Run or shell; Conversation and Activity actions. | `square` |
-| `action.interruptTurn` | Request interruption of the active Turn. | `cross` |
 | `action.shellBackground` | Move a running shell to background execution. | `arrow` |
 | `action.retry` | Retry a recoverable Run; recovery, Analytics, and Settings compaction controls. | `retry` |
 | `action.delete` | Delete a Thread after its exact preview is confirmed; destructive last row-menu item. | `trash` |

@@ -80,8 +80,6 @@ pub fn access(command: &Command) -> Access {
         #[cfg(feature = "next-connection-setup")]
         Command::CredentialsSet(..) | Command::CredentialsClear(..) => Access::Mutation,
         Command::MessageReply(..)
-        | Command::ShellWrite(..)
-        | Command::ShellEof(..)
         | Command::ShellStop(..)
         | Command::ShellBackground(..)
         | Command::TurnInterrupt(..) => Access::Mutation,
@@ -94,7 +92,9 @@ pub fn access(command: &Command) -> Access {
         Command::MessageAsk(..) | Command::IdResolve(..) => Access::Denied,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(args) if !args.instance_id.is_empty() => Access::Mutation,
-        Command::OwnerShutdown(..)
+        Command::ShellWrite(..)
+        | Command::ShellEof(..)
+        | Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)
         | Command::ThreadPrune(..)

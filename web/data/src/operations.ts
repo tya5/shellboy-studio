@@ -535,9 +535,7 @@ export class Operations {
   shellStop(executionId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
     return this.run("shell.stop", { execution_id: executionId }, outcomeDecoder(decodeRecord), { operationId });
   }
-  turnInterrupt(turnId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("turn.interrupt", { turn_id: turnId }, outcomeDecoder(decodeRecord), { operationId });
-  }
+
   /** Saved usage totals, or one page of a grouped scan when `group_by` is set. No provider call. */
   usageGet(args: UsageGetArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("usage.get", args, outcomeDecoder(decodeRecord), undefined, read);

@@ -189,31 +189,3 @@ fn core_schedule_and_service_reads_require_a_thread() {
         }
     }
 }
-
-#[test]
-fn intervention_commands_are_mutations_on_the_exact_core_pair() {
-    use shellboy::protocol::{ExecutionTarget, ShellWriteArgs, TurnTarget};
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 26);
-    let commands = [
-        Command::ShellBackground(ExecutionTarget {
-            execution_id: "shell".into(),
-        }),
-        Command::ShellStop(ExecutionTarget {
-            execution_id: "shell".into(),
-        }),
-        Command::ShellWrite(ShellWriteArgs {
-            execution_id: "shell".into(),
-            text: "input".into(),
-            encoding: "UTF-8".into(),
-        }),
-        Command::ShellEof(ExecutionTarget {
-            execution_id: "shell".into(),
-        }),
-        Command::TurnInterrupt(TurnTarget {
-            turn_id: "turn".into(),
-        }),
-    ];
-    for command in commands {
-        assert_eq!(access(&command), Access::Mutation, "{command:?}");
-    }
-}

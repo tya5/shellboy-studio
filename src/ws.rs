@@ -39,7 +39,20 @@ const RESULT_CHANNEL: usize = SESSION_IN_FLIGHT + SESSION_QUEUE + APP_CALLS + 4;
 /// Decode and authorize one call. Mutations from the web are recorded as human with the
 /// label `web` (architecture 4.4).
 pub fn build_command(command: &str, args: Option<Value>) -> Result<Command, BridgeError> {
-    let value = json!({"command": command, "args": args.unwrap_or_else(|| json!({}))});
+    let args = args.unwrap_or_else(|| json!({}));
+    if command == "message.send" && args.get("deliver").and_then(Value::as_str) == Some("now") {
+        return Err(BridgeError::new(
+            "not_allowed",
+            "immediate delivery is not available through the bridge",
+        ));
+    }
+    if matches!(command, "shell.write" | "shell.eof" | "turn.interrupt") {
+        return Err(BridgeError::new(
+            "not_allowed",
+            format!("{command} is not available through the bridge"),
+        ));
+    }
+    let value = json!({"command": command, "args": args});
     let mut parsed: Command = serde_json::from_value(value)
         .map_err(|_| BridgeError::new("invalid_call", "cannot decode call (command or args)"))?;
     match access(&parsed) {
@@ -522,6 +535,29 @@ mod tests {
         assert!(build_command("owner.shutdown", Some(json!({"instance_id":"x"}))).is_ok());
         assert_eq!(
             build_command("events.wait", None).unwrap_err().code,
+            "not_allowed"
+        );
+        for (command, args) in [
+            (
+                "shell.write",
+                json!({"execution_id":"shell","text":"input","encoding":"UTF-8"}),
+            ),
+            ("shell.eof", json!({"execution_id":"shell"})),
+            ("turn.interrupt", json!({"turn_id":"turn"})),
+        ] {
+            assert_eq!(
+                build_command(command, Some(args)).unwrap_err().code,
+                "not_allowed",
+                "{command}"
+            );
+        }
+        assert_eq!(
+            build_command(
+                "message.send",
+                Some(json!({"thread_id":"t","text":"hi","deliver":"now"}))
+            )
+            .unwrap_err()
+            .code,
             "not_allowed"
         );
         assert_eq!(

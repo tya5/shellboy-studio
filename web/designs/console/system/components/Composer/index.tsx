@@ -1,10 +1,11 @@
 import type { ComponentChildren } from "preact";
+
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { composerAction } from "../../../../../ui-core/src";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
 
-export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; above?: ComponentChildren; interrupt?: { label: string; run: () => void }; draftStatus?: (text: string) => { blocked: boolean; hint: string }; draftScope?: string; start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
+export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; draftStatus?: (text: string) => { blocked: boolean; hint: string }; draftScope?: string; start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
   const [, renderDraft] = useState(0);
   const drafts = useRef(new Map<string | undefined, string>());
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -55,7 +56,6 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
   };
   return (
     <div class="composer-root">
-      {props.above ? <div class="composer-above">{props.above}</div> : null}
       <textarea
         ref={textarea}
         id="composer"
@@ -77,7 +77,6 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         <span class="composer-hint" role="status">{status?.hint ?? props.hint}</span>
         <div class="right">
           {props.context}
-          {props.interrupt ? <Button icon label={props.interrupt.label} variant="ghost" onClick={props.interrupt.run}><Icon role="action.interruptTurn" size="small" /></Button> : null}
           {props.stop ? <Button buttonRef={stopButton} icon label={props.stop.label} title={props.stop.label} variant="stop" onClick={props.stop.run}>
             <Icon role="action.stop" size="small" />
           </Button> : null}

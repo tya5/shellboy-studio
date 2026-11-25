@@ -1472,12 +1472,6 @@ export class AppModel {
     this.report("action.stop", await this.ops.runStop(runId));
   }
 
-  async interruptTurn(): Promise<void> {
-    const turnId = this.details.value?.turn_id;
-    if (turnId === undefined) return;
-    this.report("action.interrupt", await this.ops.turnInterrupt(turnId));
-  }
-
   async backgroundShell(executionId: string): Promise<void> {
     const threadId = this.handle.peek()?.threadId;
     if (!threadId || this.shells.peek().get(executionId)?.thread_id !== threadId) return;
