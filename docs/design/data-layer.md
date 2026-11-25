@@ -122,7 +122,7 @@ Mutations are never cancelled.
 **What can't be stopped at the owner, read from the v0.10.0 source and not measured.** Every cancel closes the owner connection, and what that does depends on the command (`runtime_cancellable`, `protocol/command.rs`):
 
 - Stops being waited for: `status --memory`, `model.list`, `history.search`, `shell.get`, `shell.read`, `events.wait`, `storage.status`, `index.preview` and index work. The owner drops the future at once. `history.search` also interrupts SQLite (`index/search/reader.rs`). For the others, cleanup is the reader's own, and whether a blocking step already running ends early wasn't checked.
-- Runs to its end, and the reply is discarded: `thread.list`, `thread.get`, `thread.branches`, `history.list`, `history.get`, `history.relations`, `usage.get`, `compact.list`, `shell.list`, `index.status`, and the other commands the same match lists as false. Each also holds one of the owner's 24 work slots until it finishes (`MAX_IPC_WORK`, and the test `disconnected_accepted_work_keeps_all_slots_until_consumer_completion`).
+- Runs to its end, and the reply is discarded: `thread.list`, `thread.get`, `thread.branches`, `history.list`, `history.read`, `history.relations`, `usage.get`, `compact.list`, `shell.list`, `index.status`, and the other commands the same match lists as false. Each also holds one of the owner's 24 work slots until it finishes (`MAX_IPC_WORK`, and the test `disconnected_accepted_work_keeps_all_slots_until_consumer_completion`).
 
 Seen once in Chrome on the 5,002-Thread, 100,000-node temp seed, with 400 ms of emulated latency so reads were still in flight: leaving a long Thread 50 ms after opening it sent 3 `cancel` frames, and nothing more in the next 3 seconds. Four keystrokes in one go sent one `thread.list`. `usage.get` and `thread.branches` answered within about 11 ms there, before the view was left, so a cancel of those on a real owner, and a multi-page walk stopping, are covered only by unit tests.
 
@@ -201,7 +201,7 @@ with a 200-item limit, filtered to active shell and undelivered message states.
 A continuation is not walked: the displayed counts are lower bounds. `status`
 contains other work kinds too, so a page can omit matching rows even when the
 visible count is zero. It is not an atomic TUI live-work snapshot. The handle
-owns the page and at most eight pending-message previews, each one `history.get`
+owns the page and at most eight pending-message previews, each one `history.read`
 of at most 1024 bytes. Original bodies are immutable; the cache is replaced on
 refresh and discarded with the handle. Work subscriptions are reference-counted;
 closing or pausing the handle cancels its reads. The existing Link scheduler
@@ -253,5 +253,5 @@ source is the list hint (`listHint`), not one Thread's hints: on a list change
 or resync it re-reads its loaded page count. A new owner value starts a new
 scope. It never fans out to Thread details; titles come from the by-ID
 summary read of the retained questions' Threads. AppModel owns panel
-selection; existing `history.get` and `message.reply` provide the full text
+selection; existing `history.read` and `message.reply` provide the full text
 and reply operation.

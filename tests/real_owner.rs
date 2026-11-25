@@ -1454,7 +1454,10 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     assert_eq!(parts["node_id"], summary_id);
     assert_eq!(parts["kind"], "summary");
     assert!(
-        parts["parts"]["items"].is_array() && parts["parts"]["reduce_keys_recorded"].is_boolean(),
+        parts["parts"]["items"].as_array().is_some_and(|items| items
+            .iter()
+            .any(|item| item["listed_as"] == "map" && item["state"] == "retained"))
+            && parts["parts"]["reduce_keys_recorded"].is_boolean(),
         "{parts}"
     );
     let ordinary = c

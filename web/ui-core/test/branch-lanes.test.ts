@@ -38,8 +38,8 @@ describe("lane graph", () => {
 
   it("every child lane's first segment starts at its parent's split row, also when it reuses a column to the left", () => {
     // Root "r" ends before its child's rows, so the grandchild takes column 0, left of its parent "c".
-    const item = (id: string, parent: string | null, split: [string, number] | null, path: number) => ({ thread_id: id, parent_thread_id: parent, depth: 0, state: id === "r" ? "current" : "branch",
-      divergence: split ? { node_id: split[0], ordinal: split[1], parent_continues: true } : null, size: { path_nodes: path }, tip: { node_id: `${id}-tip` } });
+    const item = (id: string, parent: string | null, split: [string, number] | null, path: number) => ({ selection_revision: 1, thread_id: id, parent_thread_id: parent, depth: 0, state: id === "r" ? "current" : "branch",
+      divergence: split ? { parent_selection_revision: 1, node_id: split[0], ordinal: split[1], parent_continues: true } : null, size: { path_nodes: path }, tip: { node_id: `${id}-tip` } });
     const nested = readFamily([{ thread_id: "r", items: [item("r", null, null, 14), item("c", "r", ["n5", 5], 12), item("g", "c", ["n9", 9], 12)] }]);
     for (const f of [nested, family()]) {
       const g = laneGraph(f);

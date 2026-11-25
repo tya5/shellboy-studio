@@ -23,7 +23,7 @@ describe("Operations", () => {
     expect(t.calls()[0]).toMatchObject({ command: "artifact.list", args: { thread_id: "a", cursor: "opaque", limit: 32 } });
     expect(t.calls()[0]!.operation_id).toBeUndefined();
     t.ok(t.calls()[0]!.id, { items: [row], next_cursor: null });
-    await expect(list).resolves.toEqual({ ok: true, ownerOperationId: "op", value: { items: [row] } });
+    await expect(list).resolves.toEqual({ ok: true, ownerOperationId: "op", value: { items: [row], limit: 32, filters: { thread_id: "a" } } });
     const duplicate = ops.artifactList("a");
     t.ok(t.calls()[1]!.id, { items: [row, row] });
     await expect(duplicate).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
@@ -76,7 +76,7 @@ describe("Operations", () => {
     expect(t.calls()[0]).toMatchObject({ command: "thread.list", args: { limit: 5, archived: "only", query: "q" } });
     expect(t.calls()[0]!.operation_id).toBeUndefined();
     t.ok(t.calls()[0]!.id, { items: [summary("a")], next_cursor: "c1" });
-    expect(await p).toEqual({ ok: true, ownerOperationId: "op", value: { items: [summary("a")], next_cursor: "c1" } });
+    expect(await p).toEqual({ ok: true, ownerOperationId: "op", value: { items: [summary("a")], limit: 5, filters: {}, next_cursor: "c1" } });
   });
 
   it("public history capture contains toJSON and getter failures as Outcomes", async () => {
@@ -227,7 +227,7 @@ describe("Operations", () => {
     t.ok(cmds[3]!.id, { items: [{ thread_id: "a", title: "A", state: "idle", tags: ["x", 3] }] });
     await flush();
     expect(await tag).toMatchObject({ ok: true, value: { changed: ["a"] } });
-    expect(await tags).toEqual({ ok: true, ownerOperationId: "op", value: { items: ["x", "y"], next_cursor: "n" } });
+    expect(await tags).toEqual({ ok: true, ownerOperationId: "op", value: { items: ["x", "y"], limit: 200, filters: {}, next_cursor: "n" } });
     expect(await cwds).toMatchObject({ ok: false });
     expect(await list).toMatchObject({ ok: false });
   });
@@ -448,7 +448,7 @@ it.each(['work','handoff'] as const)('scoped %s decoder preserves valid operatio
  const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
  const items=[{kind:'shell',id:'operation-a',thread_id:'selected',state:'running',execution_id:'execution-a'},
   {kind:'shell',id:'operation-b',thread_id:'selected',state:'running',execution_id:'execution-b'}];
- t.ok(t.calls('status')[0]!.id,{items});expect(await pending).toEqual({ok:true, ownerOperationId: "op",value:{items}});
+ t.ok(t.calls('status')[0]!.id,{items});expect(await pending).toMatchObject({ok:true, ownerOperationId: "op",value:{items}});
 });
 it.each(['work','handoff'] as const)('scoped %s decoder keeps missing public thread identity rejected',async mode=>{
  const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
@@ -519,4 +519,29 @@ it("sends Core v0.16 shell and interrupt commands with their typed protocol targ
     t.ok(call.id,{});
     await expect(promise).resolves.toMatchObject({ok:true,value:{}});
   }
+});
+
+
+it("rejects a malformed pinned family before a positional read can use it", async () => {
+  const { t, ops } = setup();
+  for (const row of [{ thread_id: "a" }, { thread_id: "a", selection_revision: 3, divergence: { node_id: "n" } }]) {
+    const family = ops.threadBranches({ thread_id: "a" });
+    t.okRaw(t.calls().at(-1)!.id, { items: [row], limit: 200, filters: { thread_id: "a" } });
+    expect(await family).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  }
+});
+
+it("requires pinned page metadata and all three reply exactness flags", async () => {
+  const { t, ops } = setup();
+  for (const raw of [{ items: [] }, { items: [], limit: 20, filters: { query: "unreflected" } },
+    ...["awaiting_named_count_exact", "awaiting_replies_count_exact", "awaiting_thread_count_exact"].map(flag => ({
+      items: [summary("a", { [flag]: undefined })], limit: 20, filters: {},
+    }))]) {
+    const list = ops.threadList();
+    t.okRaw(t.calls().at(-1)!.id, raw);
+    expect(await list).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  }
+  const compact = ops.compactList({ thread_id: "a" });
+  t.okRaw(t.calls().at(-1)!.id, { items: [], more: false, period: {}, coverage: {} });
+  expect(await compact).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
 });

@@ -12,7 +12,7 @@ it("qualifies the owed page by the recipient and preserves the saved CLI sender"
     sender: { kind: "external_cli", label: "tool" }, recipient: { kind: "thread", thread_id: "t" }, excerpt: "Review" };
   const read = data.operations.messageList({ owed_by: "t" });
   await flush(); transport.ok(transport.calls("message.list").at(-1)!.id, { items: [row] });
-  expect(await read).toEqual({ ok: true, value: { items: [row] }, ownerOperationId: "op" });
+  expect(await read).toEqual({ ok: true, value: { items: [row], limit: 16, filters: { owed_by_thread_id: "t", asked_by_thread_id: null } }, ownerOperationId: "op" });
   const wrong = data.operations.messageList({ owed_by: "other" });
   await flush(); transport.ok(transport.calls("message.list").at(-1)!.id, { items: [row] });
   expect(await wrong).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
