@@ -197,7 +197,7 @@ describe("shell footer toggles", () => {
     expect(toggle).toContain("panel ? \" right\" : \"\"");
     expect(rail).toContain(".panel-tab-count { display:grid; place-items:center;");
     expect(rail).toContain("border-radius:calc(var(--size-icon-small) / 2); background:var(--wait); color:var(--on-wait)");
-    expect(rail).toContain('[data-labels="active"] [aria-selected="false"] .panel-tab-label');
+    expect(rail).toContain('[data-labels="icons"] .panel-tab-label');
     expect(rail).toContain(".panel-tabs-rail .panel-tab-count { position:absolute; inset-block-start:var(--space-2); inset-inline-end:var(--space-2); }");
     expect(rail).not.toContain(".panel-tabs-rail .panel-tab-count { background:");
   });
