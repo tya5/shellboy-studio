@@ -46,7 +46,7 @@ it("does not join unknown, deleted, or differently owned facts", () => {
 it("keeps the rendered conversation container when the qualified row becomes saved", async () => {
   const { render, h } = await import("preact");
   const { ConversationItems } = await import("../screens/ConversationItems");
-  const { Message } = await import("../system/components");
+  const { Message } = await import("../system/components/Message");
   const host = document.createElement("div");
   const liveProjection = projectSavedItems([live]);
   const row = (source: NormalizedSavedItem) => ({ key: projectSavedItems([source]).items[0]!.key, source });
