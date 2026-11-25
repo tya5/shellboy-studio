@@ -118,7 +118,7 @@ it("keeps a next cursor on an empty page and reads its continuation", async () =
   const call = t.calls("message.list").at(-1)!;
   expect(call.args).toMatchObject({ owed_by_thread_id: "thread", cursor: "still-more" });
   const row = pendingReply("m", "sender", { kind: "thread", thread_id: "thread" }, "Review");
-  t.ok(call.id, { items: [row], limit: 16, filters }); await more;
+  t.ok(call.id, { items: [row], limit: 16, filters }); await more; await flush();
   expect(pages.owed_by.value).toMatchObject({ items: [row], complete: true });
   pages.close(); data.stop();
 });

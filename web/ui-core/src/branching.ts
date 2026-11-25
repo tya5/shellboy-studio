@@ -236,8 +236,8 @@ export class Branches {
   private async extend(s: HistoryWindowResult, family: BranchFamily, cancel: Cancel, fail: () => void) {
     const result = await this.admit(family, s.thread_id, cancel, s);
     if (result === true || cancel.cancelled || this.running || this.state.peek().family !== family) return;
-    fail();
     if (result === "changed") void this.read(this.state.peek().threadId!);
+    else fail();
   }
 
   want(need: LaneNeed): void {

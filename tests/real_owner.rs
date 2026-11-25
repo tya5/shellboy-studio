@@ -1343,6 +1343,45 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
         "{back}"
     );
 
+    let ask = isolated_command(&bin, &root.join("home"))
+        .args([
+            "message",
+            "ask",
+            "--thread",
+            &thread,
+            "--sender-label",
+            "Studio probe",
+            "--text",
+            "Synthetic question",
+        ])
+        .arg("--data-dir")
+        .arg(&data)
+        .output()
+        .unwrap();
+    assert!(
+        ask.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ask.stderr)
+    );
+    let owed = c
+        .ok(
+            "message.list",
+            json!({"owed_by_thread_id":thread,"limit":16}),
+            None,
+        )
+        .await;
+    assert_eq!(owed["filters"]["owed_by_thread_id"], thread);
+    assert!(
+        owed["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["sender"]["kind"] == "external_cli"
+                && row["sender"]["label"] == "Studio probe"),
+        "{owed}"
+    );
+    c.settled(&thread).await;
+
     drop(c);
     cancel.cancel();
     drop(serve);
