@@ -1453,17 +1453,18 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
         .await;
     assert_eq!(parts["node_id"], summary_id);
     assert_eq!(parts["kind"], "summary");
-    assert!(
-        parts["parts"]["items"].as_array().is_some_and(|items| items
-            .iter()
-            .any(|item| item["listed_as"] == "map" && item["state"] == "retained"))
-            && parts["parts"]["reduce_keys_recorded"].is_boolean(),
+    // The small manual Summary has no retained map/reduce parts.
+    assert_eq!(
+        parts["parts"],
+        json!({"items":[],"reduce_keys_recorded":false}),
         "{parts}"
     );
+    assert_eq!(parts["text"], "", "{parts}");
     let ordinary = c
         .ok("history.read", json!({"node_id":summary_id}), None)
         .await;
     assert!(ordinary.get("parts").is_none(), "{ordinary}");
+    assert!(!ordinary["text"].as_str().unwrap().is_empty(), "{ordinary}");
 
     drop(c);
     cancel.cancel();
