@@ -33,9 +33,17 @@ export function PanelTabs(props: {
       setMode(full.getBoundingClientRect().width <= width ? "all" : active.getBoundingClientRect().width <= width ? "active" : "icons");
     };
     fit();
-    const observer = new ResizeObserver(fit);
+    // A mode change can alter the measured strip's height. Commit it outside observer delivery.
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    });
     for (const element of [list, full, active]) observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
   }, [props.rail]);
   const activeLabel = mode === "icons" ? props.items.find(item => item.id === props.selected)?.label : undefined;
   useLayoutEffect(() => { props.onSheetActiveLabel?.(activeLabel); }, [props.onSheetActiveLabel, activeLabel]);

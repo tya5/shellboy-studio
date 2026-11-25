@@ -83,7 +83,14 @@ try {
   await click(`${tablist} [data-panel-tab="awaiting-reply"]`);
   await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: true });
   await until(`document.querySelector(${JSON.stringify(tablist)})?.dataset.labels==='icons' && document.querySelector('dialog[open] .work-sheet-head h2')?.textContent.endsWith('Awaiting reply')`, 'icons-only sheet and active heading');
-  assert(await evaluate(`(()=>{const row=document.querySelector(${JSON.stringify(tablist)}), tabs=[...row.querySelectorAll('[role=tab]')];return row.scrollWidth===row.clientWidth && new Set(tabs.map(tab=>tab.getBoundingClientRect().top)).size===1 && tabs.every(tab=>tab.getAttribute('aria-label') && !tab.querySelector('.panel-tab-label').getClientRects().length);})()`), 'sheet icons fit on one line with full accessible names');
+  const narrowSheet = await evaluate(`(() => {
+    const row = document.querySelector(${JSON.stringify(tablist)}), rect = row.getBoundingClientRect();
+    return {viewport:innerWidth,width:row.clientWidth,scroll:row.scrollWidth,tabs:[...row.querySelectorAll('[role=tab]')].map(tab => {
+      const r = tab.getBoundingClientRect();
+      return {top:r.top, inside:r.left>=rect.left && r.right<=rect.right, name:tab.getAttribute('aria-label'), labelVisible:!!tab.querySelector('.panel-tab-label').getClientRects().length};
+    })};
+  })()`);
+  assert(narrowSheet.viewport === 320 && narrowSheet.scroll === narrowSheet.width && new Set(narrowSheet.tabs.map(tab => tab.top)).size === 1 && narrowSheet.tabs.every(tab => tab.inside && tab.name && !tab.labelVisible), `sheet icons fit on one line with full accessible names: ${JSON.stringify(narrowSheet)}`);
   await assertSheetTargets();
   await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await click('dialog[open] .work-sheet-head button');
@@ -174,7 +181,7 @@ try {
   assert(moveBounds.height && moveBounds.scroll >= moveBounds.height, `Move list has a bounded scroll viewport: ${JSON.stringify(moveBounds)}`);
   await textButton('Close');
 
-  console.log(JSON.stringify({ viewport: 390, panelTabs: '>=44px', selectionActions: '>=44px', tagActions: '>=44px', moveChoices: '>=44px', archiveConfirmation: 'verified' }));
+  console.log(JSON.stringify({ viewport: 390, panelTabs: '>=44x44px', narrowSheet: { viewport: narrowSheet.viewport, row: narrowSheet.width, tabs: narrowSheet.tabs.length }, selectionActions: '>=44px', tagActions: '>=44px', moveChoices: '>=44px', archiveConfirmation: 'verified' }));
 } finally {
   ws?.close();
   for (const child of [chrome, vite]) if (child.exitCode === null) {

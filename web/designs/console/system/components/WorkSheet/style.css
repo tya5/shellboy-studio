@@ -1,3 +1,5 @@
 
 
-.work-sheet-body [data-phone-panel]{overflow:visible;min-height:0}
+/* The sheet supplies the perimeter; do not add the dock's inset and divider. */
+.work-sheet:has(> .work-sheet-body > [data-phone-panel]){padding-inline:var(--space-12)}
+.work-sheet-body > [data-phone-panel]{overflow:visible;min-height:0;padding-inline:0;border-inline-start:0}
