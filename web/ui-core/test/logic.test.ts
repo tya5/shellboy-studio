@@ -219,6 +219,19 @@ describe("routes, prefs, commands, words", () => {
     expect(viewShortcut({ key: "3", altKey: true })).toBe("inbox");
     expect(viewShortcut({ key: "2" })).toBeUndefined();
   });
+  it("maps physical number-row and numpad digits despite layout-produced characters", () => {
+    expect(viewShortcut({ key: "¡", code: "Digit1", altKey: true })).toBe("conversation");
+    expect(viewShortcut({ key: "&", code: "Digit1", altKey: true, shiftKey: true })).toBe("conversation");
+    expect(viewShortcut({ key: "1", code: "Numpad1", altKey: true })).toBe("conversation");
+    expect(panelShortcut({ key: "ç", code: "Digit9", altKey: true })).toBe(true);
+    expect(panelShortcut({ key: "(", code: "Digit9", altKey: true, shiftKey: true })).toBe(false);
+    expect(panelShortcut({ key: "9", code: "Digit9", altKey: true, ctrlKey: true })).toBe(false);
+    expect(panelShortcut({ key: "9", code: "Digit9", altKey: true, metaKey: true })).toBe(false);
+    expect(panelShortcut({ key: "9", code: "Digit9", altKey: true, isComposing: true })).toBe(false);
+    expect(viewShortcut({ key: "1", code: "KeyA", altKey: true })).toBe("conversation");
+    expect(viewShortcut({ key: "¡", code: "Digit1", altKey: true, ctrlKey: true })).toBeUndefined();
+    expect(viewShortcut({ key: "¡", code: "Digit1", altKey: true, metaKey: true })).toBeUndefined();
+  });
   it("every language has every word, with the same placeholders", () => {
     const names = (x: string) => (x.match(/\{\w+\}/g) ?? []).sort().join();
     for (const lang of LANGS)

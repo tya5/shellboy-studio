@@ -47,14 +47,14 @@ The v2 interface uses consistent headings, links, action buttons, and loading an
 
 ### Conversation side panel
 
-In **Conversation**, use **Expand right panel** when the panel is collapsed, or press `Alt+9`. On a phone, the **Thread panel** picker switches sections, and details open full-screen. Use the button named after the section (for example, **Activity**) to go back. When formatted output is available in an expanded shell step, turn **Formatted** off to see raw text. When Core supplies stream information, the expanded step counts lines containing standard error. It marks those lines with a `stderr` label and an edge line where the display preserves the original line boundaries. Output without stream information is not labeled. Raw view and Copy keep the original text without labels. **Wrap lines** does not change what is copied. Use **Load earlier messages** when earlier history is available. The composer adjusts to the on-screen keyboard, and the sidebar row menu has its own touch target.
+With a Thread open in **Conversation**, use **Expand right panel** when the panel is collapsed, or press `Alt`+the physical `9` key (Option+9 on Mac). On a phone, the **Thread panel** picker switches sections, and details open full-screen. Use the button named after the section (for example, **Activity**) to go back. When formatted output is available in an expanded shell step, turn **Formatted** off to see raw text. When Core supplies stream information, the expanded step counts lines containing standard error. It marks those lines with a `stderr` label and an edge line where the display preserves the original line boundaries. Output without stream information is not labeled. Raw view and Copy keep the original text without labels. **Wrap lines** does not change what is copied. Use **Load earlier messages** when earlier history is available. The composer adjusts to the on-screen keyboard, and the sidebar row menu has its own touch target.
 
 With a keyboard, use Tab or Shift+Tab to leave a row menu and continue outside that row. Collapsed Work rows keep a focus outline, and Tab can reach panel content with no controls. If **Stop** disappears while focused, focus returns to the composer. Global shortcuts are ignored in dialogs, while editing or composing text with an IME, and when a control has already handled the key.
 
 #### Keyboard shortcuts
 
-- `Alt+1` opens **Conversation**, `Alt+3` **Awaiting you**, `Alt+4` **Analytics**, `Alt+5` **Settings**, `Alt+6` **Branches**, and `Alt+8` **Apps**. These work outside dialogs and editable fields; other digits have no view mapping.
-- `Cmd+B` on macOS or `Ctrl+B` elsewhere toggles desktop navigation (at desktop widths). In **Conversation** with a Thread open, `Alt+9` toggles the right panel, including its phone sheet.
+- The physical number-row keys with `Alt` (Option on Mac) open views: `1` **Conversation**, `3` **Awaiting you**, `4` **Analytics**, `5` **Settings**, `6` **Branches**, and `8` **Apps**. These work outside dialogs and editable fields; other digits have no view mapping.
+- `Cmd+B` on macOS or `Ctrl+B` elsewhere toggles desktop navigation (at desktop widths). In **Conversation** with a Thread open, the physical `9` key with `Alt` (Option on Mac) toggles the right panel, including its phone sheet.
 - In the composer, `Enter` sends; `Shift+Enter` and `Alt+Enter` insert a newline. Enter during IME composition never sends. The global shortcuts do not run while editing or composing text.
 - `Tab` and `Shift+Tab` use normal page focus order. In a row menu they leave the menu and continue outside that row. Menu buttons/filters open with `Enter`, `Space`, or (for filters) `ArrowDown`; menus use `ArrowUp`/`ArrowDown`, `Home`/`PageUp`, `End`/`PageDown`, `Enter`/`Space`, and typing to navigate or choose items. `Escape` closes the quick-settings popover and returns focus to its opener; it also closes conversation details and subviews where applicable.
 - Other focused controls have local keys: in a thread tree, `ArrowRight` focuses an already visible child and `ArrowLeft` focuses its parent; tabs use arrow keys (horizontal) or up/down (rail), plus `Home`/`End`; resizable separators use arrows, `Home`/`End` (hold `Shift` for a larger resize); toolbars use left/right and `Home`/`End`; charts use left/right and `Escape`. `Enter` in settings fields commits or saves, `Enter` in thread-setting edits saves and `Escape` cancels, and `Enter` in section search opens its first result. Model search can commit an entered ID; tag entry adds the typed tag.
@@ -188,14 +188,14 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 
 #### 右パネル
 
-**会話** の **右パネルを展開** で右パネルを開きます。`Alt+9` でも開閉できます。スマートフォンでは **スレッドパネル** で表示する項目を選べます。詳細は全画面で開き、**動作** など項目名のボタンで元に戻ります。展開したシェルステップで整形済みの出力がある場合、**整形表示** をオフにすると生テキストを表示します。Core が出力の種別を返した場合、展開したステップに標準エラーを含む行数を表示します。元の行の区切りを保つ表示では、該当する行に `stderr` と左端の線を付けます。種別が不明な出力にはラベルを付けません。生テキスト表示とコピーにはラベルを含めません。**行を折り返す** を切り替えてもコピーする内容は変わりません。履歴が残っている場合は **以前のメッセージを読み込む** を使えます。画面キーボードに合わせて入力欄の位置が調整され、行メニューはスレッドのリンクとは別にタップできます。
+**会話** でスレッドを開いているとき、**右パネルを展開** で右パネルを開きます。数字列の物理 `9` キーと `Alt`（Mac では Option）でも開閉できます。スマートフォンでは **スレッドパネル** で表示する項目を選べます。詳細は全画面で開き、**動作** など項目名のボタンで元に戻ります。展開したシェルステップで整形済みの出力がある場合、**整形表示** をオフにすると生テキストを表示します。Core が出力の種別を返した場合、展開したステップに標準エラーを含む行数を表示します。元の行の区切りを保つ表示では、該当する行に `stderr` と左端の線を付けます。種別が不明な出力にはラベルを付けません。生テキスト表示とコピーにはラベルを含めません。**行を折り返す** を切り替えてもコピーする内容は変わりません。履歴が残っている場合は **以前のメッセージを読み込む** を使えます。画面キーボードに合わせて入力欄の位置が調整され、行メニューはスレッドのリンクとは別にタップできます。
 
 Tab または Shift+Tab で行メニューから出ると、その行の外の操作に移ります。閉じた作業行にもフォーカス枠が表示され、操作のないパネルにも Tab で移動できます。フォーカス中の **停止** が消えると、入力欄に戻ります。ダイアログ内、編集中、IME 変換中、または操作側が処理済みのキーでは、全体のショートカットは動作しません。
 
 #### キーボードショートカット
 
-- `Alt+1` は **会話**、`Alt+3` は **あなた待ち**、`Alt+4` は **分析**、`Alt+5` は **設定**、`Alt+6` は **分岐**、`Alt+8` は **アプリ** を開きます。ダイアログ内や入力欄の編集中は動作せず、ほかの数字に画面の割り当てはありません。
-- macOS では `Cmd+B`、それ以外では `Ctrl+B` でデスクトップのナビゲーションを開閉します（デスクトップ幅のみ）。**会話** でスレッドを開いているとき、`Alt+9` で右パネルを開閉します。スマートフォンではシートを切り替えます。
+- 数字列の物理キーと `Alt`（Mac では Option）で画面を開きます。`1` は **会話**、`3` は **あなた待ち**、`4` は **分析**、`5` は **設定**、`6` は **分岐**、`8` は **アプリ** です。ダイアログ内や入力欄の編集中は動作せず、ほかの数字に画面の割り当てはありません。
+- macOS では `Cmd+B`、それ以外では `Ctrl+B` でデスクトップのナビゲーションを開閉します（デスクトップ幅のみ）。**会話** でスレッドを開いているとき、数字列の物理 `9` キーと `Alt`（Mac では Option）で右パネルを開閉します。スマートフォンではシートを切り替えます。
 - 入力欄では `Enter` で送信し、`Shift+Enter` または `Alt+Enter` で改行します。IME 変換中の Enter は送信しません。入力欄の編集中や変換中は全体のショートカットは動作しません。
 - `Tab` と `Shift+Tab` は通常のページ順にフォーカスを移します。行メニュー内ではその行の外へ移動します。メニューのボタンやフィルターは `Enter`、`Space`（フィルターでは `ArrowDown` も可）で開きます。メニュー内は `ArrowUp`/`ArrowDown`、`Home`/`PageUp`、`End`/`PageDown`、`Enter`/`Space`、文字入力で移動・選択できます。`Escape` でクイック設定のポップオーバーを閉じ、開いたボタンにフォーカスを戻します。会話の詳細やサブビューも、該当範囲で閉じます。
 - そのほか、スレッドツリーでは `ArrowRight` で表示中の子へ、`ArrowLeft` で親へフォーカスを移します。タブは左右（縦レールでは上下）と `Home`/`End` で移動します。サイズ変更バーは矢印と `Home`/`End` を使い、`Shift` を押しながらなら大きく変更できます。ツールバーは左右と `Home`/`End`、グラフは左右で移動し、`Escape` で選択を解除します。設定欄の `Enter` は保存・確定、スレッド設定の編集では `Enter` で保存、`Escape` でキャンセルします。セクション検索では `Enter` で先頭の結果を開き、モデル検索では入力した ID を確定できます。タグ入力の `Enter` はタグを追加します。
