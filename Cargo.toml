@@ -42,7 +42,7 @@ next-cwds = ["next-tags"]
 
 [dependencies]
 # Unreleased Core revision pin; exact-pair acceptance verifies manifest revision, lock commit, package, and binary.
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "3ab5ada40910e727553d85d271c1d84ec5db2c41" }
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "b8a297fde080021b6b21bd8da9f869e5603e06a2" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt", "io"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }

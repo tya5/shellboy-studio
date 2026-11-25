@@ -267,8 +267,13 @@ export interface ReplySender {
   label?: string;
 }
 export type ReplyDirection = { owed_by: string } | { asked_by: string } | { to: string };
+export type MessageHeldBy =
+  | { kind: "foreground_shell"; execution_id: string }
+  | { kind: "response_generation" | "run_completion" | "recovery_wait" | "stopping" | "unknown" };
+
 export interface PendingReply {
   message_id: string;
+  held_by?: MessageHeldBy;
   created_at: string;
   asked_by: string | null;
   sender: ReplySender;

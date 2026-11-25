@@ -1,3 +1,4 @@
+import type { PendingReply } from "../../data/src/protocol";
 import type { HistoryItem } from "../../data/src/protocol";
 import type { ProjectedSavedItem, SavedItemProjection } from "./conversation-items";
 import type { PendingOwnMessage } from "./model";
@@ -71,4 +72,17 @@ export function ownSendPresentation(scope: string, cohort: readonly PendingOwnMe
   });
   return Object.freeze({ scope, cohort: Object.freeze(cohort), localRows: Object.freeze(localRows),
     retire: Object.freeze(retire), tailRows: Object.freeze(tailRows) });
+}
+
+
+/** Typed wait presentation for the exact locally retained message, never hint prose. */
+export function ownMessageHeldBy(messageId: string | undefined, rows: readonly PendingReply[]) {
+  if (!messageId) return undefined;
+  const held = rows.find(row => row.message_id === messageId)?.held_by;
+  if (!held) return undefined;
+  switch (held.kind) {
+    case "foreground_shell": return { kind: held.kind, executionId: held.execution_id } as const;
+    case "response_generation": case "run_completion": case "recovery_wait": return { kind: held.kind } as const;
+    case "stopping": case "unknown": return undefined;
+  }
 }
