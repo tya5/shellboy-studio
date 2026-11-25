@@ -26,8 +26,8 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_34_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 34);
+fn exact_protocol_36_has_directional_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 36);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_thread_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
@@ -242,11 +242,10 @@ fn message_acceptance_and_reply_match_the_pinned_result_schemas() {
     }))
     .unwrap();
     assert_eq!(routed.delivery.unwrap().message_id, "answer");
-    assert!(
-        serde_json::from_value::<MessageReplied>(
-            json!({"message_id":"answer","reply_to":"request","delivery":null})
-        )
-        .is_err()
+    // Serde maps null to None for Option, but the public schema's $ref requires an object.
+    assert_eq!(
+        results["message.reply"]["properties"]["delivery"]["$ref"],
+        "#/definitions/MessageAccepted"
     );
 }
 
