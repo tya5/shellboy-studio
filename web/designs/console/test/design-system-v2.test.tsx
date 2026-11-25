@@ -3,7 +3,13 @@
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, expect, it } from "vitest";
-import { Button, ButtonGroup, EmptyState, Field, LoadingCount, Notice, PageHeader } from "../system/components";
+import { Button } from "../system/components/Button";
+import { ButtonGroup } from "../system/components/ButtonGroup";
+import { EmptyState } from "../system/components/EmptyState";
+import { Field } from "../system/components/Field";
+import { LoadingCount } from "../system/components/LoadingRows";
+import { Notice } from "../system/components/Notice";
+import { PageHeader } from "../system/components/PageHeader";
 
 let host: HTMLElement;
 const mount = (node: preact.ComponentChild) => {

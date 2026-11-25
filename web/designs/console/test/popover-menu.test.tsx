@@ -4,7 +4,8 @@ import "../system/tokens/console.css";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
-import { Menu, Popover } from "../system/components";
+import { Menu } from "../system/components/Menu";
+import { Popover } from "../system/components/Popover";
 import { placePanel, placePointerMenu } from "../system/components/Popover";
 
 it("outside modal dismissal consumes the click and leaves focus alone", async () => {

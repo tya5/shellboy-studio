@@ -2,7 +2,7 @@
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it, vi } from "vitest";
-import { CopyButton } from "../system/components";
+import { CopyButton } from "../system/components/CopyButton";
 
 it("announces only successful clipboard completion and resets the check after 1.5 seconds", async () => {
   vi.useFakeTimers();
