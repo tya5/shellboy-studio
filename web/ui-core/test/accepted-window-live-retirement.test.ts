@@ -517,21 +517,32 @@ it("handles a detached burst beyond handoff capacity and retires only from the a
   const live = () => f.w.acceptedView.peek().displayPlan?.localRegion.tailRows.flatMap(row => row.kind === "live" ? [row.item.source.attemptId] : []);
   try {
     await f.settle();
+    f.producer.advance(burst[0]);
+    await flush();
+    f.w.changed();
+    await f.settle();
+    expect(live()).toEqual([burst[0]]);
     f.w.following.value = false;
     for (const [index, attempt] of burst.entries()) {
       f.owner.append(2);
-      f.producer.advance(attempt);
+      if (index > 0) f.producer.advance(attempt);
       f.t.push({ t: "attempt_end", thread_id: "t", attempt_id: attempt, outcome: "adopted", seq: index + 1 });
       expect(f.handle.handoff.peek()).toHaveLength(Math.min(index + 1, 8));
     }
     f.owner.append(220);
     f.producer.advance(active);
-    expect(f.handle.handoff.peek().map(row => row.attemptId)).toEqual([...burst.slice(3), active]);
+    const admitted = burst.slice(0, 8);
+    expect(f.handle.handoffOverflow.peek()).toBe(true);
+    expect(f.handle.handoff.peek().map(row => row.attemptId)).toEqual(admitted);
     f.w.jumpToEnd();
+    // No owner replies yet: even on reattach, capacity must not erase the visible preview.
+    await flush();
+    expect(live()).toContain(burst[0]);
+    expect(f.handle.handoff.peek().map(row => row.attemptId)).toEqual(admitted);
     await f.settle();
     expect(f.w.acceptedView.peek().range?.first).toBeGreaterThan(169);
-    expect(live()).toEqual([active]);
-    expect(f.handle.handoff.peek().map(row => row.attemptId)).toEqual([active]);
+    expect(live()).toEqual([]);
+    expect(f.handle.handoff.peek()).toEqual([]);
     f.owner.append(1);
     f.owner.decorate = (i, row) => i === 390 ? { ...row, kind: "assistant_response", provenance: { attempt_id: active } } : row;
     f.t.push({ t: "attempt_end", thread_id: "t", attempt_id: active, outcome: "adopted", seq: 11 });

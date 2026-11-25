@@ -56,11 +56,7 @@ export class Handoff {
     let h = this.held.find(h => h.attemptId === frame.attempt_id);
     if (h && this.active !== h.attemptId && h.record.status !== "streaming") return;
     if (!h) {
-      // Under capacity pressure, prefer the next live attempt to an owner-adopted preview.
-      if (this.held.length >= MAX_HANDOFF_RECORDS) {
-        const adopted = this.held.find(entry => entry.record.adopted);
-        if (adopted) this.remove(adopted);
-      }
+      // Refuse new previews at capacity; an accepted window owns retirement.
       if (this.held.length >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
@@ -116,13 +112,7 @@ export class Handoff {
   releaseAccepted(attemptId: string): void {
     const h = this.held.find(h => h.attemptId === attemptId);
     if (!h) return;
-    this.remove(h);
-    this.publish();
-  }
-
-  private remove(held: Held): void {
-    held.stop();
-    this.held = this.held.filter(entry => entry !== held);
+    h.stop(); this.held = this.held.filter(x => x !== h); this.publish();
   }
 
   discard(_reason: PreviewDiscardReason): void {
