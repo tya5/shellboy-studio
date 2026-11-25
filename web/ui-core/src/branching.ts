@@ -223,7 +223,7 @@ export class Branches {
       if (!w) continue;
       if (w.thread_id !== id) return false;
       this.observe(w);
-      if ((selectionRevision ?? w.revision) !== w.revision || (rev ?? w.revision) !== w.revision || this.seen.get(id) !== w.revision ||
+      if (selectionRevision !== w.revision || (rev ?? w.revision) !== w.revision || this.seen.get(id) !== w.revision ||
           (size !== undefined && size !== w.total) ||
           (tip !== undefined && w.items.some(i => i.selection?.ordinal === w.total - 1 && i.node_id !== tip))) return "changed" as const;
       rev = w.revision;

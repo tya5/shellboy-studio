@@ -63,7 +63,7 @@ const outcomeDecoder = <T>(decoder: Decoder<T>) => (raw: unknown): Outcome<T> =>
   catch(error) { return { ok:false, error:{kind:'invalid_response',message:error instanceof InputCaptureError ? error.reason : 'invalid-input'} }; }
 };
 
-function pageOf<T, F>(item: (v: unknown) => string | undefined, filters: (v: unknown) => boolean): Decoder<Page<T, F>> {
+function pageOf<T, F>(item: (v: unknown) => string | undefined, filters: (v: unknown) => boolean, allowBare = false): Decoder<Page<T, F>> {
   return (v) => {
     if (!isObject(v) || !Array.isArray(v.items)) return { ok: false, reason: "expected a page with items" };
     for (const it of v.items) {
@@ -73,8 +73,7 @@ function pageOf<T, F>(item: (v: unknown) => string | undefined, filters: (v: unk
     if (v.next_cursor !== undefined && v.next_cursor !== null && typeof v.next_cursor !== "string")
       return { ok: false, reason: "next_cursor must be a string" };
     const page: Page<T, F> = { items: v.items as T[] };
-    // Some synthetic and older snapshot readers still provide the bare envelope.
-    if (Object.hasOwn(v, "limit") || Object.hasOwn(v, "filters")) {
+    if (!allowBare || Object.hasOwn(v, "limit") || Object.hasOwn(v, "filters")) {
       if (!validPageFacts(v, filters)) return { ok: false, reason: "invalid record page metadata" };
       page.limit = v.limit as number;
       page.filters = v.filters as F;
@@ -123,7 +122,7 @@ function attachmentPage(threadId: string): Decoder<Page<AttachmentDetails, Threa
     && typeof row.path === "string" && (row.kind === "file" || row.kind === "image")
     && typeof row.selected === "boolean" && typeof row.managed === "boolean"
     && (row.unavailable_reason === undefined || typeof row.unavailable_reason === "string"))
-    ? "invalid attachment details" : undefined, recordFilters.thread(threadId));
+    ? "invalid attachment details" : undefined, recordFilters.thread(threadId), true);
   return raw => {
     if (!isObject(raw) || !Array.isArray(raw.items) || raw.items.length > ATTACHMENT_PAGE_SIZE)
       return { ok: false, reason: "expected a bounded attachment page" };
@@ -166,7 +165,9 @@ const validEndMessage = (value: unknown): boolean => value == null
 const summaryProblem = (v: unknown): string | undefined =>
   !(isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string" && typeof v.state === "string")
     ? "thread summary lacks thread_id, title or state"
-    : v.tags !== undefined && !(Array.isArray(v.tags) && v.tags.every((t) => typeof t === "string"))
+    : [v.awaiting_named_count_exact, v.awaiting_replies_count_exact, v.awaiting_thread_count_exact].some(flag => typeof flag !== "boolean")
+      ? "thread summary lacks reply count exactness"
+      : v.tags !== undefined && !(Array.isArray(v.tags) && v.tags.every((t) => typeof t === "string"))
       ? "thread summary tags is not a list of strings"
       : !validEndMessage(v.last_end_message)
         ? "thread summary last_end_message is not an answer marker"
@@ -552,7 +553,7 @@ export class Operations {
   compactList(args: CompactListArgs, read?: ReadOptions): Promise<Outcome<CompactListResult>> {
     return this.run("compact.list", args, outcomeDecoder(raw => {
       if (!isObject(raw) || !Array.isArray(raw.items) || typeof raw.more !== "boolean" || Object.hasOwn(raw, "next_cursor")
-        || ((Object.hasOwn(raw, "limit") || Object.hasOwn(raw, "filters")) && !validPageFacts(raw, recordFilters.compactions(args.thread_id))))
+        || !isObject(raw.period) || !isObject(raw.coverage) || !validPageFacts(raw, recordFilters.compactions(args.thread_id)))
         return { ok: false, reason: "invalid compaction report" };
       return { ok: true, value: raw as CompactListResult };
     }), undefined, read);
@@ -617,11 +618,10 @@ export class Operations {
       if (!decoded.ok) return decoded;
       const page = decoded.value;
       const validRevision = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
-      if ((Object.hasOwn(page, "limit") || Object.hasOwn(page, "filters")) && (
-        !validPageFacts(page, recordFilters.thread(args.thread_id)) || !Array.isArray(page.items)
+      if (!validPageFacts(page, recordFilters.thread(args.thread_id)) || !Array.isArray(page.items)
         || page.items.some(row => !isObject(row) || !validRevision(row.selection_revision)
           || (row.divergence != null && (!isObject(row.divergence) || !validRevision(row.divergence.parent_selection_revision))))
-      )) return { ok: false, reason: "invalid branch page metadata or selection revision" };
+      ) return { ok: false, reason: "invalid branch page metadata or selection revision" };
       return decoded;
     }), undefined, read);
   }
