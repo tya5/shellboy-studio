@@ -13,9 +13,9 @@ Studio is the browser and desktop interface for [Shellboy](https://github.com/ty
 - **Continue from your phone.** [Pair over private HTTPS](docs/guides/user-guide.md#open-on-another-device) on a trusted network.
 - **Launch from your desktop.** The [macOS and Windows desktop app](docs/guides/user-guide.md#install-and-open-studio) includes Core and opens Studio in your browser.
 
-![Studio in light mode: the Threads sidebar, a release-preview conversation, and the Reply needed, Awaiting reply, and Activity tabs](docs/assets/studio-reply-duties.png)
+![Light-theme Studio with the Threads sidebar, the Release preview conversation, and a docked Reply needed panel showing Jordan Lee’s request; both reply counters show one](docs/assets/studio-reply-duties.png)
 
-*Development build, using invented Threads and messages from an isolated Core owner. [Regenerate the screenshot](docs/assets/README.md).*
+*Authenticated development build with synthetic Threads and messages. Reply needed is selected; its badge and the neighboring Awaiting reply badge each show one. [Regenerate the screenshot](docs/assets/README.md).*
 
 ## Start
 
