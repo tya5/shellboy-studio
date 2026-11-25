@@ -230,6 +230,10 @@ async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
     let accepted = &ask["result"];
     assert_eq!(accepted["thread_id"], thread);
     assert_eq!(accepted["expect_reply"], true);
+    let ask_message_id = accepted["message_id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .expect("CLI Ask message assignment");
     let run_id = accepted["run_id"].as_str().expect("Ask run assignment");
 
     let ended = owner
@@ -302,7 +306,7 @@ async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
             .as_str()
             .is_some_and(|id| !id.is_empty())
     );
-    assert!(result["reply_to"].as_str().is_some_and(|id| !id.is_empty()));
+    assert_eq!(result["reply_to"], ask_message_id);
     assert!(
         result.get("delivery").is_none(),
         "no-route Reply omits delivery: {reply}"
