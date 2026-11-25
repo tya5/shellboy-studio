@@ -520,6 +520,7 @@ mod tests {
     #[test]
     fn calls_are_decoded_strictly_and_checked_against_the_allowlist() {
         assert!(build_command("thread.list", None).is_ok());
+        assert!(build_command("turn.interrupt", Some(json!({"turn_id":"turn"}))).is_ok());
         assert!(build_command("owner.shutdown", Some(json!({"instance_id":"x"}))).is_ok());
         assert_eq!(
             build_command("events.wait", None).unwrap_err().code,
@@ -531,7 +532,6 @@ mod tests {
                 json!({"execution_id":"shell","text":"input","encoding":"UTF-8"}),
             ),
             ("shell.eof", json!({"execution_id":"shell"})),
-            ("turn.interrupt", json!({"turn_id":"turn"})),
         ] {
             assert_eq!(
                 build_command(command, Some(args)).unwrap_err().code,

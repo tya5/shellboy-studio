@@ -687,6 +687,9 @@ export class Operations {
   runStop(runId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("run.stop", { run_id: runId }, outcomeDecoder(decodeRecord), { operationId });
   }
+  turnInterrupt(turnId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+    return this.run("turn.interrupt", { turn_id: turnId }, outcomeDecoder(decodeRecord), { operationId });
+  }
   runRetry(runId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("run.retry", { run_id: runId }, outcomeDecoder(decodeRecord), { operationId });
   }
