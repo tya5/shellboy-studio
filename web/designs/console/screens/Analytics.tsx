@@ -309,7 +309,7 @@ function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSec
   const walk = section === "threads" ? i.byThread.state.value : i.daily.state.value;
   return (
     <PageHeader title={t(`ana.section.${section}`)} description={rolling ? undefined : `${t(`ana.sub.${section}`)} ${t("analytics.subtitle", { zone: i.period.value.zone })}`} toolbar={
-      <div class={section === "overview" ? "choice-row analytics-period" : "choice-row"}>
+      <div class="choice-row">
         <ButtonGroup label={t("analytics.period")}>
           {PERIODS.map((p) => (
             <Fragment key={p}>

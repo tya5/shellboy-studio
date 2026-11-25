@@ -580,31 +580,63 @@ describe("rolling Overview", () => {
     expect(hourlyTotals([]).requests).toBeUndefined();
   });
 
-  it("keeps cursor bounds fixed, coalesces owner-wide hints, and preserves the Today day read", async () => {
-    const hour = rollingPeriod(NOW, 540).hours[0]!;
-    const first = usagePage([usageItem(hour.key, { count: 4, input: 100, cached: 50, output: 2 })], "second");
-    const second = usagePage([usageItem(hour.key, { count: 3, input: 200, cached: 80, output: 4 })]);
-    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview", usage: { first, second } });
-    const answer = db.answer.bind(db);
-    const calls: Record<string, unknown>[] = [];
-    db.answer = call => {
-      if (call.command === "usage.get") calls.push(call.args as Record<string, unknown>);
-      return answer(call);
-    };
-    const r = model.insights.rolling;
-    r.enabled.value = true;
-    for (const id of ["lead", "other"]) t.push({ t: "changed", thread_ids: [id], config_changed: false, list: true });
+  it("cancels a held cursor on resync, retains the accepted cut, and never selects a different hour", async () => {
+    let now = NOW;
+    const until = () => rollingPeriod(now, 540);
+    const old = until();
+    const firstHour = old.hours[0]!;
+    const item = (key: string, count: number) => usageItem(key, { count, input: 100, cached: 50, output: 2 });
+    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview", nowMs: () => now,
+      usage: { first: usagePage([item(firstHour.key, 4)]) } });
+    const hourCalls = () => t.calls("usage.get").filter(c => (c.args as { group_by?: string }).group_by === "hour");
+    const rolling = model.insights.rolling;
+    rolling.enabled.value = true;
     await settle(t, db);
-    expect(calls).toHaveLength(4);
-    expect(calls.map(x => x.cursor)).toEqual([undefined, "second", undefined, "second"]);
-    for (const call of calls) expect(call).toMatchObject({ since: rollingPeriod(NOW, 540).since, until: new Date(NOW).toISOString(), timezone: "+09:00", group_by: "hour" });
-    expect(r.walk.state.peek().groups.get(hour.key)?.requests).toBe(7);
-    r.select(hour.key);
-    expect(r.selected.peek()).toBe(hour.key);
+    rolling.select(firstHour.key);
+    expect(rolling.displayed.peek()?.selection?.key).toBe(firstHour.key);
+
+    t.push({ t: "changed", thread_ids: ["lead"], config_changed: false, list: true });
+    await flush();
+    const first = hourCalls().at(-1)!;
+    db.answered.add(first.id);
+    t.ok(first.id, usagePage([item(firstHour.key, 20)], "held"));
+    await flush();
+    const held = hourCalls().at(-1)!;
+    expect(held.args).toMatchObject({ cursor: "held", since: old.since, until: old.until, timezone: old.zone });
+
+    now += 3_600_000;
+    t.push({ t: "resync" });
+    t.push({ t: "changed", thread_ids: ["other"], config_changed: false, list: true });
+    expect(t.cancels()).toContain(held.id);
+    db.answered.add(held.id);
+    const onCall = t.onCall;
+    t.onCall = call => {
+      onCall?.(call);
+      if (call.command === "usage.get" && (call.args as { group_by?: string }).group_by === "hour") db.answered.add(call.id);
+    };
+    // Let resync's other tracked reads release the shared RPC queue, but keep the replacement held.
+    await settle(t, db);
+    t.onCall = onCall;
+    const replacement = hourCalls().at(-1)!;
+    expect(replacement.args).toMatchObject({ since: until().since, until: until().until, timezone: old.zone });
+    t.ok(held.id, usagePage([item(firstHour.key, 500)], "obsolete"));
+    await flush();
+    expect(hourCalls().map(c => (c.args as { cursor?: string }).cursor)).toEqual([undefined, undefined, "held", undefined]);
+    expect(rolling.displayed.peek()).toMatchObject({ stale: true, interval: old, selection: firstHour });
+    expect(rolling.displayed.peek()?.walk.groups.get(firstHour.key)?.requests).toBe(4);
+    expect(rolling.walk.state.peek().groups.size).toBe(0);
+
+    db.answered.add(replacement.id);
+    t.ok(replacement.id, usagePage([item(until().hours[0]!.key, 7)]));
+    await settle(t, db);
+    expect(rolling.displayed.peek()).toMatchObject({ stale: false, interval: until(), selection: undefined });
+    expect(rolling.displayed.peek()?.walk.groups.has(firstHour.key)).toBe(false);
+    rolling.step(1);
+    expect(rolling.displayed.peek()?.selection?.key).toBe(until().hours[0]!.key);
     model.insights.setPeriod(1);
     await settle(t, db);
-    expect(calls.at(-2)).toMatchObject({ group_by: "day", since: periodOf(1, NOW, 540).since });
-    expect(r.interval.peek()).toBeUndefined();
+    expect(t.calls("usage.get").at(-1)?.args).toMatchObject({ group_by: "day", since: periodOf(1, now, 540).since });
+    expect(rolling.displayed.peek()).toBeUndefined();
     model.dispose();
   });
 });

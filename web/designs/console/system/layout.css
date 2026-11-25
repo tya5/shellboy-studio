@@ -265,6 +265,5 @@ html:has(dialog:modal){overflow:hidden}
 .scroll{overflow-anchor:none}
 [data-windowed-heading][hidden]{display:none}
 
-.analytics-period .btn,.rolling-overview .btn{min-block-size:var(--size-touch);min-inline-size:var(--size-touch)}
 .rolling-overview{display:grid;min-inline-size:0;gap:var(--space-12)}
 .rolling-stepper{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--space-8);text-align:center}

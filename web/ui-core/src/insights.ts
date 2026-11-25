@@ -1,6 +1,6 @@
 // Screen logic of Analytics, Resources and Settings: which owner reads run, and when. Reads run on
 // opening a view or on request, never per render, and each has a stated bound.
-import { batch, signal, type Signal } from "@preact/signals-core";
+import { batch, computed, signal, type Signal } from "@preact/signals-core";
 import { Cancel, lostConnection, memoryReadIssue, type MemoryFacts, type ModelListResult, type Operations, type OpError, type Outcome, type ReadOptions } from "../../data/src";
 import {
   addCoverage,
@@ -201,12 +201,20 @@ type RollingPeriod = ReturnType<typeof rollingPeriod>;
 export class RollingUsage {
   readonly enabled = signal(false);
   readonly interval = signal<RollingPeriod | undefined>(undefined);
-  readonly previous = signal<{ interval: RollingPeriod; walk: WalkState } | undefined>(undefined);
-  readonly selected = signal<string | undefined>(undefined);
-  readonly dirty = signal(false);
   readonly walk: UsageWalk;
-  private scope: { owner: string; hint: number } | undefined;
-  private scheduled = false;
+  private readonly accepted = signal<{ interval: RollingPeriod; walk: WalkState } | undefined>(undefined);
+  private readonly selected = signal<string | undefined>(undefined);
+  private scope: { owner: string; hint: number; scheduled: boolean } | undefined;
+
+  readonly displayed = computed(() => {
+    const active = this.walk.state.value;
+    const retained = active.status !== "done" ? this.accepted.value : undefined;
+    const interval = retained?.interval ?? this.interval.value;
+    if (!interval) return undefined;
+    const key = this.selected.value;
+    const selection = interval.hours.find(hour => hour.key === key);
+    return { interval, walk: retained?.walk ?? active, stale: retained !== undefined, selection };
+  });
 
   constructor(ops: Operations, private readonly options: InsightsOptions) {
     this.walk = new UsageWalk(ops, "hour", () => this.interval.peek()!);
@@ -216,12 +224,20 @@ export class RollingUsage {
     if (owner !== this.scope?.owner) {
       this.leave();
       if (owner === undefined) return;
-      this.scope = { owner, hint };
+      this.scope = { owner, hint, scheduled: false };
       void this.start();
     } else if (this.scope && hint !== this.scope.hint) {
-      this.scope.hint = hint;
-      this.dirty.value = true;
-      this.schedule();
+      const scope = this.scope;
+      scope.hint = hint;
+      if (scope.scheduled) return;
+      scope.scheduled = true;
+      // Close the obsolete generation now; coalesce only the replacement read.
+      this.walk.reset();
+      queueMicrotask(() => {
+        if (this.scope !== scope) return;
+        scope.scheduled = false;
+        void this.start();
+      });
     }
   }
 
@@ -230,60 +246,49 @@ export class RollingUsage {
     batch(() => {
       this.walk.reset();
       this.interval.value = undefined;
-      this.previous.value = undefined;
+      this.accepted.value = undefined;
       this.selected.value = undefined;
-      this.dirty.value = false;
     });
   }
 
-  retry(): void { if (this.scope) void this.start(); }
+  retry(): void { if (this.scope && !this.scope.scheduled) void this.start(); }
 
   continue(): void {
-    if (!this.scope) return;
-    if (this.dirty.peek()) this.retry();
-    else void this.finish(this.scope, this.walk.continue());
+    if (this.scope && !this.scope.scheduled) void this.finish(this.scope, this.walk.continue());
   }
 
   select(key: string): void {
-    if (this.displayInterval()?.hours.some(h => h.key === key)) this.selected.value = key;
+    if (this.displayed.peek()?.interval.hours.some(h => h.key === key)) this.selected.value = key;
   }
 
-  private displayInterval(): RollingPeriod | undefined {
-    const active = this.walk.state.peek();
-    return active.status === "loading" || active.status === "failed" && !active.groups.size
-      ? this.previous.peek()?.interval ?? this.interval.peek() : this.interval.peek();
-  }
-
-  private schedule(): void {
-    if (this.scheduled) return;
-    this.scheduled = true;
-    queueMicrotask(() => {
-      this.scheduled = false;
-      if (this.scope && this.dirty.peek() && this.walk.state.peek().status === "done") void this.start();
-    });
+  step(delta: -1 | 1): void {
+    const cut = this.displayed.peek();
+    if (!cut) return;
+    const hours = cut.interval.hours;
+    const index = cut.selection ? hours.indexOf(cut.selection) : delta > 0 ? -1 : 0;
+    this.select(hours[(index + delta + hours.length) % hours.length]!.key);
   }
 
   private async start(): Promise<void> {
     const scope = this.scope!;
     const interval = rollingPeriod(this.options.nowMs(), this.options.offsetMinutes());
     const read = batch(() => {
-      this.dirty.value = false;
       this.interval.value = interval;
       return this.walk.start();
     });
     await this.finish(scope, read);
   }
 
-  private async finish(scope: { owner: string; hint: number }, read: Promise<void>): Promise<void> {
+  private async finish(scope: NonNullable<RollingUsage["scope"]>, read: Promise<void>): Promise<void> {
     const interval = this.interval.peek();
     await read;
     if (this.scope !== scope || !interval || this.interval.peek() !== interval) return;
     const walk = this.walk.state.peek();
+    if (walk.status !== "done") return;
     batch(() => {
       if (!interval.hours.some(h => h.key === this.selected.peek())) this.selected.value = undefined;
-      if (walk.status === "done") this.previous.value = { interval, walk };
+      this.accepted.value = { interval, walk };
     });
-    if (this.dirty.peek()) this.schedule();
   }
 }
 

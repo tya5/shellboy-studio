@@ -90,7 +90,7 @@ export function Chart({
   categoryLabel: string;
   noData: string;
   extra?: ComponentChildren;
-  selection?: { key: string; select: (key: string) => void };
+  selection?: { key: string | undefined; select: (key: string) => void };
 }) {
   const [ref, width] = useWidth(560);
   const [active, setActive] = useState<number | undefined>(undefined);
@@ -160,7 +160,7 @@ export function Chart({
   };
 
   return (
-    <figure class={selection ? "chart-figure chart-selectable" : "chart-figure"}>
+    <figure class="chart-figure">
       <figcaption class="chart-head">
         <h3>{title}</h3>
         {sub ? <div class="muted caption">{sub}</div> : null}
