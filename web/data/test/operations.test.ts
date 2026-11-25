@@ -541,7 +541,7 @@ it("requires pinned page metadata and all three reply exactness flags", async ()
     t.okRaw(t.calls().at(-1)!.id, raw);
     expect(await list).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
   }
-  const compact = ops.compactList({ thread_id: "a" });
+  const compact = ops.compactList({ thread_id: "a", limit: 50 });
   t.okRaw(t.calls().at(-1)!.id, { items: [], more: false, period: {}, coverage: {} });
   expect(await compact).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
 });
