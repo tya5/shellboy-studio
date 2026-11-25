@@ -968,7 +968,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
   };
   const select = (id: string) => { clearDestination(); model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab); };
   return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-phone-panel={phone || undefined} data-panel-rail={panelCollapsed ? "" : undefined}>
-    <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
+    <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} adaptive={!phone} onSelect={select} />
     <div class="panel-pages">
       {tabs.map(tab => {
         const active = tab.id === selectedTab;
