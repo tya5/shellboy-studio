@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { once } from 'node:events';
 const chromePath='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const profile=await mkdtemp('/tmp/studio38-tabs-chrome-');
+const profile=await mkdtemp('/tmp/studio164-tabs-chrome-');
 const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--config','designs/console/test/browser/vite.config.mjs','--host','127.0.0.1','--port','19438','--strictPort'],{stdio:'inherit'});
 const chrome=spawn(chromePath,['--headless','--disable-gpu','--no-first-run','--use-mock-keychain','--password-store=basic','--disable-extensions',`--user-data-dir=${profile}`,'--remote-debugging-port=19439','about:blank'],{stdio:'ignore'});
 const delay=ms=>new Promise(r=>setTimeout(r,ms));let ws;
@@ -24,19 +24,26 @@ try{
  const measure=()=>evaluate(`(()=>{
   const list=document.querySelector(${JSON.stringify(list)}), r=list.getBoundingClientRect();
   const style=getComputedStyle(list);
-  return {left:r.left,right:r.right,clientWidth:list.clientWidth,scrollWidth:list.scrollWidth,scrollLeft:list.scrollLeft,
-   overflow:style.overflowX,gap:style.gap,tabs:[...list.querySelectorAll('[role=tab]')].map(tab=>{
+  return {left:r.left,right:r.right,mode:list.dataset.labels,width:list.clientWidth,scrollWidth:list.scrollWidth,
+   overflow:style.overflowX,tabs:[...list.querySelectorAll('[role=tab]')].map(tab=>{
     const r=tab.getBoundingClientRect(), label=tab.querySelector('.panel-tab-label');
-    const text=document.createRange();text.selectNode(label.firstChild);
-    const body=text.getBoundingClientRect(), icon=tab.querySelector('svg').getBoundingClientRect();
-    return {left:r.left,right:r.right,textLeft:body.left,textRight:body.right,iconRight:icon.right,
-     label:label.firstChild.textContent,selected:tab.getAttribute('aria-selected')==='true',
-     padding:getComputedStyle(tab).paddingInlineStart};
+    return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,label:label.textContent,
+     shown:label.getClientRects().length>0,name:tab.getAttribute('aria-label'), selected:tab.getAttribute('aria-selected')==='true',
+     badge:tab.querySelector('.panel-tab-count')?.textContent};
    })};
  })()`);
- function selectedVisible(geometry){
-  const selected=geometry.tabs.find(tab=>tab.selected);
-  return selected.left>=geometry.left-1 && selected.right<=geometry.right+1;
+ function checkGeometry(g, mode, key){
+  assert.equal(g.mode,mode,key);
+  assert.equal(g.overflow,'visible',key);
+  assert.equal(g.scrollWidth,g.width,key);
+  for (const tab of g.tabs) {
+   assert(tab.left>=g.left-1 && tab.right<=g.right+1,key);
+   assert.equal(tab.shown,mode==='all'||tab.selected,key);
+   assert.equal(tab.name,tab.label+(tab.badge?' '+tab.badge:''),key);
+  }
+  for(const [i,tab] of g.tabs.entries()) for(const peer of g.tabs.slice(i+1)) {
+   assert(tab.right<=peer.left || peer.right<=tab.left || tab.bottom<=peer.top || peer.bottom<=tab.top,`overlap: ${key}`);
+  }
  }
  await until(async()=>(await fetch(base)).ok);
  for(const lang of ['en','ja']) for(const appWidth of [1180,1280,1440]) for(const panelWidth of [190,250,340]){
@@ -46,30 +53,27 @@ try{
   await call('Page.navigate',{url});
   await until(()=>evaluate(`location.href===${JSON.stringify(url)} && typeof window.publishPanelTabsCount==='function' && !!document.querySelector('#panel-tab-info')`));
   await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','${panelWidth+33}px')`);
-  const initial=await measure();
-  assert.equal(initial.clientWidth,panelWidth,key);
-  assert.equal(initial.gap,'2px',key);
-  assert.equal(initial.overflow,'auto',key);
-  assert(initial.tabs.some(tab=>tab.label===(lang==='en'?'Analytics':'分析')),`locale not applied: ${key}`);
-  for(const [i,tab] of initial.tabs.entries()){
-   assert.equal(tab.padding,'10px',key);
-   assert(tab.iconRight+5.5<=tab.textLeft && tab.textRight<=tab.right,`label does not fit its own tab: ${key}`);
-   if(i)assert(initial.tabs[i-1].right<=tab.left,`overlap: ${key}`);
-  }
-  if(panelWidth===190)assert(initial.scrollWidth>initial.clientWidth,`narrow row did not overflow: ${key}`);
-  assert.equal(await evaluate(`document.querySelector('#panel-tab-reply-needed .panel-tab-count')===null`),true,key);
-  await evaluate(`document.querySelector(${JSON.stringify(list)}).scrollLeft=10000`);
-  const before=await measure();
-  if(before.scrollWidth>before.clientWidth)assert(!selectedVisible(before),`manual scroll did not move away from selection: ${key}`);
+  const initial=await until(async()=>{const g=await measure();return g.width===panelWidth&&g.mode==='active'&&g});
+  checkGeometry(initial,'active',key);
+  assert(initial.tabs.some(tab=>tab.label===(lang==='en'?'Analytics':'分析')),key);
   await evaluate('window.publishPanelTabsCount()');
   await until(()=>evaluate(`document.querySelector('#panel-tab-reply-needed .panel-tab-count')?.textContent==='1'`));
-  const counted=await measure();
-  assert.equal(counted.scrollLeft,before.scrollLeft,`count update reset manual scroll: ${key}`);
-  assert.deepEqual(counted.tabs,before.tabs,`count update moved the tabs: ${key}`);
-  await evaluate(`document.querySelector(${JSON.stringify(list)}).scrollLeft=0; document.querySelector('#panel-tab-info').click()`);
-  const selected=await measure();
-  assert(selected.tabs.some(tab=>tab.selected && tab.label===(lang==='en'?'Analytics':'分析')) && selectedVisible(selected),`selection was not revealed: ${key}`);
+  checkGeometry(await measure(),'active',key);
+  await evaluate(`document.querySelector('#panel-tab-settings').focus()`);
+  await call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowLeft',code:'ArrowLeft',windowsVirtualKeyCode:37});
+  await call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowLeft',code:'ArrowLeft',windowsVirtualKeyCode:37});
+  await until(()=>evaluate(`document.activeElement.id==='panel-tab-info' && document.activeElement.getAttribute('aria-selected')==='true'`));
+  checkGeometry(await measure(),'active',key);
   assert.equal(await evaluate(`document.querySelector(${JSON.stringify(list)}).querySelector('[role=tooltip]')===null`),true,key);
+
+  // Give the same strip more space; selection/focus must survive both transitions.
+  await call('Emulation.setDeviceMetricsOverride',{width:2400,height:900,deviceScaleFactor:1,mobile:false});
+  await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','1000px')`);
+  await until(async()=> (await measure()).mode==='all');
+  checkGeometry(await measure(),'all',key);
+  await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','${panelWidth+33}px')`);
+  await until(async()=> (await measure()).mode==='active');
+  assert(await evaluate(`document.activeElement.id==='panel-tab-info'`),key);
 
   await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
   const collapsedPanel=await evaluate(`(()=>{
@@ -106,11 +110,11 @@ try{
   await call('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
   await until(tooltipOutside);
   await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
-  assert(selectedVisible(await measure()),`re-expansion did not reveal the selection: ${key}`);
+  checkGeometry(await measure(),'active',key);
   const expandedPanel=await evaluate(`(()=>({activeHidden:document.querySelector('#panel-page-info').hidden,
    activeVisible:document.querySelector('#panel-page-info').getClientRects().length>0}))()`);
   assert.deepEqual(expandedPanel,{activeHidden:false,activeVisible:true},key);
-  console.log(JSON.stringify({lang,appWidth,panelWidth,scrollWidth:initial.scrollWidth,manualScroll:before.scrollLeft,railTooltip:'focus and hover'}));
+  console.log(JSON.stringify({lang,appWidth,panelWidth,scrollWidth:initial.scrollWidth,variants:'active/all/active',railTooltip:'focus and hover'}));
  }
 }finally{
  ws?.close();for(const p of [chrome,vite])if(p.exitCode===null){const done=once(p,'exit');p.kill('SIGTERM');await done.catch(()=>{})}await rm(profile,{recursive:true,force:true});

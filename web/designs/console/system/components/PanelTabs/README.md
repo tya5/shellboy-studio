@@ -13,12 +13,9 @@ References: WAI-ARIA APG Tabs; VS Code Activity Bar icon rail.
 
 Styles: style.css in this directory
 
-Horizontal tab rows never overlap or clip their labels; they scroll horizontally when needed, and PanelTabs minimally reveals the selected tab on selection change or expansion. Count and other item updates preserve manual scroll. Their phone-width hit targets are at least `size-touch`; the vertical icon rail is unchanged.
+**Adaptive horizontal Tabs variant.** Use for a fixed inspector strip where all destinations must remain reachable without horizontal scrolling. Show all labels when their measured max-content row fits the strip. Otherwise show the selected tab's icon and full label, with inactive icons and their count badges. If the compact row needs more room, wrap complete buttons rather than clipping or truncating labels. Full accessible names and owner counts are present in both modes; focus and selection stay on the same buttons as the layout changes. The inert measurement row has no focus targets and is hidden from assistive technology. Do not use this variant for route navigation, the phone picker, or the collapsed vertical rail.
 
-Horizontal tab buttons use `--space-2` for the row gap and `--space-10` for the leading inset, preserving the approved 2px and 10px values. Trailing inset uses `--space-16`; the icon-to-label gap is `--space-8`, per the design system v2 icon rule. Keep all horizontal-only spacing and scrolling scoped off the unchanged vertical rail. Labels reserve the same badge corner whether a count is present or absent; the small amber count is overlaid at the label's top-right and never participates in tab sizing. The selected tab is bold with the accent underline; hover adds the `hover` surface (design system v2: hover uses `hover`). Keep these placements identical when adding a count or changing locale.
-
-
-The expanded tabs and collapsed icon rail use the same amber `panel-tab-count` badge part and tokens; only its anchor differs between the label corner and the rail button corner. Do not add a second rail pill or restyle its color/shape.
+The horizontal tabs and rail share the amber `panel-tab-count` part. Keep the accent underline, hover surface, and established badge tokens. See [Material 3 navigation bar](https://m3.material.io/components/navigation-bar/guidelines) for the active-label visual pattern; keyboard and semantics remain Tabs, not navigation links.
 
 When the owning right panel is collapsed, the icon rail and counts remain interactive while all tabpanel content is hidden and unfocusable; the footer stays anchored in the flex middle. Do not keep active content visible in the collapsed rail.
 

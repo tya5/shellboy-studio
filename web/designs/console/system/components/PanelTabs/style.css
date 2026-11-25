@@ -10,16 +10,16 @@
 .panel-tab-tip { display:none; position:absolute; inset-inline-end:100%; z-index:var(--z-popover); background:var(--raised); border:1px solid var(--line); color:var(--fg); padding:var(--space-4) var(--space-8); border-radius:var(--radius-s); }
 .panel-tabs-rail button:hover .panel-tab-tip,.panel-tabs-rail button:focus-visible .panel-tab-tip { display:block; }
 
-.panel-tabs:not(.panel-tabs-rail) { gap:var(--space-2); border-bottom:1px solid var(--line); min-width:0; overflow-x:auto; scrollbar-width:thin; scrollbar-color:var(--line) transparent; }
-.panel-tabs:not(.panel-tabs-rail) button { gap:var(--space-8); flex:none; min-width:max-content; padding:var(--space-4) var(--space-16) var(--space-4) var(--space-10); border-bottom-width:var(--space-2); }
-.panel-tabs:not(.panel-tabs-rail) button[aria-selected="true"] { font-weight:700; }
-.panel-tabs:not(.panel-tabs-rail) .panel-tab-label { position:relative; display:inline-block; padding-inline-end:var(--space-16); }
-.panel-tabs:not(.panel-tabs-rail) .panel-tab-count { position:absolute; inset-block-start:calc(-1 * var(--space-4)); inset-inline-end:0; }
-.panel-tabs:not(.panel-tabs-rail) button:hover { background:var(--hover); }
-
-@container app (max-width:899px){
-  .panel-tabs:not(.panel-tabs-rail) button{min-height:var(--size-touch)}
-}
+/* The inert max-content row measures the same parts and styles as the tabs. */
+.panel-tabs-control { position:relative; min-inline-size:0; }
+.panel-tabs-measure { position:absolute; inline-size:0; block-size:0; overflow:clip; visibility:hidden; pointer-events:none; }
+.panel-tabs-measure .panel-tabs-row { inline-size:max-content; }
+.panel-tabs-row { display:flex; gap:var(--space-2); }
+.panel-tabs-row .panel-tab { display:flex; align-items:center; justify-content:center; flex:none; gap:var(--space-8); min-block-size:var(--size-control); padding:var(--space-4); border:0; border-block-end:var(--space-2) solid transparent; font:var(--type-label); white-space:nowrap; box-sizing:border-box; }
+.panel-tabs-row .panel-tab[aria-selected="true"],.panel-tabs-measure [data-selected="true"] { font-weight:700; }
+.panel-tabs-row button:hover { background:var(--hover); }
+.panel-tabs-row[data-labels="active"] { flex-wrap:wrap; }
+.panel-tabs-row[data-labels="active"] [aria-selected="false"] .panel-tab-label { display:none; }
 
 .panel-tabs-rail .panel-tab-count { position:absolute; inset-block-start:var(--space-2); inset-inline-end:var(--space-2); }
 
