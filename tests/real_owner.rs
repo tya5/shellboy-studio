@@ -6,7 +6,9 @@ mod common;
 use common::*;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use shellboy::protocol::{ThreadListArgs, ThreadListOrder, ThreadListState};
+use shellboy::protocol::{
+    Command as CoreCommand, ThreadListArgs, ThreadListOrder, ThreadListState, TurnTarget,
+};
 use shellboy_studio::owner::{IpcOwner, Owner};
 use std::{
     io::{BufRead, BufReader},
@@ -2038,7 +2040,6 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
 async fn intervention_provider(
     gate: Arc<tokio::sync::Notify>,
     continued_requests: tokio::sync::mpsc::UnboundedSender<String>,
-    stdin_fixture: bool,
 ) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -2052,7 +2053,6 @@ async fn intervention_provider(
             let gate = gate.clone();
             let requests = requests.clone();
             let continued_requests = continued_requests.clone();
-            let stdin_fixture = stdin_fixture;
             tokio::spawn(async move {
                 let mut seen = Vec::new();
                 let mut chunk = [0u8; 8192];
@@ -2087,18 +2087,12 @@ async fn intervention_provider(
                             .to_owned(),
                     )
                 } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-                    let command = if stdin_fixture {
-                        if cfg!(windows) {
-                            "[Console]::Out.Write('READY'); $inputText=[Console]::In.ReadToEnd(); [Console]::Out.Write('READ:' + $inputText); Start-Sleep -Seconds 300"
-                        } else {
-                            r#"IFS= read -r line; printf 'READ:%s\n' "$line"; sleep 300"#
-                        }
-                    } else if cfg!(windows) {
+                    let command = if cfg!(windows) {
                         "Start-Sleep -Seconds 300"
                     } else {
                         "sleep 300"
                     };
-                    let args = json!({"command":command,"description":"intervention fixture","stdin_open":stdin_fixture});
+                    let args = json!({"command":command,"description":"intervention fixture"});
                     let call = json!({"type":"function_call","id":"intervention-shell","call_id":"intervention-shell","name":"shell","arguments":args.to_string()});
                     let reply = json!({"id":"intervention-tool","status":"completed","output":[call],"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2}});
                     ("application/json".to_owned(), reply.to_string())
@@ -2131,7 +2125,7 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
     let data = root.join("data");
     let gate = Arc::new(tokio::sync::Notify::new());
     let (continued_tx, mut continued_rx) = tokio::sync::mpsc::unbounded_channel();
-    let url = intervention_provider(gate.clone(), continued_tx, false).await;
+    let url = intervention_provider(gate.clone(), continued_tx).await;
     let serve = start_owner_with(&bin, &root, &data, &url);
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner.clone(), true).await;
@@ -2185,9 +2179,17 @@ async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
         continued.contains("human_backgrounded"),
         "provider continuation lacked the owner-recorded background release: {continued}"
     );
-    let interrupted = client
-        .ok("turn.interrupt", json!({"turn_id":turn}), None)
-        .await;
+    let interrupted = owner
+        .call(
+            CoreCommand::TurnInterrupt(TurnTarget {
+                turn_id: turn.clone(),
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("Core Turn interruption");
+    let interrupted = interrupted.result.expect("Turn interruption result");
     assert_eq!(interrupted["requested"], true, "{interrupted}");
     assert_eq!(interrupted["turn_id"], turn);
     let stopped_turn = client

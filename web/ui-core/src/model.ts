@@ -1507,7 +1507,7 @@ export class AppModel {
     if (out.ok) this.openThread(out.value.thread_id);
   }
 
-  private report(action: "action.stop" | "action.retry" | "action.archive" | "action.new" | "action.interrupt" | "action.shellBackground" | "action.shellStop", out: { ok: true } | { ok: false; error: OpError }): void {
+  private report(action: "action.stop" | "action.retry" | "action.archive" | "action.new" | "action.shellBackground" | "action.shellStop", out: { ok: true } | { ok: false; error: OpError }): void {
     this.actionError.value = out.ok
       ? { kind: "success", text: this.t.value("action.succeeded", { action: this.t.value(action) }) }
       : { kind: "error", text: this.t.value("action.failed", { action: this.t.value(action), message: errorMessage(out.error) }) };

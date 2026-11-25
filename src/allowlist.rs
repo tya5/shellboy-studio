@@ -1,6 +1,6 @@
 //! Operation allowlist (M1). One exhaustive `match`, not a registry: a new Shellboy
 //! `Command` variant does not compile until someone decides whether the UI offers it.
-use shellboy::protocol::Command;
+use shellboy::protocol::{Command, Deliver};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
@@ -39,6 +39,7 @@ pub fn access(command: &Command) -> Access {
         | Command::StorageStatus(..)
         // Branches view.
         | Command::ThreadBranches(..) => Access::Read,
+        Command::MessageSend(args) if args.deliver == Deliver::Now => Access::Denied,
         Command::ThreadCreate(..)
         | Command::MessageSend(..)
         | Command::RunStop(..)
@@ -81,8 +82,7 @@ pub fn access(command: &Command) -> Access {
         Command::CredentialsSet(..) | Command::CredentialsClear(..) => Access::Mutation,
         Command::MessageReply(..)
         | Command::ShellStop(..)
-        | Command::ShellBackground(..)
-        | Command::TurnInterrupt(..) => Access::Mutation,
+        | Command::ShellBackground(..) => Access::Mutation,
         Command::ThreadDeletePreview(args) if !args.thread_id.is_empty() && !args.descendants && args.preview_marker.is_none() => Access::Read,
         Command::ThreadDelete(args) if !args.thread_id.is_empty() && !args.descendants && args.preview_marker.as_ref().is_some_and(|m| m.thread_count == 1 && m.ids_hash.len() == 64 && m.ids_hash.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())) => Access::Mutation,
         Command::ThreadDeleteSetPreview(..) => Access::Read,
@@ -94,6 +94,7 @@ pub fn access(command: &Command) -> Access {
         Command::OwnerShutdown(args) if !args.instance_id.is_empty() => Access::Mutation,
         Command::ShellWrite(..)
         | Command::ShellEof(..)
+        | Command::TurnInterrupt(..)
         | Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)
