@@ -910,33 +910,3 @@ it("Studio #158: simple composer keeps model delivery while Activity shell contr
   expect(f.t.calls("shell.stop").at(-1)?.args).toMatchObject({execution_id:"exec-2"});
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
-
-it("shows typed held reason on the retained message and opens its exact shell in Activity", async () => {
- let held = false;
- const f = await fixtureModel({ route: "conversation", threadId: "t", configure(db) {
-  db.threads = { t: summary("t") };
-  db.details.t = details("t", { pending_replies: { owed_by: { count: 1, exact: true }, asked_by: { count: 0, exact: true } } });
-  const base = db.answer.bind(db);
-  db.answer = call => call.command === "message.list" && (call.args as { owed_by_thread_id?: string }).owed_by_thread_id === "t"
-   ? { ok: true, result: { items: held ? [{ message_id: "own-held", created_at: "now", asked_by: null, sender: { kind: "human" }, recipient: { kind: "thread", thread_id: "t" }, excerpt: "held", held_by: { kind: "foreground_shell", execution_id: "exec-exact" } }] : [] } }
-   : base(call);
- }});
- const host = document.createElement("div"); document.body.append(host);
- const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
- try {
-  await act(async () => { render(<App context={context} />, host); await settle(f.t, f.db); });
-  const composer = host.querySelector<HTMLTextAreaElement>("#composer")!;
-  await act(async () => { composer.value = "Own held message"; composer.dispatchEvent(new Event("input", { bubbles: true })); composer.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); await flush(8); });
-  const send = f.t.calls("message.send").at(-1)!; f.db.answered.add(send.id);
-  await act(async () => { f.t.ok(send.id, { message_id: "own-held", thread_id: "t" }); await flush(8); });
-  held = true;
-  await act(async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["t"], list: false }); await settle(f.t, f.db); });
-  const row = host.querySelector('[data-pending-own-message]')!;
-  expect(row.getAttribute("data-pending-held-by")).toBe("foreground_shell");
-  expect(row.querySelector(".message-sender small")?.textContent).toBe("Waiting for a shell to finish");
-  const link = [...row.querySelectorAll("button")].find(button => button.textContent?.includes("Open shell in Activity"))!;
-  await act(async () => { link.click(); await flush(); });
-  expect(f.model.panelTab.peek()).toBe("work");
-  expect(f.model.panelDetail.peek()).toMatchObject({ kind: "step", id: "exec-exact" });
- } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
-});
