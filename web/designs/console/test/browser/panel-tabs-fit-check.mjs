@@ -80,7 +80,7 @@ try{
    const panels=[...document.querySelectorAll('.panel-pages [role=tabpanel]')];
    const active=document.querySelector('#panel-page-info');
    const focusable=panels.flatMap(panel=>[...panel.querySelectorAll('a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])')]);
-   const footer=document.querySelector('.shell-footer-right'), rail=document.querySelector('[data-panel-rail]');
+   const rail=document.querySelector('[data-panel-root][data-panel-rail]'), footer=rail.querySelector(':scope > .shell-footer-right');
    return {activeHidden:active.hidden,allPanelsHidden:panels.every(panel=>panel.hidden),
     descendantsFocusable:focusable.some(node=>node.getClientRects().length>0 && getComputedStyle(node).visibility!=='hidden'),
     footerVisible:footer.getClientRects().length>0,railVisible:rail.getClientRects().length>0};
