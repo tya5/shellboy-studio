@@ -22,8 +22,8 @@ not the owner database or data-directory internals.
 
 ## Protocol compatibility
 
-Studio v0.4.2 pairs with Core v0.16.0 at
-`46212b5391e2d486efec770291359a2ba671fa01`, protocol 26. See the [release notes](../release-v0.4.2.md). There is no protocol downgrade or
+Studio v0.4.3 and v0.4.2 both pair with Core v0.16.0 at
+`46212b5391e2d486efec770291359a2ba671fa01`, protocol 26. See the [v0.4.3 pairing notes](../release-v0.4.3.md). There is no protocol downgrade or
 ownership alias. Never restart a working owner or change its data to resolve a
 version mismatch without explicit approval.
 
