@@ -461,3 +461,10 @@ export function hourlyTotals(groups: readonly UsageGroup[]) {
   return { requests: total && Number.isSafeInteger(total.requests) ? total.requests : undefined,
     uncached, share: total && uncached !== undefined ? cacheRate(total.conversation, total.unknownPairs) : undefined };
 }
+
+/** Exact change needs a reported pair; only the relative change needs a nonzero baseline. */
+export function usageChange(current: number | undefined, previous: number | undefined) {
+  if (current === undefined || previous === undefined || !Number.isSafeInteger(current) || !Number.isSafeInteger(previous) || current < 0 || previous < 0) return undefined;
+  const difference = current - previous;
+  return { difference, ratio: previous > 0 ? difference / previous : undefined };
+}

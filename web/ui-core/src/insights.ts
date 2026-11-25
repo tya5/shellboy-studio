@@ -199,7 +199,7 @@ type RollingPeriod = ReturnType<typeof rollingPeriod>;
 
 /** Independent previous-window cursor and cancellation, aligned to one captured current cut. */
 export class RollingComparison {
-  readonly enabled = signal(true);
+  readonly enabled = signal(false);
   readonly interval = signal<RollingPeriod | undefined>(undefined);
   readonly walk: UsageWalk;
 
@@ -283,9 +283,10 @@ export class RollingUsage {
     });
   }
 
-  toggleComparison(): void {
+  setComparison(enabled: boolean): void {
+    if (this.comparison.enabled.peek() === enabled) return;
     batch(() => {
-      this.comparison.enabled.value = !this.comparison.enabled.peek();
+      this.comparison.enabled.value = enabled;
       this.comparison.align(this.scope?.scheduled ? undefined : this.interval.peek());
     });
   }

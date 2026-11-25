@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { flush, settle } from "../../data/test/harness";
 import {
-  addSum, ANALYTICS_SECTIONS, analyticsSection, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_GROUPS, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
+  addSum, ANALYTICS_SECTIONS, analyticsSection, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, savePrefs, usageChange, MAX_GROUPS, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
   hourlyTotals, rollingPeriod, readCompactionEvent, readGroup, readIndex, readStorage, readSum, readThreadSettings, settingsSection, SETTINGS_SECTIONS, splitParts, totalGroups, zoneOf, type Prefs,
 } from "../src";
 import { fixtureCompaction, fixtureIndex, fixtureModel, fixtureStorage, NOW, usageItem, usagePage } from "./fixture";
@@ -590,7 +590,6 @@ describe("rolling Overview", () => {
       usage: { first: usagePage([item(firstHour.key, 4)]) } });
     const hourCalls = () => t.calls("usage.get").filter(c => (c.args as { group_by?: string }).group_by === "hour");
     const rolling = model.insights.rolling;
-    rolling.toggleComparison();
     rolling.enabled.value = true;
     await settle(t, db);
     rolling.select(firstHour.key);
@@ -649,41 +648,71 @@ describe("rolling Overview", () => {
     model.dispose();
   });
 
-  it("walks the previous period independently with its own cursor and matching clipped hours", async () => {
-    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview" });
-    const current = rollingPeriod(NOW, 540);
-    const previous = rollingPeriod(Date.parse(current.since), 540);
-    const calls: Record<string, unknown>[] = [];
+  it("keeps comparison opt-in across preference round trips and separates exact and relative change", () => {
+    let saved: string | null = null;
+    const store = { read: () => saved, write: (value: string) => { saved = value; } };
+    const designs = [{ name: "console", themes: [{ name: "light" }] }];
+    expect(loadPrefs(store, designs).analyticsCompare).toBe(false);
+    savePrefs(store, { ...loadPrefs(store, designs), analyticsCompare: true });
+    expect(loadPrefs(store, designs).analyticsCompare).toBe(true);
+    savePrefs(store, { ...loadPrefs(store, designs), analyticsCompare: false });
+    expect(loadPrefs(store, designs).analyticsCompare).toBe(false);
+    expect(usageChange(7, 0)).toEqual({ difference: 7, ratio: undefined });
+    expect(usageChange(7, 5)).toEqual({ difference: 2, ratio: 0.4 });
+    expect(usageChange(0, 5)).toEqual({ difference: -5, ratio: -1 });
+    expect(usageChange(7, undefined)).toBeUndefined();
+    expect(usageChange(undefined, 0)).toBeUndefined();
+  });
+
+  it("reads the previous period only on opt-in and rejects its obsolete cursor reply after resync", async () => {
+    let now = NOW;
+    const current = () => rollingPeriod(now, 540);
+    const previous = () => rollingPeriod(Date.parse(current().since), 540);
+    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview", nowMs: () => now });
+    const rolling = model.insights.rolling;
+    const hours = () => t.calls("usage.get").filter(c => (c.args as { group_by: string }).group_by === "hour");
+    const page = (period: ReturnType<typeof current>, count: number, cursor?: string) =>
+      usagePage([usageItem(period.hours[0]!.key, { count, input: 10, cached: 4, output: 1 })], cursor);
     const answer = db.answer.bind(db);
     db.answer = call => {
-      const args = call.args as Record<string, unknown>;
+      const args = call.args as { group_by?: string; until?: string };
       if (call.command !== "usage.get" || args.group_by !== "hour") return answer(call);
-      calls.push(args);
-      const isPrevious = args.until === previous.until;
-      const interval = isPrevious ? previous : current;
-      const cursor = isPrevious ? "previous-page" : "current-page";
-      if (args.cursor !== undefined && args.cursor !== cursor) throw Error("crossed cursors");
-      return { ok: true, result: usagePage([usageItem(interval.hours[0]!.key, { count: 2, input: 10, cached: 4, output: 1 })], args.cursor ? undefined : cursor) };
+      return { ok: true, result: args.until === current().until ? page(current(), 8) : page(previous(), 3) };
     };
-    const rolling = model.insights.rolling;
     rolling.enabled.value = true;
     await settle(t, db);
-    for (const [period, page] of [[current, "current-page"], [previous, "previous-page"]] as const) {
-      const own = calls.filter(c => c.until === period.until);
-      expect(own.map(c => c.cursor)).toEqual([undefined, page]);
-      for (const args of own) expect(args).toMatchObject({ since: period.since, until: period.until, timezone: "+09:00" });
-    }
-    expect(rolling.comparison.interval.peek()?.hours.map(h => h.label)).toEqual(current.hours.map(h => h.label));
-    expect(rolling.comparison.walk.state.peek().groups.get(previous.hours[0]!.key)?.requests).toBe(4);
-    const currentCut = rolling.walk.state.peek();
-    rolling.toggleComparison();
-    expect(rolling.comparison.walk.state.peek().status).toBe("idle");
-    rolling.toggleComparison();
-    await settle(t, db);
-    expect(calls).toHaveLength(6);
-    expect(rolling.walk.state.peek()).toBe(currentCut);
-    model.insights.setPeriod(1);
+    expect(hours()).toHaveLength(1);
+    expect(hours()[0]!.args).toMatchObject({ since: current().since, until: current().until, timezone: "+09:00" });
     expect(rolling.comparison.interval.peek()).toBeUndefined();
+    const currentCut = rolling.walk.state.peek();
+    rolling.setComparison(true);
+    await flush();
+    const first = hours().at(-1)!;
+    const oldPrevious = previous();
+    expect(first.args).toMatchObject({ since: oldPrevious.since, until: oldPrevious.until, timezone: "+09:00" });
+    db.answered.add(first.id);
+    t.ok(first.id, page(oldPrevious, 2, "prior-held"));
+    await flush();
+    const held = hours().at(-1)!;
+    expect(held.args).toMatchObject({ cursor: "prior-held", since: oldPrevious.since, until: oldPrevious.until, timezone: "+09:00" });
+    expect(rolling.walk.state.peek()).toBe(currentCut);
+    now += 3_600_000;
+    t.push({ t: "resync" });
+    expect(t.cancels()).toContain(held.id);
+    db.answered.add(held.id);
+    await settle(t, db);
+    expect(hours().slice(-2).map(c => (c.args as { cursor?: string }).cursor)).toEqual([undefined, undefined]);
+    expect(hours().slice(-2).map(c => (c.args as { until?: string }).until).sort()).toEqual([previous().until, current().until]);
+    t.ok(held.id, page(oldPrevious, 500, "obsolete"));
+    await flush();
+    expect(hours()).toHaveLength(5);
+    expect(rolling.displayed.peek()?.interval).toEqual(current());
+    expect(rolling.comparison.interval.peek()?.hours.map(h => h.label)).toEqual(current().hours.map(h => h.label));
+    expect(rolling.comparison.walk.state.peek().groups.get(previous().hours[0]!.key)?.requests).toBe(3);
+    expect(rolling.comparison.walk.state.peek().groups.has(oldPrevious.hours[0]!.key)).toBe(false);
+    rolling.setComparison(false);
+    expect(rolling.comparison.interval.peek()).toBeUndefined();
+    expect(rolling.comparison.walk.state.peek().status).toBe("idle");
     model.dispose();
   });
 });

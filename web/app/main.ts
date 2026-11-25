@@ -89,6 +89,7 @@ async function main(): Promise<void> {
       if (location.hash !== hash) location.hash = hash;
     },
   });
+  effect(() => model.insights.rolling.setComparison(prefs.value.analyticsCompare === true));
   model.applyRoute(parseRoute(location.hash));
   addEventListener("hashchange", () => model.applyRoute(parseRoute(location.hash)));
   setInterval(() => model.tick(), TICK_MS);

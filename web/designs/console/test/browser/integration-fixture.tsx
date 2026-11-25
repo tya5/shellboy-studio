@@ -35,7 +35,7 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get(
       const hours = rollingPeriod(until, 540).hours;
       const items = state === 'empty' ? [] : hours.flatMap((hour, i) => {
         if (i === 4) return [];
-        const count = prior ? Math.round(bars[(i + 2) % bars.length]! * 0.8) : bars[i]!;
+        const count = prior ? (i === 0 ? 0 : Math.round(bars[(i + 2) % bars.length]! * 0.8)) : bars[i]!;
         return [usageItem(hour.key, { count, input: count * 5000, cached: count * (prior ? 2900 : 3100), output: count * 200 })];
       });
       return { ok: true, result: { ...usagePage(items), group_by: 'hour', scope_complete: !(prior && state === 'partial') } };
@@ -125,6 +125,7 @@ const resizeStore = params.get('view') === 'splitters' ? {
 } : undefined;
 const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : params.get('theme') === 'auto' ? 'auto' : 'console', lang: fixtureLang, weights: { cached: 0.1, output: 5 } });
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
+if (params.get('view') === 'analytics-24h') effect(() => model.insights.rolling.setComparison(prefs.value.analyticsCompare === true));
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; if (resizeStore) savePrefs(resizeStore, prefs.value); }, submitToken: async () => true });
 addEventListener('hashchange', () => model.applyRoute(parseRoute(location.hash)));
 

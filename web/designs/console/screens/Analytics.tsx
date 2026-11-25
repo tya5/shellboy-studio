@@ -481,7 +481,7 @@ export function Analytics({ context }: { context: DesignContext }) {
       {section === "overview" || section === "tokens" || section === "compaction" ? (
         section === "overview" && model.insights.rolling.enabled.value ? <>
           <PeriodHead model={model} section={section} />
-          <RollingOverview model={model} />
+          <RollingOverview context={context} />
         </> : <UsagePane context={context} section={section} />
       ) : section === "threads" ? (
         <ByThread model={model} weights={context.prefs.value.weights} />

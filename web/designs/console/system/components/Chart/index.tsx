@@ -93,7 +93,7 @@ export function Chart({
   extra?: ComponentChildren;
   selection?: { key: string | undefined; select: (key: string) => void };
   /** A comparable reference on the same column scale, aligned by the current point keys. */
-  reference?: { label: string; currentLabel: string; values: ReadonlyMap<string, number>; details: ReadonlyMap<string, string> };
+  reference?: { label: string; currentLabel: string; values: ReadonlyMap<string, number>; details: ReadonlyMap<string, string>; differenceLabel: string; differences: ReadonlyMap<string, string> };
 }) {
   const [ref, width] = useWidth(560);
   const [active, setActive] = useState<number | undefined>(undefined);
@@ -269,7 +269,7 @@ export function Chart({
           flat
           caption={title}
           columns={[{ label: categoryLabel }, ...series.map((s) => ({ label: comparison && series.length === 1 ? comparison.currentLabel : s.label, numeric: true })),
-            ...(comparison ? [{ label: comparison.label, numeric: true }] : [])]}
+            ...(comparison ? [{ label: comparison.label, numeric: true }, { label: comparison.differenceLabel, numeric: true }] : [])]}
           rows={points.map((p) => ({
             key: p.key,
             cells: [
@@ -284,7 +284,7 @@ export function Chart({
               ...(comparison ? [<>
                 {comparison.values.has(p.key) ? format(comparison.values.get(p.key)!) : <span class="muted">{noData}</span>}
                 <div class="muted caption">{comparison.details.get(p.key)}</div>
-              </>] : []),
+              </>, comparison.differences.get(p.key) ?? <span class="muted">{noData}</span>] : []),
             ],
           }))}
         />

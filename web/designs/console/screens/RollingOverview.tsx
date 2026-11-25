@@ -1,4 +1,4 @@
-import { hourlyTotals, type AppModel } from "../../../ui-core/src";
+import { hourlyTotals, usageChange, type DesignContext } from "../../../ui-core/src";
 import { Button, IconButton } from "../system/components/Button";
 import { Chart } from "../system/components/Chart";
 import { Notice } from "../system/components/Notice";
@@ -6,7 +6,8 @@ import { Stat } from "../system/components/Stat";
 
 const localLabel = (time: string, exact = false) => time.slice(exact ? 0 : 5, exact ? -6 : 16).replace("T", " ");
 
-export function RollingOverview({ model }: { model: AppModel }) {
+export function RollingOverview({ context }: { context: DesignContext }) {
+  const { model } = context;
   const t = model.t.value;
   const rolling = model.insights.rolling;
   const active = rolling.walk.state.value;
@@ -35,25 +36,27 @@ export function RollingOverview({ model }: { model: AppModel }) {
     const group = prior.groups.get(h.key);
     return group ? [group] : [];
   })) : undefined;
-  const relative = (value: number | undefined, base: number | undefined) =>
-    value === undefined || base === undefined || base <= 0 ? undefined : (value - base) / base;
-  const requestsDelta = relative(totals.requests, baseline?.requests);
-  const inputDelta = relative(totals.uncached, baseline?.uncached);
+  const requestsDelta = baseline ? usageChange(totals.requests, baseline.requests) : undefined;
+  const inputDelta = baseline ? usageChange(totals.uncached, baseline.uncached) : undefined;
   const cacheDelta = totals.share === undefined || baseline?.share === undefined ? undefined : (totals.share - baseline.share) * 100;
   const signed = (n: number, style: "percent" | "decimal") => n.toLocaleString(model.lang.value, { style, maximumFractionDigits: 1, signDisplay: "exceptZero" });
-  const deltaNote = (value: number | undefined, base: number | undefined, ratio: number | undefined) =>
-    ratio === undefined || value === undefined || base === undefined ? undefined :
-      `${t("analytics.periodPrevious")}: ${display(base)} · ${signed(value - base, "decimal")} (${signed(ratio, "percent")})`;
+  const changeLabel = ({ difference, ratio }: NonNullable<ReturnType<typeof usageChange>>) =>
+    `${signed(difference, "decimal")} (${ratio === undefined ? t("analytics.percentUnavailable") : signed(ratio, "percent")})`;
+  const deltaNote = (base: number | undefined, change: ReturnType<typeof usageChange>) =>
+    change ? `${t("analytics.periodPrevious")}: ${display(base)} · ${changeLabel(change)}` : undefined;
   const outline = bothComplete && totals.requests !== undefined && baseline?.requests !== undefined ? {
     label: t("analytics.periodPrevious"), currentLabel: t("analytics.periodCurrent"),
     values: new Map<string, number>(), details: new Map<string, string>(),
+    differenceLabel: t("analytics.difference"), differences: new Map<string, string>(),
   } : undefined;
   const detail = (h: (typeof hours)[number]) => `${localLabel(h.since, true)} – ${localLabel(h.until, true)} (UTC${interval.zone})`;
-  if (outline) hours.forEach((h, i) => {
+  if (outline) facts.forEach((h, i) => {
     const previous = priorInterval!.hours[i]!;
     const n = prior.groups.get(previous.key)?.requests;
     if (n !== undefined && Number.isSafeInteger(n)) outline.values.set(h.key, n);
     outline.details.set(h.key, detail(previous));
+    const change = usageChange(h.value, n);
+    if (change) outline.differences.set(h.key, changeLabel(change));
   });
   const bucket = facts.find(h => h.key === selection?.key);
   const count = (n: number | undefined) => cutIncomplete && n !== undefined ? t("usage.minimum", { value: display(n) }) : display(n);
@@ -61,7 +64,7 @@ export function RollingOverview({ model }: { model: AppModel }) {
   return <div class="rolling-overview">
     <div class="head">
       <div class="muted caption">{t("analytics.ownerWide")} · {intervalLabel}</div>
-      <Button aria-pressed={comparing} onClick={() => rolling.toggleComparison()}>{t("analytics.compare24")}</Button>
+      <Button aria-pressed={comparing} onClick={() => context.setPrefs({ analyticsCompare: !comparing })}>{t("analytics.compare24")}</Button>
     </div>
     {comparing && !bothComplete ? <Notice tone="wait" actions={prior.status === "loading" ? <Button onClick={() => rolling.comparison.walk.stop()}>{t("analytics.stopPrevious")}</Button>
       : prior.canContinue ? <Button onClick={() => void rolling.comparison.walk.continue()}>{t("analytics.continuePrevious")}</Button>
@@ -78,8 +81,8 @@ export function RollingOverview({ model }: { model: AppModel }) {
     </Notice> : null}
     {walk.status === "done" && cutIncomplete ? <Notice tone="wait">{t("usage.unfinished")}</Notice> : null}
     <div class="stats">
-      <Stat label={t("analytics.requests")} value={count(totals.requests)} note={deltaNote(totals.requests, baseline?.requests, requestsDelta)} />
-      <Stat label={t("analytics.uncachedInput")} value={display(cutIncomplete ? undefined : totals.uncached)} note={deltaNote(totals.uncached, baseline?.uncached, inputDelta)} />
+      <Stat label={t("analytics.requests")} value={count(totals.requests)} note={deltaNote(baseline?.requests, requestsDelta)} />
+      <Stat label={t("analytics.uncachedInput")} value={display(cutIncomplete ? undefined : totals.uncached)} note={deltaNote(baseline?.uncached, inputDelta)} />
       <Stat label={t("analytics.pairedCache")} value={cutIncomplete || totals.share === undefined ? t("analytics.noValue") : totals.share.toLocaleString(model.lang.value, { style: "percent", maximumFractionDigits: 1 })} note={<>{cacheDelta === undefined ? null : <div>{t("analytics.periodPrevious")}: {baseline?.share?.toLocaleString(model.lang.value, { style: "percent", maximumFractionDigits: 1 })} · {t("analytics.changePoints", { value: signed(cacheDelta, "decimal") })}</div>}{t("analytics.reportedPairs")}</>} />
     </div>
     <Chart kind="columns" whole title={t("analytics.hourlyRequests")} ariaSummary={t("analytics.hourlyRequests")}
@@ -93,7 +96,7 @@ export function RollingOverview({ model }: { model: AppModel }) {
         <IconButton glyph="analytics.previousBucket" label={t("analytics.previousBucket")} onClick={() => rolling.step(-1)} />
         <div aria-live="polite">{bucket ? <><strong>{localLabel(bucket.since)} – {localLabel(bucket.until)}</strong>
           <div class="muted caption">{t("analytics.requests")}: {count(bucket.value)}{bucket.partial ? ` · ${t("analytics.partialHour")}` : ""}</div>
-          {outline ? <div class="muted caption">{outline.label}: {display(outline.values.get(bucket.key))}</div> : null}
+          {outline ? <div class="muted caption">{outline.label}: {display(outline.values.get(bucket.key))}{outline.differences.has(bucket.key) ? ` · ${outline.differences.get(bucket.key)}` : ""}</div> : null}
         </> : <span class="muted caption">{t("analytics.noBucket")}</span>}</div>
         <IconButton glyph="analytics.nextBucket" label={t("analytics.nextBucket")} onClick={() => rolling.step(1)} />
       </div>}

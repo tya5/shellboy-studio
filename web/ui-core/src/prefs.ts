@@ -19,6 +19,8 @@ export interface Prefs {
   sidebarOpenParents?: string[];
   sidebarUnread?: UnreadRecord[];
   guideOptOut?: boolean;
+  /** Opt in to the rolling Analytics previous-period read. */
+  analyticsCompare?: boolean;
   /** Effective-token weights. The reader's own; they are not prices. */
   weights: Weights;
 }
@@ -70,7 +72,7 @@ export function loadPrefs(store: PrefStore, designs: readonly DesignChoice[]): P
   const theme = design.themes.find((t) => t.name === saved.theme) ?? design.themes[0];
   if (!theme) throw new Error(`design ${design.name} has no theme`);
   const sidebarKeys = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((key): key is string => typeof key === "string" && key.length <= 4096))].slice(0, 1000) : [];
-  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", navCollapsed: saved.navCollapsed === true, panelCollapsed: saved.panelCollapsed === true, ...(typeof saved.sidebarWidth === "number" && Number.isFinite(saved.sidebarWidth) ? { sidebarWidth: readSidebarWidth(saved.sidebarWidth) } : {}), ...(typeof saved.rightPanelWidth === "number" && Number.isFinite(saved.rightPanelWidth) ? { rightPanelWidth: readRightPanelWidth(saved.rightPanelWidth) } : {}), sidebarClosedGroups: sidebarKeys(saved.sidebarClosedGroups), sidebarOpenGroups: sidebarKeys(saved.sidebarOpenGroups), sidebarOpenParents: sidebarKeys(saved.sidebarOpenParents), sidebarUnread: readUnreadRecords(saved.sidebarUnread), guideOptOut: saved.guideOptOut === true, weights: readWeights(saved.weights) };
+  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", navCollapsed: saved.navCollapsed === true, panelCollapsed: saved.panelCollapsed === true, ...(typeof saved.sidebarWidth === "number" && Number.isFinite(saved.sidebarWidth) ? { sidebarWidth: readSidebarWidth(saved.sidebarWidth) } : {}), ...(typeof saved.rightPanelWidth === "number" && Number.isFinite(saved.rightPanelWidth) ? { rightPanelWidth: readRightPanelWidth(saved.rightPanelWidth) } : {}), sidebarClosedGroups: sidebarKeys(saved.sidebarClosedGroups), sidebarOpenGroups: sidebarKeys(saved.sidebarOpenGroups), sidebarOpenParents: sidebarKeys(saved.sidebarOpenParents), sidebarUnread: readUnreadRecords(saved.sidebarUnread), guideOptOut: saved.guideOptOut === true, analyticsCompare: saved.analyticsCompare === true, weights: readWeights(saved.weights) };
 }
 
 export function savePrefs(store: PrefStore, prefs: Prefs): void {
