@@ -109,6 +109,7 @@ function projectHandoff(scope: string, record: HandoffRecord): readonly OwnSendT
 /** One current semantic recipe for both candidate publication and fixture admission. */
 export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input: {
   readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[];
+  readonly retiring?: ReadonlySet<string>;
   readonly work: WorkCaptureDescriptor; readonly current: () => boolean;
 }): ConversationSemanticInput {
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
@@ -116,7 +117,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const tailComplete = snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1;
   const work = current && tailComplete ? scopeIssuedWorkFacts(input.work.facts, [input.scope]) : undefined;
   const acceptedAttempts = savedAttemptIds(snapshot.rows);
-  const liveTail = work ? input.records.flatMap(record => acceptedAttempts.has(record.attemptId) ? [] : projectHandoff(input.scope, record)) : [];
+  const liveTail = work ? input.records.flatMap(record => (acceptedAttempts.has(record.attemptId) || record.adopted && input.retiring?.has(record.attemptId)) ? [] : projectHandoff(input.scope, record)) : [];
   const projected = work?.length ? projectWithWork(canonicalProjection, input.work, work) : canonicalProjection;
   return { liveTail, isCurrent: input.current,
     identity: createConversationIdentity({ rows: snapshot.rows, revision: snapshot.revision, records: input.records,

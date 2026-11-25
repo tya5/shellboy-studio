@@ -72,7 +72,7 @@ export class WindowOwner {
 }
 
 export interface FixtureSemanticProducer { advance(attemptId: string): void; emitLive(attemptId: string, offset: number, text: string): void; }
-export type BoundWindowInput = { state: FixtureSemanticProducer; capture: (snapshot: import("../src/window").WindowAcceptedSnapshot) => import("../src/conversation-input").ConversationSemanticInput; }
+export type BoundWindowInput = { state: FixtureSemanticProducer; capture: Parameters<ConversationWindow["bindConversationInput"]>[0]; }
 const boundInputs = new WeakMap<ConversationWindow, BoundWindowInput>();
 export const boundWindowInput = (window: ConversationWindow): BoundWindowInput | undefined => boundInputs.get(window);
 
@@ -137,9 +137,9 @@ export async function rig(total: number, options: { capability?: boolean; thread
     drainLive();
   } };
   let windowRef: ConversationWindow;
-  windowRef = createBoundWindow({ read: (a, c) => handle.readWindow(a, c) }, handle, { state: producer, capture: snapshot => {
+  windowRef = createBoundWindow({ read: (a, c) => handle.readWindow(a, c) }, handle, { state: producer, capture: (snapshot, _replacement, retiring) => {
     const capability = windowRef.acceptedView.currentCapability;
-    return captureConversationInput(snapshot, { scope: handle.threadId, threadId: handle.threadId, records: handle.handoff.value, work: captureCurrentWork(handle.threadId, handle.work.value.value), current: () => windowRef.isCurrentThread(handle) && windowRef.acceptedView.currentCapability === capability });
+    return captureConversationInput(snapshot, { scope: handle.threadId, threadId: handle.threadId, records: handle.handoff.value, retiring, work: captureCurrentWork(handle.threadId, handle.work.value.value), current: () => windowRef.isCurrentThread(handle) && windowRef.acceptedView.currentCapability === capability });
   } }, opts);
   const w = windowRef;
   const calls = () => t.calls("history.window");

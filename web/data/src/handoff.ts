@@ -15,6 +15,8 @@ export interface HandoffRecord {
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
+  /** Only the owner's typed attempt_end can establish saved adoption. */
+  readonly adopted?: true;
   readonly outputLimit?: AttemptOutputLimit;
 }
 interface Held {
@@ -85,20 +87,22 @@ export class Handoff {
     h.admitted += incoming;
     h.source.apply(frame);
   }
-  end(attemptId: string, outcome: "adopted" | "not_adopted", outputLimit?: AttemptOutputLimit | null): void {
-    if (this.terminal.has(attemptId)) return;
+  end(attemptId: string, outcome: "adopted" | "not_adopted", outputLimit?: AttemptOutputLimit | null): boolean {
+    if (this.terminal.has(attemptId)) return false;
     this.terminal.add(attemptId);
     if (this.terminal.size > 256) this.terminal.delete(this.terminal.values().next().value!);
     const held = this.held.find(h => h.attemptId === attemptId);
-    if (outcome === "adopted" && outputLimit?.stop && held) {
-      this.updateRecord(held, { ...held.record, status: "ended", outputLimit });
+    if (outcome === "adopted" && held) {
+      this.updateRecord(held, { ...held.record, status: "ended", adopted: true, ...(outputLimit?.stop ? { outputLimit } : {}) });
       if (this.active === attemptId) this.active = undefined;
       this.publish();
       held.source.finish();
+      return true;
     } else if (outcome === "not_adopted") {
       if (this.active === attemptId) this.active = undefined;
       this.releaseAccepted(attemptId);
-    } else held?.source.finish();
+    }
+    return false;
   }
 
   finish(): void {
