@@ -213,22 +213,23 @@ describe("routes, prefs, commands, words", () => {
     expect(navShortcut({ key: "b", metaKey: true, shiftKey: true })).toBe(false);
     expect(navShortcut({ key: "b", metaKey: true, isComposing: true })).toBe(false);
     expect(navShortcut({ key: "0", altKey: true })).toBe(false);
-    expect(panelShortcut({ key: "9", altKey: true })).toBe(true);
-    expect(panelShortcut({ key: "9", altKey: true, shiftKey: true })).toBe(false);
-    expect(panelShortcut({ key: "9", altKey: true, isComposing: true })).toBe(false);
-    expect(viewShortcut({ key: "3", altKey: true })).toBe("inbox");
-    expect(viewShortcut({ key: "2" })).toBeUndefined();
+    expect(panelShortcut({ key: "9", code: "Digit9", altKey: true })).toBe(true);
+    expect(panelShortcut({ key: "9", code: "Numpad9", altKey: true })).toBe(false);
+    expect(panelShortcut({ key: "9", code: "Digit9", altKey: true, shiftKey: true })).toBe(false);
+    expect(panelShortcut({ key: "9", code: "Digit9", altKey: true, isComposing: true })).toBe(false);
+    expect(viewShortcut({ key: "3", code: "Digit3", altKey: true })).toBe("inbox");
+    expect(viewShortcut({ key: "2", code: "Digit2", altKey: true })).toBeUndefined();
   });
-  it("maps physical number-row and numpad digits despite layout-produced characters", () => {
+  it("maps only physical number-row digits despite layout-produced characters", () => {
     expect(viewShortcut({ key: "¡", code: "Digit1", altKey: true })).toBe("conversation");
     expect(viewShortcut({ key: "&", code: "Digit1", altKey: true, shiftKey: true })).toBe("conversation");
-    expect(viewShortcut({ key: "1", code: "Numpad1", altKey: true })).toBe("conversation");
+    expect(viewShortcut({ key: "1", code: "Numpad1", altKey: true })).toBeUndefined();
+    expect(viewShortcut({ key: "1", code: "KeyA", altKey: true })).toBeUndefined();
     expect(panelShortcut({ key: "ç", code: "Digit9", altKey: true })).toBe(true);
     expect(panelShortcut({ key: "(", code: "Digit9", altKey: true, shiftKey: true })).toBe(false);
     expect(panelShortcut({ key: "9", code: "Digit9", altKey: true, ctrlKey: true })).toBe(false);
     expect(panelShortcut({ key: "9", code: "Digit9", altKey: true, metaKey: true })).toBe(false);
     expect(panelShortcut({ key: "9", code: "Digit9", altKey: true, isComposing: true })).toBe(false);
-    expect(viewShortcut({ key: "1", code: "KeyA", altKey: true })).toBe("conversation");
     expect(viewShortcut({ key: "¡", code: "Digit1", altKey: true, ctrlKey: true })).toBeUndefined();
     expect(viewShortcut({ key: "¡", code: "Digit1", altKey: true, metaKey: true })).toBeUndefined();
   });
