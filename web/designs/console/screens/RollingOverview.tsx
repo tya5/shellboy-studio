@@ -12,9 +12,8 @@ export function RollingOverview({ model }: { model: AppModel }) {
   const active = rolling.walk.state.value;
   const cut = rolling.displayed.value;
   if (!cut) return <Notice>{t("analytics.notRead")}</Notice>;
-  const { interval, walk, stale, selection } = cut;
+  const { interval, walk, stale, selection, partial: cutIncomplete } = cut;
   const hours = interval.hours;
-  const cutIncomplete = walk.status !== "done" || walk.coverage.scopeIncomplete || walk.coverage.excludedTime > 0;
   const display = (n: number | undefined) => n === undefined ? t("analytics.noValue") : n.toLocaleString(model.lang.value);
   const facts = hours.map(h => {
     const group = walk.groups.get(h.key);
@@ -31,7 +30,7 @@ export function RollingOverview({ model }: { model: AppModel }) {
   return <div class="rolling-overview">
     <div class="muted caption">{t("analytics.ownerWide")} · {intervalLabel}</div>
     {stale ? <Notice tone="wait">{t("analytics.asOf")}</Notice> : null}
-    {active.status === "loading" ? <Notice actions={<Button onClick={() => rolling.walk.stop()}>{t("analytics.stop")}</Button>}>{t("analytics.walking", { n: active.coverage.windows + 1 })}</Notice> : null}
+    {active.status === "loading" ? <Notice actions={<Button onClick={() => rolling.stop()}>{t("analytics.stop")}</Button>}>{t("analytics.walking", { n: active.coverage.windows + 1 })}</Notice> : null}
     {active.status === "stopped" || active.status === "failed" ? <Notice tone={active.status === "failed" ? "bad" : "wait"}
       actions={active.status === "failed" && !active.canContinue ? <Button onClick={() => rolling.retry()}>{t("analytics.retry")}</Button>
         : active.canContinue ? <Button onClick={() => rolling.continue()}>{t("analytics.continue")}</Button> : undefined}>

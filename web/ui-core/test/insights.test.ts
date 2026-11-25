@@ -580,7 +580,7 @@ describe("rolling Overview", () => {
     expect(hourlyTotals([]).requests).toBeUndefined();
   });
 
-  it("cancels a held cursor on resync, retains the accepted cut, and never selects a different hour", async () => {
+  it("cancels a held cursor on resync and publishes the stopped replacement as partial", async () => {
     let now = NOW;
     const until = () => rollingPeriod(now, 540);
     const old = until();
@@ -626,13 +626,21 @@ describe("rolling Overview", () => {
     expect(rolling.displayed.peek()?.walk.groups.get(firstHour.key)?.requests).toBe(4);
     expect(rolling.walk.state.peek().groups.size).toBe(0);
 
-    db.answered.add(replacement.id);
-    t.ok(replacement.id, usagePage([item(until().hours[0]!.key, 7)]));
-    await settle(t, db);
-    expect(rolling.displayed.peek()).toMatchObject({ stale: false, interval: until(), selection: undefined });
+    const newHour = until().hours[0]!;
+    t.ok(replacement.id, usagePage([item(newHour.key, 7)], "replacement-next"));
+    await flush();
+    const next = hourCalls().at(-1)!;
+    expect(next.args).toMatchObject({ cursor: "replacement-next", since: until().since, until: until().until });
+    expect(rolling.displayed.peek()).toMatchObject({ stale: true, interval: old, selection: firstHour });
+    rolling.stop();
+    expect(t.cancels()).toContain(next.id);
+    db.answered.add(next.id);
+    expect(rolling.displayed.peek()).toMatchObject({ stale: false, interval: until(), selection: undefined, walk: { status: "stopped", canContinue: true } });
+    expect(rolling.displayed.peek()?.partial).toBe(true);
+    expect(rolling.displayed.peek()?.walk.groups.get(newHour.key)?.requests).toBe(7);
     expect(rolling.displayed.peek()?.walk.groups.has(firstHour.key)).toBe(false);
     rolling.step(1);
-    expect(rolling.displayed.peek()?.selection?.key).toBe(until().hours[0]!.key);
+    expect(rolling.displayed.peek()?.selection?.key).toBe(newHour.key);
     model.insights.setPeriod(1);
     await settle(t, db);
     expect(t.calls("usage.get").at(-1)?.args).toMatchObject({ group_by: "day", since: periodOf(1, now, 540).since });

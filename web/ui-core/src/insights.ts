@@ -197,7 +197,7 @@ export interface InsightsOptions {
 
 type RollingPeriod = ReturnType<typeof rollingPeriod>;
 
-/** The visible rolling Overview owns one current walk and its last completed cut. */
+/** The visible rolling Overview owns one current walk and its last settled cut. */
 export class RollingUsage {
   readonly enabled = signal(false);
   readonly interval = signal<RollingPeriod | undefined>(undefined);
@@ -208,12 +208,14 @@ export class RollingUsage {
 
   readonly displayed = computed(() => {
     const active = this.walk.state.value;
-    const retained = active.status !== "done" ? this.accepted.value : undefined;
+    const retained = this.hasSettledCut(active) ? undefined : this.accepted.value;
     const interval = retained?.interval ?? this.interval.value;
     if (!interval) return undefined;
     const key = this.selected.value;
     const selection = interval.hours.find(hour => hour.key === key);
-    return { interval, walk: retained?.walk ?? active, stale: retained !== undefined, selection };
+    const walk = retained?.walk ?? active;
+    const partial = walk.status !== "done" || walk.coverage.scopeIncomplete === true || walk.coverage.excludedTime > 0;
+    return { interval, walk, stale: retained !== undefined, selection, partial };
   });
 
   constructor(ops: Operations, private readonly options: InsightsOptions) {
@@ -232,7 +234,10 @@ export class RollingUsage {
       if (scope.scheduled) return;
       scope.scheduled = true;
       // Close the obsolete generation now; coalesce only the replacement read.
-      this.walk.reset();
+      batch(() => {
+        this.retainSettled();
+        this.walk.reset();
+      });
       queueMicrotask(() => {
         if (this.scope !== scope) return;
         scope.scheduled = false;
@@ -252,6 +257,13 @@ export class RollingUsage {
   }
 
   retry(): void { if (this.scope && !this.scope.scheduled) void this.start(); }
+
+  stop(): void {
+    batch(() => {
+      this.walk.stop();
+      this.retainSettled();
+    });
+  }
 
   continue(): void {
     if (this.scope && !this.scope.scheduled) void this.finish(this.scope, this.walk.continue());
@@ -273,6 +285,7 @@ export class RollingUsage {
     const scope = this.scope!;
     const interval = rollingPeriod(this.options.nowMs(), this.options.offsetMinutes());
     const read = batch(() => {
+      this.retainSettled();
       this.interval.value = interval;
       return this.walk.start();
     });
@@ -283,8 +296,18 @@ export class RollingUsage {
     const interval = this.interval.peek();
     await read;
     if (this.scope !== scope || !interval || this.interval.peek() !== interval) return;
+    this.retainSettled();
+  }
+
+  private hasSettledCut(walk: WalkState): boolean {
+    // A completed empty read is a new fact; a stopped or failed read needs data to replace the display.
+    return walk.status === "done" || ((walk.status === "stopped" || walk.status === "failed") && walk.groups.size > 0);
+  }
+
+  private retainSettled(): void {
+    const interval = this.interval.peek();
     const walk = this.walk.state.peek();
-    if (walk.status !== "done") return;
+    if (!interval || !this.hasSettledCut(walk)) return;
     batch(() => {
       if (!interval.hours.some(h => h.key === this.selected.peek())) this.selected.value = undefined;
       this.accepted.value = { interval, walk };
