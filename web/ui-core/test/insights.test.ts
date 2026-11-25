@@ -688,7 +688,7 @@ describe("rolling Overview", () => {
       expect(first!.args).toMatchObject({ since: interval.since, until: interval.until, timezone: "+09:00" });
       expect(first!.args).not.toHaveProperty("cursor");
       db.answered.add(first!.id);
-      t.ok(first!.id, usagePage([usageItem(interval.hours[0]!.key, { count })], cursor));
+      t.ok(first!.id, usagePage([usageItem(interval.hours[0]!.key, { count, input: null, cached: null, output: null })], cursor));
     }
     await flush();
     expect(hours()).toHaveLength(4);
@@ -700,7 +700,7 @@ describe("rolling Overview", () => {
     for (const { interval, count, walk } of [...periods].reverse()) {
       const [, next] = ownCalls(interval.until);
       db.answered.add(next!.id);
-      t.ok(next!.id, usagePage([usageItem(interval.hours[0]!.key, { count })]));
+      t.ok(next!.id, usagePage([usageItem(interval.hours[0]!.key, { count, input: null, cached: null, output: null })]));
       await flush();
       expect(walk.state.peek().status).toBe("done");
       expect(walk.state.peek().groups.get(interval.hours[0]!.key)?.requests).toBe(count * 2);
