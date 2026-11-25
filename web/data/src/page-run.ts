@@ -4,6 +4,9 @@ import { MAX_LIST_ROWS, type ShellboyData, type Handle } from "./store";
 import type { Page } from "./protocol";
 import type { Outcome, OpError } from "./errors";
 
+// Empty pages can advance a cursor without approaching the row cap.
+const MAX_REPLAY_PAGES = 128;
+
 type Load<T, H> = (cursor: string | undefined, cancel: Cancel) => Promise<Outcome<{ page: Page<T>; header?: H }>>;
 type Section<T, H> = { items: readonly T[]; header?: H; cursor?: string; loading: boolean; loadingMore?: boolean; error?: OpError; capped?: boolean; complete?: boolean; loaded?: boolean };
 /** A Thread ID (its hints), or a caller-owned hint source for a list that spans Threads. */
@@ -63,6 +66,7 @@ export class PageRun<T, H = never> {
     let cursor = appendCursor;
     let capped = false;
     let header = appendCursor === undefined ? undefined : previous.header;
+    let readPages = 0;
     const pages = appendCursor === undefined ? session.pages : 1;
     const fail = (error: OpError, invalidateCursor: boolean) => {
       session.read = undefined;
@@ -81,10 +85,11 @@ export class PageRun<T, H = never> {
         fail(result.error, expired);
         return;
       }
+      readPages++;
       const { page } = result.value;
       if (i === 0 && appendCursor === undefined) header = result.value.header;
       cursor = page.next_cursor;
-      if ((cursor !== undefined && (!page.items.length || cursors.has(cursor))) || page.items.some(row => ids.has(this.key(row)))) {
+      if ((cursor !== undefined && cursors.has(cursor)) || page.items.some(row => ids.has(this.key(row)))) {
         fail({ kind: "invalid_response", message: this.invalidContinuation }, false); return;
       }
       const remaining = this.rowLimit - items.length;
@@ -93,7 +98,8 @@ export class PageRun<T, H = never> {
       if (cursor === undefined || capped) break;
     }
     session.read = undefined;
-    if (appendCursor !== undefined) session.pages++;
+    session.pages = appendCursor === undefined ? readPages : session.pages + readPages;
+    capped ||= cursor !== undefined && session.pages >= MAX_REPLAY_PAGES;
     this.stateSignal.value = { items, ...(header === undefined ? {} : { header }), loading: false, loadingMore: false, loaded: true, cursor: capped ? undefined : cursor, capped, complete: cursor === undefined && !capped };
     this.rerunIfNeeded(session);
   }

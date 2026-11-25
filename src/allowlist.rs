@@ -121,7 +121,14 @@ pub fn access(command: &Command) -> Access {
         | Command::IndexProbe(..)
         | Command::StorageCollect(..) => Access::Denied,
         #[cfg(feature = "next-shellboy")]
-        Command::IndexShrink(..)
+        Command::DraftImage(..)
+        | Command::DraftSave(..)
+        | Command::DraftGet(..)
+        | Command::DraftRestore(..)
+        | Command::DraftSubmit(..)
+        | Command::HistoryRecall(..)
+        | Command::HistoryReceived(..)
+        | Command::IndexShrink(..)
         | Command::IndexRemove(..)
         | Command::ThreadImport(..)
         | Command::HistoryExport(..)
