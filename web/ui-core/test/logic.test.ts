@@ -64,13 +64,13 @@ describe("previews", () => {
 
 describe("inbox", () => {
   it("nests children under their parent, keeps the owner's order, keeps orphans", () => {
-    const rows = threadTree([s("c", { parent_id: "p" }), s("p"), s("o", { parent_id: "gone" })]);
+    const rows = threadTree([s("c", { parent_thread_id: "p" }), s("p"), s("o", { parent_thread_id: "gone" })]);
     expect(rows.map((r) => [r.summary.thread_id, r.depth])).toEqual([["p", 0], ["c", 1], ["o", 0]]);
     expect(rows[0]!.childCount).toBe(1);
     expect(rows[1]!.parentTitle).toBe("t-p");
   });
   it("a parent cycle can't hide a Thread", () => {
-    expect(threadTree([s("a", { parent_id: "b" }), s("b", { parent_id: "a" })])).toHaveLength(2);
+    expect(threadTree([s("a", { parent_thread_id: "b" }), s("b", { parent_thread_id: "a" })])).toHaveLength(2);
   });
   it("counts status independently of owner order", () => {
     const rows = threadTree([s("x", { activity: "completed" }), s("y", { activity: "recovery" }), s("z", { activity: "tools" }), s("q", { activity: "idle" })], new Map([["q", 1]]));

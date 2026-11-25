@@ -334,7 +334,7 @@ export function App({ context }: { context: DesignContext }) {
                         } } : undefined}
                       onSelect={() => setDrawer(false)}
                       menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary,
-                        target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), { ...(canTag ? { onEditTags: () => editThreadTags(id) } : {}), ...(model.data.capabilities.value.includes(CAPABILITY_REPARENT) ? { onMove: () => { model.threadActions.pickParent(id, r.summary.title, r.summary.parent_id); setMovePickerOpen(true); setDrawer(false); } } : {}) })] }} />;
+                        target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), { ...(canTag ? { onEditTags: () => editThreadTags(id) } : {}), ...(model.data.capabilities.value.includes(CAPABILITY_REPARENT) ? { onMove: () => { model.threadActions.pickParent(id, r.summary.title, r.summary.parent_thread_id); setMovePickerOpen(true); setDrawer(false); } } : {}) })] }} />;
                   })}
                   </SidebarTree> : null}
                   {/* Each paged band ends with its own Show more, so All's does not sit under Archive; `.side-note` gives it the rows' space-8 inset. */}

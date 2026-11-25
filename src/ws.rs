@@ -657,7 +657,7 @@ mod tests {
             json!({"thread_id":"t","cwd":"/tmp","spill":"on"}),
             json!({"thread_id":"t","cwd":"/tmp","title":"x"}),
             json!({"thread_id":"t","agents":"/tmp/AGENTS.md","title":"bad"}),
-            json!({"thread_id":"t","model":"m","parent_id":"p"}),
+            json!({"thread_id":"t","model":"m","parent_thread_id":"p"}),
         ] {
             assert_eq!(
                 build_command("thread.set", Some(args)).unwrap_err().code,

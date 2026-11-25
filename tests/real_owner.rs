@@ -283,8 +283,8 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
             .as_array()
             .and_then(|rows| rows.first())
         {
-            assert_ne!(row["awaiting_replies_exact"], false, "{row}");
-            assert_ne!(row["awaiting_thread_count_exact"], false, "{row}");
+            assert_eq!(row["awaiting_replies_count_exact"], true, "{row}");
+            assert_eq!(row["awaiting_thread_count_exact"], true, "{row}");
             assert_ne!(
                 row["excerpt_complete"], false,
                 "fresh empty Thread has a complete excerpt scan: {row}"
@@ -311,8 +311,8 @@ async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
         .iter()
         .find(|row| row["thread_id"] == created_id)
         .expect("created thread summary");
-    assert_ne!(row["awaiting_replies_exact"], false, "{row}");
-    assert_ne!(row["awaiting_thread_count_exact"], false, "{row}");
+    assert_eq!(row["awaiting_replies_count_exact"], true, "{row}");
+    assert_eq!(row["awaiting_thread_count_exact"], true, "{row}");
     assert_ne!(
         row["excerpt_complete"], false,
         "fresh empty Thread excerpt is complete: {row}"
@@ -497,6 +497,11 @@ async fn hints_and_restart_against_a_real_owner() {
     assert_eq!(attachments["response"]["ok"], true, "{attachments}");
     assert_eq!(attachments["response"]["result"]["items"], json!([]));
     assert!(attachments["response"]["result"]["next_cursor"].is_null());
+    assert_eq!(
+        attachments["response"]["result"]["filters"]["thread_id"],
+        thread_id
+    );
+    assert!(attachments["response"]["result"]["limit"].is_u64());
 
     // The Analytics and Settings reads pass the allowlist and the owner decodes them: strict
     // decoding on both sides, so a wrong argument name here would fail.
@@ -1081,6 +1086,35 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
         .collect();
     assert!(nodes.len() >= 2, "{history}");
     let point = nodes[0]["node_id"].as_str().unwrap().to_owned();
+    assert!(history["limit"].is_u64(), "{history}");
+    assert_eq!(history["filters"]["thread_id"], thread);
+    assert_eq!(nodes[0]["execution_count_exact"], true);
+    let first = c
+        .ok(
+            "history.read",
+            json!({"node_id":point,"limit_bytes":2}),
+            None,
+        )
+        .await;
+    let cursor = first["next_cursor"].as_str().expect("body continuation");
+    let next = c
+        .ok(
+            "history.read",
+            json!({"node_id":point,"limit_bytes":2,"cursor":cursor}),
+            None,
+        )
+        .await;
+    assert!(!next["text"].as_str().unwrap().is_empty(), "{next}");
+    let end = c
+        .ok(
+            "history.read",
+            json!({"node_id":point,"end_message_only":true}),
+            None,
+        )
+        .await;
+    assert!(!end["text"].as_str().unwrap().is_empty(), "{end}");
+    let retired = c.call("history.get", json!({"node_id":point}), None).await;
+    assert_eq!(retired["response"]["ok"], false, "{retired}");
 
     // A Thread alone: the root, no divergence, sized by the owner.
     let alone = c
@@ -1459,15 +1493,15 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
     let moved = c
         .ok(
             "thread.set",
-            json!({"thread_id": b, "parent_id": a}),
+            json!({"thread_id": b, "parent_thread_id": a}),
             op("move"),
         )
         .await;
-    assert_eq!(moved["parent_id"], a.as_str(), "{moved}");
+    assert_eq!(moved["parent_thread_id"], a.as_str(), "{moved}");
     let cycle = c
         .call(
             "thread.set",
-            json!({"thread_id": a, "parent_id": b}),
+            json!({"thread_id": a, "parent_thread_id": b}),
             op("cycle"),
         )
         .await;
@@ -1486,11 +1520,11 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
     let detached = c
         .ok(
             "thread.set",
-            json!({"thread_id": b, "parent_id": ""}),
+            json!({"thread_id": b, "parent_thread_id": ""}),
             op("detach"),
         )
         .await;
-    assert!(detached["parent_id"].is_null(), "{detached}");
+    assert!(detached["parent_thread_id"].is_null(), "{detached}");
     // Naming and cwd each have a standalone allowlist path.
     let named = c
         .ok(
@@ -2117,7 +2151,7 @@ async fn intervention_provider(
 }
 
 #[tokio::test]
-async fn intervention_commands_reach_the_pinned_protocol_26_owner() {
+async fn intervention_commands_reach_the_pinned_owner() {
     let bin = PathBuf::from(
         std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
     );

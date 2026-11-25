@@ -198,7 +198,7 @@ shows "result unconfirmed" and offers `operation.get`, exactly like the CLI's
 
 **Allowlist (M1).** Reads: `status`, `model.list`, `thread.list`, `thread.get`,
 `run.get`, `turn.get`, `message.get`, `shell.list`, `shell.get`, `shell.read`,
-`history.list`, `history.get`, `operation.get`. Reads added for Analytics and Settings: `usage.get`, `compact.list`,
+`history.list`, `history.read`, `operation.get`. Reads added for Analytics and Settings: `usage.get`, `compact.list`,
 `storage.status`, `index.status` (`analytics-settings.md`). Mutations: `thread.create`,
 `message.send`, `run.stop`, `run.retry`, `thread.archive`, `message.cancel`, plus the
 rewind operations of Shellboy #246 once available. `thread.set` is restricted to either parent changes or model/connection/effort changes for one Thread; model catalog reads are explicit and late responses are discarded. `events.wait` is bridge-internal.
@@ -320,7 +320,7 @@ M1; a tunnel provides it.
 - The bridge links the Shellboy crate at a git tag; it speaks exactly that
   tag's `PROTOCOL_VERSION`. Shellboy's owner accepts exactly one version
   (current-only, protocol.md Issue #33).
-- Current source pairing: Studio v0.4.3 with Core v0.16.0 at `46212b5391e2d486efec770291359a2ba671fa01`, protocol 26. Version mismatches fail closed;
+- Current source pairing: Studio preparation branch with unreleased Core main `4b2575bcfb4b25787c14dd1b1fd49b6cde54c5c6`, protocol 33; this is not a release pairing. Version mismatches fail closed;
   there is no downgrade, alias or payload rewrite. Handshake capabilities do not
   override an exact protocol-version mismatch. Validate the exact Core commit and
   lockfile pairing separately before release.
@@ -716,7 +716,7 @@ A live_end/tool/new attempt is not proof of saving. Neither newest-node changes,
 text similarity, time nor Turn end_message_node_id identify an intermediate
 response. Complete #279 refs must identify the exact Thread/attempt/Turn and one
 explicit message/final_answer without competing eligible messages. This permits
-only the approved history.get end_message_only body projection, not arbitrary
+only the approved history.read end_message_only body projection, not arbitrary
 item readback. Exact selected-path anchors before/after body read must match node,
 ordinal and revision. Empty projected text, partial cursor, wrong identity,
 ambiguous phase, missing refs, malformed refs or truncation do not prove a ready

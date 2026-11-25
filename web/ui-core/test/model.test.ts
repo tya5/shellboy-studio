@@ -90,7 +90,7 @@ describe("AppModel over the fake transport", () => {
       const pending = model.loadBody("savedassistant");
       const bodyKey = model.bodyCacheKey("savedassistant");
       await flush();
-      const call = t.calls("history.get").at(-1);
+      const call = t.calls("history.read").at(-1);
       expect(call).toBeDefined();
       expect(call!.args).toMatchObject({ node_id: "savedassistant" });
       model.navigate({ view: "analytics" });
@@ -106,7 +106,7 @@ describe("AppModel over the fake transport", () => {
       const beforeRoute = model.route.peek();
       const pending = model.loadBody("savedassistant");
       await flush();
-      const call = t.calls("history.get").at(-1);
+      const call = t.calls("history.read").at(-1);
       expect(call).toBeDefined();
       expect(call!.args).toMatchObject({ node_id: "savedassistant" });
       const bodyKey = model.bodyCacheKey("savedassistant");
@@ -124,12 +124,12 @@ describe("AppModel over the fake transport", () => {
       owner.history.lead = [{ node_id: "deferred-opaque", kind: "assistant_response", selection: { ordinal: 0 }, items: null, items_unavailable_reason: "response_budget", excerpt: "mixed-looking deferred excerpt" }];
       owner.historyRevisions.lead = 2;
       const base = owner.answer.bind(owner);
-      owner.answer = call => call.command === "history.get" ? { ok: true, result: { node_id: "deferred-opaque", kind: "assistant_response", text: "HIDDEN-MIXED-SENTINEL" } } : base(call);
+      owner.answer = call => call.command === "history.read" ? { ok: true, result: { node_id: "deferred-opaque", kind: "assistant_response", text: "HIDDEN-MIXED-SENTINEL" } } : base(call);
     }});
     try {
       await flush(8);
       expect(model.longReader.peek()!.acceptedView.peek().rows.find(row => row.node_id === "deferred-opaque")?.items).toBeNull();
-      expect(t.calls("history.get")).toHaveLength(0);
+      expect(t.calls("history.read")).toHaveLength(0);
       expect(model.bodyState("deferred-opaque")).toBeUndefined();
     } finally { model.dispose(); }
   });
@@ -146,9 +146,9 @@ describe("AppModel over the fake transport", () => {
       await flush(8);
       const mixedRows = model.longReader.peek()!.acceptedView.peek().rows;
       expect(mixedRows.find(row => row.node_id === "mixed-node")?.items?.map(item => item.kind)).toEqual(["text", "reasoning_unavailable"]);
-      expect(t.calls("history.get")).toHaveLength(0);
+      expect(t.calls("history.read")).toHaveLength(0);
       await model.loadBody("mixed-node", { kind: "typed", identity: "prose" });
-      expect(t.calls("history.get")).toHaveLength(0);
+      expect(t.calls("history.read")).toHaveLength(0);
       expect(model.bodyState("mixed-node", "prose")).toBeUndefined();
     } finally { model.dispose(); }
   });
@@ -162,7 +162,7 @@ describe("AppModel over the fake transport", () => {
       const handle = model.handle.peek();
       const pending = model.loadBody("body-node");
       await flush();
-      const call = t.calls("history.get").at(-1);
+      const call = t.calls("history.read").at(-1);
       expect(call).toBeDefined();
       t.ok(call!.id, { node_id: "body-node", kind: "assistant_response", text: "saved body" });
       await pending;
@@ -189,17 +189,17 @@ describe("AppModel over the fake transport", () => {
     try {
       const firstRead = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
-      const first = t.calls("history.get").at(-1);
+      const first = t.calls("history.read").at(-1);
       expect(first).toBeDefined();
       const key = model.bodyCacheKey("body-node", "answer");
       const evicted = new Map(model.bodies.peek()); evicted.delete(key); model.bodies.value = evicted;
       const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
-      expect(t.calls("history.get")).toHaveLength(1);
+      expect(t.calls("history.read")).toHaveLength(1);
       t.ok(first!.id, { node_id: "body-node", kind: "assistant_response", text: "first", next_cursor: "next" });
       model.navigate({ view: "analytics" });
       await firstRead; await duplicate;
-      expect(t.calls("history.get")).toHaveLength(1);
+      expect(t.calls("history.read")).toHaveLength(1);
       expect(model.bodies.peek().get(key)?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
@@ -212,16 +212,16 @@ describe("AppModel over the fake transport", () => {
     try {
       const firstRead = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
-      const first = t.calls("history.get").at(-1);
+      const first = t.calls("history.read").at(-1);
       expect(first).toBeDefined();
       const key = model.bodyCacheKey("body-node", "answer");
       const evicted = new Map(model.bodies.peek()); evicted.delete(key); model.bodies.value = evicted;
       const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
-      expect(t.calls("history.get")).toHaveLength(1);
+      expect(t.calls("history.read")).toHaveLength(1);
       t.ok(first!.id, { node_id: "body-node", kind: "assistant_response", text: "first", next_cursor: "next" });
       await flush();
-      const second = t.calls("history.get").at(-1);
+      const second = t.calls("history.read").at(-1);
       expect(second).toBeDefined();
       expect(second!.args).toMatchObject({ node_id: "body-node", cursor: "next" });
       t.ok(second!.id, { node_id: "body-node", kind: "assistant_response", text: "second" });

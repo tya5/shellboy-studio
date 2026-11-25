@@ -24,7 +24,7 @@ Object.assign(window, { branchesFixture: { model, family, db, t, hint: async () 
   db.threads.rel!.title = hintedTitle;
   // A newly saved Thread makes the list signal change, which is how the production model
   // schedules the Branches family re-read after a list hint.
-  db.threads.hinted = summary("hinted", { title: "Hint branch", parent_id: "rel", state: "idle", activity: "idle", updated_at: "2026-11-07T10:18:00.000000+00:00" });
+  db.threads.hinted = summary("hinted", { title: "Hint branch", parent_thread_id: "rel", state: "idle", activity: "idle", updated_at: "2026-11-07T10:18:00.000000+00:00" });
   family.paths.hinted = [...family.paths.rel!.slice(0, 6), { node_id: "h7", kind: "user", excerpt: "Continue the refreshed line." }];
   family.extra.push({ thread_id: "hinted", parent: "rel", at: "r6", title: "Hint branch" });
   t.push({ t: "changed", thread_ids: ["rel", "hinted"], list: true, config_changed: false });

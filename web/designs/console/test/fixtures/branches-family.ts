@@ -73,8 +73,8 @@ export function branchesFamily(db: FakeOwnerDb, options: { running?: boolean } =
     },
   };
   db.threads.rel = summary("rel", { title: "Release notes", state: "idle", activity: "idle", updated_at: AT });
-  db.threads.stream = summary("stream", { title: "Streaming output", parent_id: "rel", state: options.running === false ? "idle" : "running", activity: "tools", updated_at: AT });
-  db.threads.retry = summary("retry", { title: "Streaming + retry", parent_id: "stream", state: "idle", activity: "idle", updated_at: AT });
+  db.threads.stream = summary("stream", { title: "Streaming output", parent_thread_id: "rel", state: options.running === false ? "idle" : "running", activity: "tools", updated_at: AT });
+  db.threads.retry = summary("retry", { title: "Streaming + retry", parent_thread_id: "stream", state: "idle", activity: "idle", updated_at: AT });
   const item = (id: string, title: string, parent: string | null, split: string | null, extra: Record<string, unknown> = {}) => {
     const path = fixture.paths[id]!;
     const ordinal = split ? path.findIndex((n) => n.node_id === split) : -1;
@@ -146,7 +146,7 @@ export function branchesFamily(db: FakeOwnerDb, options: { running?: boolean } =
       const child = `fork-${++fixture.forks}`;
       fixture.paths[child] = path.slice(0, at + 1);
       fixture.extra.push({ thread_id: child, parent: id, at: String(a.node_id), title: `New branch ${fixture.forks}` });
-      return { ok: true, result: { thread_id: child, title: `New branch ${fixture.forks}`, cwd: "/", connection: "c", model: "m", shells_count: 0, parent_id: id } };
+      return { ok: true, result: { thread_id: child, title: `New branch ${fixture.forks}`, cwd: "/", connection: "c", model: "m", shells_count: 0, parent_thread_id: id } };
     }
     if (call.command === "message.send") {
       const id = String(a.thread_id);

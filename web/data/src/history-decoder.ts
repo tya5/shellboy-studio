@@ -32,6 +32,11 @@ function validToolDescriptor(value: unknown, result: boolean): value is Record<s
 export const decodeHistoryWindow: (v: unknown) => Decoded<HistoryWindowResult> = (v) => {
   const bad = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
   if (!isObject(v) || !Array.isArray(v.items) || v.items.length > 200 || !Number.isSafeInteger(v.total) || (v.total as number) < 0 || !(typeof v.revision === 'string' || typeof v.revision === 'number')) return bad('invalid history.window envelope');
+  if (v.items.some(node => isObject(node) && (
+    ["excerpt_omitted", "excerpt_truncated", "execution_count_exact"].some(key => Object.hasOwn(node, key) && typeof node[key] !== "boolean")
+    || (Object.hasOwn(node, "execution_count") && (!Number.isSafeInteger(node.execution_count) || (node.execution_count as number) < 0))
+    || (Object.hasOwn(node, "execution_count_exact") && !Object.hasOwn(node, "execution_count"))
+  ))) return bad('invalid history snippet coverage');
   if (v.items.some(node => isObject(node) && !validHistoryProvenance(node.provenance,node.kind))) return bad('invalid history provenance identity');
   if (v.items.some(node => isObject(node) && Object.hasOwn(node, 'spill_tools') && !validSpillTools(node.spill_tools))) return bad('invalid public spill identities');
   if (!v.items.some(node => isObject(node) && (Object.hasOwn(node, 'items') || Object.hasOwn(node, 'items_unavailable_reason')))) return { ok: true, value: {...v,items:(v.items as unknown as HistoryItem[]).map(sanitizeMessageRelation)} as unknown as HistoryWindowResult };

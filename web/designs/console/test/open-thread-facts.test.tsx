@@ -232,7 +232,7 @@ const labels = (items: HTMLButtonElement[]) => items.map(item => item.textConten
 
 describe("Row menu Stop and Retry (#107)", () => {
   it("offers Stop for a waiting Thread and for a running Thread whose question shows the awaiting mark", async () => {
-    const { model, t, db } = await fixtureModel({ route: "inbox", configure: db => { db.threads.lead = summary("lead", { ...db.threads.lead, awaiting_named_count: 1 }); db.threads.done = summary("done", { ...db.threads.done, parent_id: undefined }); } });
+    const { model, t, db } = await fixtureModel({ route: "inbox", configure: db => { db.threads.lead = summary("lead", { ...db.threads.lead, awaiting_named_count: 1 }); db.threads.done = summary("done", { ...db.threads.done, parent_thread_id: undefined }); } });
     try {
       const el = draw(model);
       await act(async () => { await settle(t, db); });

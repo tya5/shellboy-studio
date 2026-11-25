@@ -12,7 +12,7 @@ import type { Prefs } from '../../../ui-core/src';
 
 it('directional pages preserve human and Thread duties while preserving shells and organizational parents', async () => {
   const r = await fixtureModel({ configure(db) {
-    Object.assign(db.details.lead!, { parent_id:'organization', shells_count:1,
+    Object.assign(db.details.lead!, { parent_thread_id:'organization', shells_count:1,
       pending_replies:{owed_by:{count:1,exact:true},asked_by:{count:1,exact:true}} });
     db.replies = [
       { message_id:'human', asked_by:'lead', sender:{kind:'model',thread_id:'lead'}, recipient:{kind:'name',name:'human'}, excerpt:'P5_HUMAN',created_at:'2026-01-01T00:00:00Z' },
@@ -33,7 +33,7 @@ it('directional pages preserve human and Thread duties while preserving shells a
     expect(r.model.replyPages.owed_by.value.items[0]?.sender).toEqual({kind:'model', thread_id:'child'});
     expect(r.model.replyPages.asked_by.value.items).toHaveLength(1);
     expect(r.model.handle.value!.detail.value.value!.shells_count).toBe(1);
-    expect(r.model.handle.value!.detail.value.value!.parent_id).toBe('organization');
+    expect(r.model.handle.value!.detail.value.value!.parent_thread_id).toBe('organization');
     await r.model.runPanelOperation('peer',{kind:'answer',text:'not a human answer'});
     expect(r.t.calls('message.reply')).toHaveLength(0);
     const answer = r.model.runPanelOperation('human',{kind:'answer',text:'confirmed'});

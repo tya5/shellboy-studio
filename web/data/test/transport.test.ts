@@ -188,7 +188,7 @@ it('N2 rejected frame settles pending reads/mutations once without replacing pri
  const h=setup();const link=new Link(h.transport);link.start();const socket=h.sockets[0]!;socket.open();
  const oldBody='previous saved body';let body=oldBody;
  link.subscribe(e=>{if(e.kind==='frame')body='unexpected';});
- const read=link.call('history.get',{node_id:'saved'});
+ const read=link.call('history.read',{node_id:'saved'});
  const mutation=link.call('message.send',{}, {mutation:true,operationId:'stable-op'});
  socket.onmessage?.({data:'x'.repeat(MAX_SERVER_FRAME_BYTES+1)});
  expect(await read.promise).toMatchObject({ok:false,error:{kind:'connection_lost'}});

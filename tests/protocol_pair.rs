@@ -26,20 +26,20 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_twenty_six_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 26);
+fn exact_protocol_33_has_directional_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 33);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
-        "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
+        "model":"m", "agents_path":"AGENTS.md", "parent_thread_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
     let details: ThreadDetails = serde_json::from_value(value).unwrap();
     assert_eq!(details.pending_replies.owed_by.count, 2);
     assert!(!details.pending_replies.asked_by.exact);
     assert_eq!(details.shells_count, 1);
-    assert_eq!(details.parent_id.as_deref(), Some("organization"));
+    assert_eq!(details.parent_thread_id.as_deref(), Some("organization"));
     assert_eq!(
         access(&Command::MessageList(shellboy::protocol::MessageListArgs {
-            owed_by: Some("t".into()),
-            asked_by: None,
+            owed_by_thread_id: Some("t".into()),
+            asked_by_thread_id: None,
             to: None,
             limit: 16,
             cursor: None,
@@ -49,20 +49,21 @@ fn exact_protocol_twenty_six_has_directional_reply_counts() {
 }
 
 #[test]
-fn human_overflow_is_a_lower_bound_and_default_exact_is_preserved() {
+fn directional_exact_flags_distinguish_exact_counts_and_lower_bounds() {
     let mut value = json!({"thread_id":"t","title":"synthetic","cwd":"/","state":"idle","activity":"idle",
         "latest_run_stop_reason":null,"updated_at":"2026-01-01T00:00:00Z","excerpt":"",
-        "awaiting_named_count":16,"awaiting_replies":16,"awaiting_thread_count":3,"excerpt_complete":true});
+        "awaiting_named_count":16,"awaiting_replies":16,"awaiting_thread_count":3,"excerpt_complete":true,
+        "awaiting_named_count_exact":true,"awaiting_replies_count_exact":true,"awaiting_thread_count_exact":true});
     let exact: ThreadSummary = serde_json::from_value(value.clone()).unwrap();
     assert!(exact.awaiting_named_count_exact);
-    assert!(exact.awaiting_replies_exact);
+    assert!(exact.awaiting_replies_count_exact);
     assert!(exact.awaiting_thread_count_exact);
     assert!(exact.excerpt_complete);
-    value["awaiting_replies_exact"] = json!(false);
+    value["awaiting_replies_count_exact"] = json!(false);
     value["awaiting_thread_count_exact"] = json!(false);
     value["excerpt_complete"] = json!(false);
     let lower: ThreadSummary = serde_json::from_value(value.clone()).unwrap();
-    assert!(!lower.awaiting_replies_exact);
+    assert!(!lower.awaiting_replies_count_exact);
     assert!(!lower.awaiting_thread_count_exact);
     assert!(!lower.excerpt_complete);
     value["awaiting_named_count"] = json!(17);
@@ -104,7 +105,7 @@ fn old_run_ownership_and_create_inputs_are_not_wire_aliases() {
     .unwrap();
     assert_eq!(access(&reply), Access::Mutation);
     let create: Command = serde_json::from_value(
-        json!({"command":"thread.create","args":{"parent_id":"organization"}}),
+        json!({"command":"thread.create","args":{"parent_thread_id":"organization"}}),
     )
     .unwrap();
     assert_eq!(access(&create), Access::Mutation);
@@ -188,4 +189,28 @@ fn core_schedule_and_service_reads_require_a_thread() {
             assert_eq!(access(&list(ThreadTarget { thread_id })), Access::Denied);
         }
     }
+}
+
+#[test]
+fn history_read_and_message_ask_use_the_pinned_wire_contract() {
+    for args in [
+        json!({"node_id":"n","limit_bytes":64,"cursor":"next"}),
+        json!({"node_id":"n","parts":true}),
+        json!({"node_id":"n","end_message_only":true}),
+    ] {
+        let command: Command =
+            serde_json::from_value(json!({"command":"history.read","args":args})).unwrap();
+        assert_eq!(access(&command), Access::Read);
+    }
+    assert!(
+        serde_json::from_value::<Command>(json!({"command":"history.get","args":{"node_id":"n"}}))
+            .is_err()
+    );
+    let wire = json!({"command":"message.ask","args":{"thread_id":"t","text":"synthetic","sender_label":"Studio probe"}});
+    let command: Command = serde_json::from_value(wire).unwrap();
+    assert_eq!(access(&command), Access::Denied);
+    assert_eq!(
+        serde_json::to_value(command).unwrap()["args"]["sender_label"],
+        "Studio probe"
+    );
 }

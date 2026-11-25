@@ -205,7 +205,7 @@ it.each([
       expect(targetResult.value.items).toHaveLength(1);
       expect(targetResult.value.items[0]?.node_id).toBe('n94');
     }
-    expect(r.t.calls('history.get')).toHaveLength(0);
+    expect(r.t.calls('history.read')).toHaveLength(0);
     await settle(r.t,r.db);
     const accepted = reader.acceptedView.peek();
     expect(accepted.rows.some(row => row.node_id === 'n94')).toBe(true);

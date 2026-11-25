@@ -1,3 +1,5 @@
+import type { ArtifactScopeFilter, CompactListFilters } from "./record-pages";
+
 // Wire types of the bridge's /ws envelope (src/envelope.rs) and the owner payloads the
 // data layer reads. Hand-written until Shellboy publishes a JSON Schema (#244 D); every
 // owner record keeps an index signature so fields added by the owner pass through.
@@ -172,9 +174,20 @@ export function parseServerFrame(text: string): ParsedFrame {
 
 // ---- Owner records (protocol-5 candidate; release pin validation is separate) ----
 
-export interface Page<T> {
+export interface Page<T, Filters = unknown> {
   items: T[];
   next_cursor?: string;
+  limit?: number;
+  filters?: Filters;
+}
+
+export interface CompactListResult extends Record<string, unknown> {
+  items: unknown[];
+  limit?: number;
+  filters?: CompactListFilters;
+  more: boolean;
+  period: unknown;
+  coverage: unknown;
 }
 
 /** Core #316 metadata. URIs are opaque here; this layer never opens them. */
@@ -197,7 +210,7 @@ export interface ArtifactSummary extends ArtifactIdentity {
   latest: ArtifactVersion;
 }
 export interface ArtifactHistory extends ArtifactSummary {
-  versions: Page<ArtifactVersionStamp>;
+  versions: Page<ArtifactVersionStamp, ArtifactScopeFilter>;
 }
 export interface ArtifactSelected extends ArtifactIdentity {
   version: ArtifactVersion;
@@ -226,7 +239,7 @@ export interface ThreadSummary {
   updated_at: string;
   created_at?: string | null;
   excerpt: string;
-  parent_id?: string;
+  parent_thread_id?: string;
   archived_at?: string;
   /** Sorted; absent when the Thread has none, and on an owner without tags. */
   tags?: string[];
@@ -239,7 +252,7 @@ export interface ThreadSummary {
   awaiting_named_oldest_at?: string | null;
   awaiting_thread_count?: number;
   /** False means the total count was truncated to a lower bound. */
-  awaiting_replies_exact?: boolean;
+  awaiting_replies_count_exact?: boolean;
   /** False means the Thread-directed count was truncated to a lower bound. */
   awaiting_thread_count_exact?: boolean;
   /** False means the excerpt scan stopped before older selected history. */
@@ -310,7 +323,7 @@ export interface ThreadDetails {
   model: string;
   run_id?: string;
   turn_id?: string;
-  parent_id?: string;
+  parent_thread_id?: string;
   archived_at?: string;
   tags?: string[];
   shells_count: number;
@@ -336,7 +349,7 @@ export interface WorkItem {
   message_id?: string | null;
   started_at?: string | null;
   created_at?: string | null;
-  /** Bounded history.get preview, absent when it could not be read. */
+  /** Bounded history.read preview, absent when it could not be read. */
   excerpt?: string;
 }
 
@@ -414,6 +427,8 @@ export interface HistoryItem {
   /** user, assistant_response, tool_result, event, context, summary, ... */
   kind?: string;
   excerpt?: string;
+  excerpt_omitted?: boolean;
+  excerpt_truncated?: boolean;
   execution_count?: number;
   /** Absent on legacy owners; false means execution_count is a lower bound. */
   execution_count_exact?: boolean;
@@ -424,7 +439,7 @@ export interface HistoryItem {
   [extra: string]: unknown;
 }
 
-/** `history.get` page of one node's body. */
+/** `history.read` page of one node's body. */
 export interface HistoryBody {
   /** Same optional admitted provenance as list/window; older absence stays unknown. */
   provenance?: HistoryItem['provenance'];
@@ -600,7 +615,7 @@ export interface HistoryWindowResult {
   /** selected-path items, ascending; `selection.ordinal` is the position. */
   items: HistoryItem[];
 }
-export interface HistoryGetArgs {
+export interface HistoryReadArgs {
   end_message_only?: boolean;
   node_id: string;
   cursor?: string;
@@ -618,7 +633,7 @@ export interface ShellReadArgs {
 }
 export interface ThreadCreateArgs {
   cwd?: string;
-  parent_id?: string;
+  parent_thread_id?: string;
 }
 /** Public message.send acceptance; the canonical node ID is message_id. */
 export interface MessageAccepted {
