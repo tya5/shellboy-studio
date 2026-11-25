@@ -1,7 +1,8 @@
 import { DELETE_SET_LIMIT, type ThreadDeleteSetPreview, type ThreadDeletePreview } from "../../../../../data/src";
 import type { ComponentChildren } from "preact";
 import type { AppModel } from "../../../../../ui-core/src";
-import { Button, WorkSheet } from "..";
+import { Button } from "../Button";
+import { WorkSheet } from "../WorkSheet";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 export type ThreadDeleteTarget = { threadId: string };
 

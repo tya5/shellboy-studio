@@ -1,5 +1,8 @@
 import type { AppModel } from "../../../../../ui-core/src";
-import { Button, Icon, MonitorPopover, Notice } from "..";
+import { Button } from "../Button";
+import { Icon } from "../Icon";
+import { MonitorPopover } from "../MonitorPopover";
+import { Notice } from "../Notice";
 import { ConnectionModelList, modelLabel } from "./ConnectionModelList";
 import { EffortControl } from "./EffortControl";
 
