@@ -381,7 +381,6 @@ const decodeMessageAccepted: Decoder<MessageAccepted> = value =>
     ? { ok: true, value: value as MessageAccepted }
     : { ok: false, reason: "expected MessageAccepted with nonempty message_id and thread_id" };
 // Ask is registered by the pinned Core as the same acceptance result as Send.
-const decodeMessageAskResult: Decoder<MessageAccepted> = decodeMessageAccepted;
 
 const decodeMessageReplied: Decoder<MessageReplied> = value =>
   isObject(value) && typeof value.message_id === "string" && value.message_id.length > 0
@@ -682,10 +681,6 @@ export class Operations {
   /** Sender identity (`human`, `sender_label: "web"`) is set by the bridge, not here. */
   messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MessageAccepted>> {
     return this.run("message.send", args, outcomeDecoder(decodeMessageAccepted), { operationId });
-  }
-  /** The pinned wire registry returns MessageAccepted for Ask; the browser bridge still denies Ask. */
-  decodeMessageAskResult(value: unknown): Decoded<MessageAccepted> {
-    return decodeMessageAskResult(value);
   }
   messageList(direction: ReplyDirection, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<PendingReply, MessageListFilters>>> {
     const selector = "owed_by" in direction ? { owed_by_thread_id: direction.owed_by }

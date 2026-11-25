@@ -217,17 +217,19 @@ describe("Operations", () => {
       message_id: "accepted-id", thread_id: "asking-thread", delivery_status: "held",
       assignment: "pending", expect_reply: true,
     };
-    expect(ops.decodeMessageAskResult(accepted)).toEqual({ ok: true, value: accepted });
-    expect(ops.decodeMessageAskResult({ ...accepted, thread_id: "" }).ok).toBe(false);
+    const sending = ops.messageSend({ thread_id: accepted.thread_id, text: "ask-compatible" });
+    expect(t.calls()[0]).toMatchObject({ command: "message.send" });
+    t.ok(t.calls()[0]!.id, accepted);
+    await expect(sending).resolves.toMatchObject({ ok: true, value: accepted });
 
     const routed = ops.messageReply("request-id", "answer");
-    expect(t.calls()[0]).toMatchObject({ command: "message.reply", args: { message_id: "request-id", text: "answer" } });
+    expect(t.calls()[1]).toMatchObject({ command: "message.reply", args: { message_id: "request-id", text: "answer" } });
     const nested = { ...accepted, message_id: "answer-id", thread_id: "asking-thread" };
-    t.ok(t.calls()[0]!.id, { message_id: "answer-id", reply_to: "request-id", delivery: nested });
+    t.ok(t.calls()[1]!.id, { message_id: "answer-id", reply_to: "request-id", delivery: nested });
     await expect(routed).resolves.toMatchObject({ ok: true, value: { message_id: "answer-id", reply_to: "request-id", delivery: nested } });
 
     const standalone = ops.messageReply("old-request", "standalone");
-    t.ok(t.calls()[1]!.id, { message_id: "answer-standalone", reply_to: "old-request" });
+    t.ok(t.calls()[2]!.id, { message_id: "answer-standalone", reply_to: "old-request" });
     await expect(standalone).resolves.toMatchObject({ ok: true, value: { message_id: "answer-standalone", reply_to: "old-request" } });
 
     for (const invalid of [
