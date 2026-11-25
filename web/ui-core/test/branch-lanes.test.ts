@@ -147,6 +147,10 @@ describe("lane reads", () => {
     t.ok(t.calls("thread.branches")[0]!.id, makeFamily(2)); await flush();
     expect(b.state.value.family?.items[0]?.selectionRevision).toBe(2);
     expect(reader.node("n225")).toBeUndefined();
+    b.want({ kind: "node", threadId: "lead", nodeId: "n225" });
+    expect(t.calls("history.window")).toHaveLength(2);
+    reply(t.calls("history.window")[1]!.id, "admitted"); await flush();
+    expect(reader.node("n225")?.excerpt).toBe("admitted");
   });
 
   it("keeps a bounded queue, drops rows that left the screen, and reads nothing without the capability", () => {

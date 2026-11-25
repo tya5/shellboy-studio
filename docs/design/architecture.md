@@ -655,22 +655,18 @@ node ID (node text is immutable), at most 2048, oldest out first, so a family
 re-read does not bulk reload or clear them. An owner change clears everything and
 cancels reads in flight; leaving the view drops queued reads and positions;
 late results never publish. A shorter path or a non-growing new tip drops that
-lane's positions. Because the family reply has no path revision, Branches stages the family,
-shown positional heads, disclosed ranges and selected point before publication.
-For each participating lane, the read checks the reported tip at the reported
-size when both are available, and its windows must agree on revision. A
-visible disagreement discards the round; bounded re-reads keep
-the prior cut, row keys and focus intact. Lazy reads cannot revise an accepted
-path or decide the selection. LaneReader projects only admitted positions and
-caches immutable excerpts. At publication, Branches updates the action key or
-withdraws the selection; a newer revision withdraws an unused preview.
-Mutation receipts survive these projection changes. Protocol 26 does not
-bind the family to a selected-path revision: a same-tip, same-length interior
-rewrite before the first window can still briefly show stale geometry. Core
-refuses actions on nodes no longer on the path and the next change mark
-triggers a reread; see [acceptance](../validation/acceptance.md). Adopt the
-[Core #418](https://github.com/tya5/shellboy/issues/418) field when it is landed
-and pinned, rather than adding bracketing reads. The
+lane's positions. Branches stages the family, shown positional heads, disclosed
+ranges and selected point before publication. Each participating lane's windows
+must agree with the family row's `selection_revision` as well as the reported
+tip and size. A divergence's `parent_selection_revision` must match the parent
+row when present in the same family. This binds the geometry and the window to
+the selected path even when a rewrite preserves tip and length ([Core #418](https://github.com/tya5/shellboy/issues/418)).
+A disagreement discards the round; bounded re-reads keep the prior cut, row
+keys and focus intact. Lazy reads cannot revise an accepted path or decide the
+selection. LaneReader projects only admitted positions and caches immutable
+excerpts. At publication, Branches updates the action key or withdraws the
+selection; a newer revision withdraws an unused preview. Mutation receipts
+survive these projection changes. The
 two-line comparison keeps its own bounded reads
 (`branch-compare.ts`: one anchor read and one 50-row page per side, four pages
 held, one page per explicit Show more).
