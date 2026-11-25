@@ -67,14 +67,6 @@ export function RollingOverview({ context }: { context: DesignContext }) {
   const bucket = facts.find(h => h.key === selection?.key);
   const count = (n: number | undefined) => cutIncomplete && n !== undefined ? t("usage.minimum", { value: display(n) }) : display(n);
   const intervalLabel = `${localLabel(hours[0]!.since)} – ${localLabel(hours[hours.length - 1]!.until)} (UTC${interval.zone})`;
-  const selectBucket = (key: string) => {
-    const next = facts.find(h => h.key === key);
-    if (next) model.insights.selectBucketThreads(next.key);
-  };
-  const moveBucket = (delta: -1 | 1) => {
-    const current = selection ? hours.findIndex(h => h.key === selection.key) : delta > 0 ? -1 : 0;
-    selectBucket(hours[(current + delta + hours.length) % hours.length]!.key);
-  };
   return <div class="rolling-overview">
     <div class="head">
       <div class="muted caption">{t("analytics.ownerWide")} · {intervalLabel}</div>
@@ -103,16 +95,16 @@ export function RollingOverview({ context }: { context: DesignContext }) {
       series={[{ id: "requests", label: t("analytics.requests"), tone: "neutral" }]} format={n => display(n)}
       points={facts.map(h => ({ key: h.key, label: h.label, detail: detail(h), values: { requests: h.value }, note: [h.partial && t("analytics.partialHour"), cutIncomplete && h.value !== undefined && t("usage.unfinished")].filter(Boolean).join(" · ") }))}
       {...(outline ? { reference: outline } : {})}
-      selection={{ key: selection?.key, select: selectBucket }}
+      selection={{ key: selection?.key, select: key => model.insights.selectBucketThreads(key) }}
       tableLabel={t("analytics.table")} categoryLabel={t("analytics.period")} noData={t("analytics.noValue")}
       source={bothEmpty ? t("analytics.compareEmpty") : walk.status === "done" && !walk.groups.size && !cutIncomplete ? t("analytics.empty") : "Core · usage.get"}
       extra={bothEmpty ? undefined : <div class="rolling-stepper">
-        <IconButton glyph="analytics.previousBucket" label={t("analytics.previousBucket")} onClick={() => moveBucket(-1)} />
+        <IconButton glyph="analytics.previousBucket" label={t("analytics.previousBucket")} onClick={() => model.insights.stepBucket(-1)} />
         <div aria-live="polite">{bucket ? <><strong>{localLabel(bucket.since)} – {localLabel(bucket.until)}</strong>
           <div class="muted caption">{t("analytics.requests")}: {count(bucket.value)}{bucket.partial ? ` · ${t("analytics.partialHour")}` : ""}</div>
           {outline ? <div class="muted caption">{outline.label}: {display(outline.values.get(bucket.key))}{outline.differences.has(bucket.key) ? ` · ${outline.differences.get(bucket.key)}` : ""}</div> : null}
         </> : <span class="muted caption">{t("analytics.noBucket")}</span>}</div>
-        <IconButton glyph="analytics.nextBucket" label={t("analytics.nextBucket")} onClick={() => moveBucket(1)} />
+        <IconButton glyph="analytics.nextBucket" label={t("analytics.nextBucket")} onClick={() => model.insights.stepBucket(1)} />
       </div>}
     />
     {drilldown && bucket && selection?.key === drilldown.key ? <BucketDrilldown key={JSON.stringify([drilldown.owner, drilldown.key, drilldown.since, drilldown.until, drilldown.threadId])} model={model} t={t} bucket={drilldown} /> : null}
@@ -142,7 +134,7 @@ function BucketDrilldown({ model, t, bucket }: { model: AppModel; t: Translate; 
     {state.status === "stopped" ? <Notice tone="wait" actions={state.canContinue ? <Button variant="ghost" onClick={() => void bucket.walk.continue()}>{t("analytics.continue")}</Button> : undefined}>{t("analytics.stopped", { n: state.coverage.windows })}</Notice> : null}
     {state.status === "failed" ? <Notice tone="bad" actions={state.canContinue ? <Button variant="ghost" onClick={() => void bucket.walk.continue()}>{t("analytics.continue")}</Button> : <Button variant="ghost" onClick={() => void bucket.walk.start()}>{t("analytics.retry")}</Button>}>{t("analytics.failed", { message: state.error?.message ?? "" })}</Notice> : null}
     <Field as="select" label={t("analytics.bucketScope")} value={bucket.threadId ?? ""} options={options} onSelectChange={threadId => {
-      model.insights.selectBucketThreads(bucket.key, threadId || undefined);
+      model.insights.setBucketThread(threadId || undefined);
     }} />
     {partial ? <Notice tone="wait">{t("usage.unfinished")} · {t("analytics.bucketPartial")}</Notice> : null}
     {rows.length ? <DataTable caption={title} columns={[{ label: isThreadScope ? t("usage.model") : t("analytics.bucketThreads") }, { label: t("analytics.bucketRequests"), numeric: true }]} rows={rows} /> : null}

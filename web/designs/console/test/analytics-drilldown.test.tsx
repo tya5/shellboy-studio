@@ -2,19 +2,28 @@
 import '@preact/signals';
 import { act } from 'preact/test-utils';
 import { render } from 'preact';
+import { signal } from '@preact/signals';
 import { describe, expect, it } from 'vitest';
-import { fixtureModel, settle } from '../../../ui-core/test/fixture';
+import { fixtureModel, settle, usageItem, usagePage } from '../../../ui-core/test/fixture';
 import { RollingOverview } from '../screens/RollingOverview';
 
 describe('Analytics selected-bucket screen path', () => {
   it('does not read until a bucket is selected and switches the selected bucket to Thread model usage', async () => {
     const { model, t, db } = await fixtureModel({ route: 'analytics', section: 'overview', settle: false });
+    const answer = db.answer.bind(db);
+    db.answer = call => {
+      const { group_by } = call.args as { group_by?: string };
+      if (call.command !== 'usage.get' || (group_by !== 'thread' && group_by !== 'model')) return answer(call);
+      const keys = group_by === 'thread' ? ['lead', ...Array.from({ length: 25 }, (_, i) => `thread-${i}`)]
+        : Array.from({ length: 26 }, (_, i) => `model-${i}`);
+      return { ok: true, result: { ...usagePage(keys.map((key, i) => usageItem(key, { count: 26 - i, input: null, cached: null, output: null }))), group_by } };
+    };
     const host = document.createElement('div');
     document.body.append(host);
     try {
       model.insights.rolling.enabled.value = true;
       await act(async () => { await settle(t, db); });
-      await act(async () => { render(<RollingOverview model={model} />, host); });
+      await act(async () => { render(<RollingOverview context={{ model, designs: [], prefs: signal({ design: 'console', theme: 'light', lang: 'en', weights: { cached: 0.1, output: 5 } }), setPrefs() {}, submitToken: async () => false }} />, host); });
       expect(model.insights.bucketDrilldown.peek()).toBeUndefined();
       expect(t.calls('usage.get').some(call => (call.args as {group_by?: string}).group_by === 'thread')).toBe(false);
       expect(host.textContent).toContain('Owner-wide data');
@@ -25,6 +34,14 @@ describe('Analytics selected-bucket screen path', () => {
       expect(selected).toBeDefined();
       expect(selected?.key).toBe(model.insights.rolling.displayed.peek()?.selection?.key);
       expect(host.textContent).toContain('Threads in this hour');
+      const discloseRanks = async () => {
+        const table = host.querySelector('select')!.closest('section')!.querySelector('tbody')!;
+        expect(table.querySelectorAll("tr")).toHaveLength(25);
+        const more = [...host.querySelectorAll('button')].find(button => button.textContent === 'Show more usage rows');
+        await act(async () => { more!.click(); });
+        expect(table.querySelectorAll("tr")).toHaveLength(26);
+      };
+      await discloseRanks();
       const scope = host.querySelector<HTMLSelectElement>('select');
       expect(scope).not.toBeNull();
       await act(async () => {
@@ -39,6 +56,8 @@ describe('Analytics selected-bucket screen path', () => {
       expect(host.textContent).toContain('Models in this hour');
       expect(host.textContent).toContain('Scope: Improve history search');
       expect(host.textContent).not.toContain('Scope: Improve history search ·');
+      expect([...host.querySelector('select')!.options].map(option => option.value)).toEqual(['', 'lead']);
+      await discloseRanks();
     } finally {
       render(null, host);
       host.remove();

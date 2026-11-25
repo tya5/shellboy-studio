@@ -631,10 +631,12 @@ export class AppModel {
           const owner = this.data.owner.value;
           const hint = this.data.listHint.value;
           this.insights.showing("rolling-overview");
-          this.insights.observeRollingOwner(connected && owner.state === "connected" ? owner.info.instance_id ?? "connected" : undefined, hint);
+          const reachable = connected && owner.state === "connected";
+          const instance = reachable ? owner.info.instance_id ?? undefined : undefined;
+          this.insights.observeRollingOwner(reachable ? instance ?? "connected" : undefined, hint, instance);
           return;
         }
-        this.insights.observeRollingOwner(undefined, 0);
+        this.insights.observeRollingOwner(undefined, 0, undefined);
         if (!connected) return;
         const threadId = this.selectedId.value;
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
@@ -747,7 +749,7 @@ export class AppModel {
     this.senderTitles.close();
     this.branchCompare.leave();
     this.branches.leave();
-    this.insights.rolling.leave();
+    this.insights.dispose();
     this.pending.close?.();
     this.modelListCancel.cancel();
     this.releaseConversationReader();
