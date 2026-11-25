@@ -1,9 +1,16 @@
-.row-menu-trigger>.btn{position:relative}
-.row-menu-trigger>.btn{width:var(--size-row-action);height:var(--size-row-action);min-width:var(--size-row-action);min-height:var(--size-row-action);padding:0}
-.row-menu-trigger>.btn::after{content:"";position:absolute;inset:calc(-1 * var(--space-8))}
+/* Leave menu triggers outside a ListRow on the same geometry. */
+:where([data-row-menu-owner], .row-menu-trigger:not([data-row-menu-owner] *)) {
+  --row-action-button-size:var(--size-row-action);
+  --row-action-hit-inset:calc(-1 * var(--space-8));
+  --row-action-hit-width:calc(var(--row-action-button-size) - 2 * var(--row-action-hit-inset));
+}
+.row-menu-trigger>.btn{position:relative;width:var(--row-action-button-size);height:var(--row-action-button-size);min-width:var(--row-action-button-size);min-height:var(--row-action-button-size);padding:0}
+.row-menu-trigger>.btn::after{content:"";position:absolute;inset:var(--row-action-hit-inset)}
 @container app (max-width:899px){
-  .row-menu-trigger>.btn{width:var(--size-row-action-touch);height:var(--size-row-action-touch);min-width:var(--size-row-action-touch);min-height:var(--size-row-action-touch)}
-  .row-menu-trigger>.btn::after{inset:calc((var(--size-row-action-touch) - var(--size-touch))/2 - var(--space-2))}
+  :where([data-row-menu-owner], .row-menu-trigger:not([data-row-menu-owner] *)) {
+    --row-action-button-size:var(--size-row-action-touch);
+    --row-action-hit-inset:calc((var(--row-action-button-size) - var(--size-touch))/2 - var(--space-2));
+  }
 }
 
 /* Sidebar rows own their target geometry at both touch breakpoints. */
