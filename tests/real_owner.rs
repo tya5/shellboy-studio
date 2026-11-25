@@ -172,8 +172,7 @@ fn temp_root() -> PathBuf {
 #[tokio::test]
 async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
     use shellboy::protocol::{
-        Command as CoreCommand, ShellListArgs, ShellReadArgs, ThreadCreateArgs, WaitArgs,
-        WaitCondition,
+        Command as CoreCommand, ShellListArgs, ThreadCreateArgs, WaitArgs, WaitCondition,
     };
     let bin = PathBuf::from(
         std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
@@ -264,6 +263,21 @@ async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
         "completion must identify this Ask's recipient Run: {ended}"
     );
 
+    let owed_id = wait_for_owed_message(&owner, &thread).await;
+    assert_eq!(owed_id, ask_message_id);
+    let reply = reply_from_harness(&owner, owed_id, "studio-standalone-answer").await;
+    let reply = reply.get("result").expect("MessageReply result");
+    assert_eq!(reply["reply_to"], ask_message_id);
+    assert!(
+        reply["message_id"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+    );
+    assert!(
+        reply.get("delivery").is_none(),
+        "no-route reply has no delivery: {reply}"
+    );
+
     let shells = owner
         .call(
             CoreCommand::ShellList(ShellListArgs {
@@ -284,34 +298,15 @@ async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
     let shells = serde_json::to_value(shells).unwrap();
     let reply_shell = find_object_with_fields(&shells, &["execution_id", "command_excerpt"])
         .expect("mock Thread answered via CLI message.reply");
-    let output = owner
-        .call(
-            CoreCommand::ShellRead(ShellReadArgs {
-                execution_id: reply_shell["execution_id"].as_str().unwrap().into(),
-                segments: false,
-                cursor: None,
-                encoding: Some("UTF-8".into()),
-                limit_bytes: 65_536,
-            }),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-    let output = serde_json::to_value(output).unwrap();
-    let reply: Value = serde_json::from_str(output["result"]["text"].as_str().unwrap()).unwrap();
-    let result = &reply["result"];
     assert!(
-        result["message_id"]
+        reply_shell["command_excerpt"]
             .as_str()
-            .is_some_and(|id| !id.is_empty())
-    );
-    assert_eq!(result["reply_to"], ask_message_id);
-    assert!(
-        result.get("delivery").is_none(),
-        "no-route Reply omits delivery: {reply}"
+            .unwrap()
+            .contains("studio-standalone-reply"),
+        "recipient executed the reply path"
     );
 }
+
 fn find_object_with_fields<'a>(value: &'a Value, fields: &[&str]) -> Option<&'a Value> {
     if fields.iter().all(|field| value.get(field).is_some()) {
         return Some(value);
@@ -327,11 +322,61 @@ fn find_object_with_fields<'a>(value: &'a Value, fields: &[&str]) -> Option<&'a 
     }
 }
 
+async fn wait_for_owed_message(owner: &IpcOwner, thread_id: &str) -> String {
+    use shellboy::protocol::{Command as CoreCommand, MessageListArgs};
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        let result = owner
+            .call(
+                CoreCommand::MessageList(MessageListArgs {
+                    owed_by_thread_id: Some(thread_id.to_owned()),
+                    asked_by_thread_id: None,
+                    to: None,
+                    limit: 50,
+                    cursor: None,
+                }),
+                None,
+                None,
+            )
+            .await
+            .expect("list owed messages");
+        let result = serde_json::to_value(result).unwrap();
+        if let Some(id) = find_object_with_fields(&result, &["message_id"])
+            .and_then(|item| item["message_id"].as_str())
+            .filter(|id| !id.is_empty())
+        {
+            return id.to_owned();
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "Ask did not become visible in message list: {result}"
+        );
+        tokio::task::yield_now().await;
+    }
+}
+
+async fn reply_from_harness(owner: &IpcOwner, message_id: String, text: &str) -> Value {
+    use shellboy::protocol::{Command as CoreCommand, MessageReplyArgs};
+    let result = owner
+        .call(
+            CoreCommand::MessageReply(MessageReplyArgs {
+                message_id,
+                text: text.to_owned(),
+                sender_label: None,
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("reply from test harness");
+    serde_json::to_value(result).unwrap()
+}
+
 #[tokio::test]
 async fn routed_reply_delivery_is_returned_by_the_pinned_owner() {
     use shellboy::protocol::{
-        Command as CoreCommand, MessageSendArgs, ShellListArgs, ShellReadArgs, ThreadCreateArgs,
-        WaitArgs, WaitCondition,
+        Command as CoreCommand, MessageSendArgs, ShellListArgs, ThreadCreateArgs, WaitArgs,
+        WaitCondition,
     };
     let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("explicit owner binary"));
     let root = temp_root();
@@ -458,6 +503,17 @@ async fn routed_reply_delivery_is_returned_by_the_pinned_owner() {
         .expect("source Ask returned its routed Run assignment");
     let request_id = accepted["message_id"].as_str().unwrap().to_owned();
     let target_run = accepted["run_id"].as_str().unwrap().to_owned();
+    let owed_id = wait_for_owed_message(&owner, &target).await;
+    assert_eq!(owed_id, request_id);
+    let harness_reply = reply_from_harness(&owner, owed_id, "studio-routed-answer").await;
+    let harness_reply = harness_reply.get("result").expect("MessageReply result");
+    assert_eq!(harness_reply["reply_to"], request_id);
+    assert!(
+        harness_reply["message_id"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+    );
+    assert_eq!(harness_reply["delivery"]["thread_id"], source);
     let ended = owner.call(wait(target_run), None, None).await.unwrap();
     let ended = serde_json::to_value(ended).unwrap()["result"].clone();
     assert_eq!(
@@ -491,34 +547,17 @@ async fn routed_reply_delivery_is_returned_by_the_pinned_owner() {
     let target_shells = serde_json::to_value(target_shells).unwrap();
     let reply_shell = find_object_with_fields(&target_shells, &["execution_id", "command_excerpt"])
         .expect("target model invoked its live message.reply tool");
-    let reply_output = owner
-        .call(
-            CoreCommand::ShellRead(ShellReadArgs {
-                execution_id: reply_shell["execution_id"].as_str().unwrap().into(),
-                segments: false,
-                cursor: None,
-                encoding: Some("UTF-8".into()),
-                limit_bytes: 65_536,
-            }),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-    let reply_output = serde_json::to_value(reply_output).unwrap();
-    let replied: Value =
-        serde_json::from_str(reply_output["result"]["text"].as_str().unwrap()).unwrap();
-    let result = replied
-        .get("result")
-        .expect("Reply result envelope at root");
-    assert_eq!(result["reply_to"], request_id);
     assert!(
-        result["message_id"]
+        reply_shell["command_excerpt"]
             .as_str()
-            .is_some_and(|id| !id.is_empty())
+            .unwrap()
+            .contains("studio-routed-reply")
     );
-    assert_eq!(result["delivery"]["message_id"], result["message_id"]);
-    assert_eq!(result["delivery"]["thread_id"], source);
+    assert_eq!(
+        harness_reply["delivery"]["message_id"],
+        harness_reply["message_id"]
+    );
+    assert_eq!(harness_reply["delivery"]["thread_id"], source);
 }
 
 #[tokio::test]
@@ -1038,7 +1077,7 @@ async fn mock_provider_controlled_with_route(
                 let tool_command = if request.contains("studio-standalone-source")
                     && !standalone_reply_used.swap(true, std::sync::atomic::Ordering::Relaxed)
                 {
-                    Some(r#"python3 -c 'import json,os,subprocess; d=os.environ["SHELLBOY_DATA_DIR"]; t=os.environ["SHELLBOY_THREAD_ID"]; r=json.loads(subprocess.check_output(["shellboy","message","list","--awaiting","--owed-by-thread",t,"--data-dir",d])); items=r.get("result",{}).get("items",[]); m=next(x for x in items if x.get("message_id")); subprocess.run(["shellboy","message","reply","--data-dir",d,"--message",m["message_id"],"--text","studio-standalone-answer"],check=True)' # studio-standalone-reply"#.to_owned())
+                    Some("shellboy status".to_owned())
                 } else if request.contains("studio-route-source")
                     && !route_source_used.swap(true, std::sync::atomic::Ordering::Relaxed)
                 {
@@ -1051,7 +1090,7 @@ async fn mock_provider_controlled_with_route(
                 } else if request.contains("studio-route-target")
                     && !route_target_used.swap(true, std::sync::atomic::Ordering::Relaxed)
                 {
-                    Some(r#"python3 -c 'import json,os,subprocess; d=os.environ["SHELLBOY_DATA_DIR"]; t=os.environ["SHELLBOY_THREAD_ID"]; r=json.loads(subprocess.check_output(["shellboy","message","list","--awaiting","--owed-by-thread",t,"--data-dir",d])); items=r.get("result",{}).get("items",[]); m=next(x for x in items if x.get("message_id")); subprocess.run(["shellboy","message","reply","--data-dir",d,"--message",m["message_id"],"--text","studio-routed-answer"],check=True)' # studio-routed-reply"#.to_owned())
+                    Some("shellboy status".to_owned())
                 } else {
                     None
                 };
