@@ -170,10 +170,10 @@ fn temp_root() -> PathBuf {
 }
 
 #[tokio::test]
-async fn named_human_ask_reply_shape_against_the_pinned_owner() {
+async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
     use shellboy::protocol::{
-        Command as CoreCommand, MessageReplyArgs, MessageSendArgs, ShellListArgs, ShellReadArgs,
-        ThreadCreateArgs, WaitArgs, WaitCondition,
+        Command as CoreCommand, ShellListArgs, ShellReadArgs, ThreadCreateArgs, WaitArgs,
+        WaitCondition,
     };
     let bin = PathBuf::from(
         std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
@@ -182,7 +182,7 @@ async fn named_human_ask_reply_shape_against_the_pinned_owner() {
     let data = root.join("data");
     let url = mock_provider().await;
     let _serve = start_owner_with(&bin, &root, &data, &url);
-    let owner = IpcOwner::new(data);
+    let owner = IpcOwner::new(data.clone());
     let created = owner
         .call(
             CoreCommand::ThreadCreate(ThreadCreateArgs {
@@ -202,31 +202,41 @@ async fn named_human_ask_reply_shape_against_the_pinned_owner() {
         .as_str()
         .unwrap()
         .to_owned();
-    let started = owner
-        .call(
-            CoreCommand::MessageSend(MessageSendArgs {
-                max_model_requests: None,
-                human: false,
-                resume_recovery: false,
-                sender_label: None,
-                thread_id: Some(thread.clone()),
-                text: "standalone-source".into(),
-                deliver: shellboy::protocol::Deliver::Next,
-            }),
-            None,
-            None,
-        )
+
+    // A human-originated CLI Ask has no asking Thread, so its Reply must not contain delivery.
+    let mut ask = isolated_command(&bin, &root.join("home"));
+    ask.args([
+        "message",
+        "ask",
+        "--thread",
+        &thread,
+        "--text",
+        "studio-standalone-source",
+    ])
+    .arg("--data-dir")
+    .arg(&data)
+    .arg("--config")
+    .arg(root.join("config.toml"));
+    let ask = tokio::process::Command::from(ask)
+        .output()
         .await
-        .unwrap();
-    let source_run = serde_json::to_value(started).unwrap()["result"]["run_id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+        .expect("run human CLI Ask");
+    assert!(
+        ask.status.success(),
+        "CLI Ask: {}",
+        String::from_utf8_lossy(&ask.stderr)
+    );
+    let ask: Value = serde_json::from_slice(&ask.stdout).expect("CLI Ask JSON result");
+    let accepted = &ask["result"];
+    assert_eq!(accepted["thread_id"], thread);
+    assert_eq!(accepted["expect_reply"], true);
+    let run_id = accepted["run_id"].as_str().expect("Ask run assignment");
+
     let ended = owner
         .call(
             CoreCommand::Wait(WaitArgs {
                 conditions: vec![WaitCondition::RunEnded {
-                    run_id: source_run.clone(),
+                    run_id: run_id.into(),
                 }],
                 timeout_ms: 30_000,
                 after: None,
@@ -239,15 +249,15 @@ async fn named_human_ask_reply_shape_against_the_pinned_owner() {
     let ended = serde_json::to_value(ended).unwrap()["result"].clone();
     assert_eq!(
         ended["status"], "satisfied",
-        "Ask tool Run completion: {ended}"
+        "recipient Run completion: {ended}"
     );
     assert!(
         ended["matched"].as_array().is_some_and(|items| {
             items
                 .iter()
-                .any(|item| item["type"] == "run_ended" && item["run_id"] == source_run)
+                .any(|item| item["type"] == "run_ended" && item["run_id"] == run_id)
         }),
-        "completion must name the Run that issued the human Ask: {ended}"
+        "completion must identify this Ask's recipient Run: {ended}"
     );
 
     let shells = owner
@@ -256,7 +266,7 @@ async fn named_human_ask_reply_shape_against_the_pinned_owner() {
                 thread_id: Some(thread),
                 since: None,
                 until: None,
-                command_contains: Some("studio-standalone-human-question".into()),
+                command_contains: Some("studio-standalone-reply".into()),
                 state: None,
                 exit_code: None,
                 limit: 50,
@@ -268,12 +278,12 @@ async fn named_human_ask_reply_shape_against_the_pinned_owner() {
         .await
         .unwrap();
     let shells = serde_json::to_value(shells).unwrap();
-    let ask_shell = find_object_with_fields(&shells, &["execution_id", "command_excerpt"])
-        .expect("source model invoked the named-human Ask tool");
+    let reply_shell = find_object_with_fields(&shells, &["execution_id", "command_excerpt"])
+        .expect("mock Thread answered via CLI message.reply");
     let output = owner
         .call(
             CoreCommand::ShellRead(ShellReadArgs {
-                execution_id: ask_shell["execution_id"].as_str().unwrap().into(),
+                execution_id: reply_shell["execution_id"].as_str().unwrap().into(),
                 segments: false,
                 cursor: None,
                 encoding: Some("UTF-8".into()),
@@ -285,42 +295,17 @@ async fn named_human_ask_reply_shape_against_the_pinned_owner() {
         .await
         .unwrap();
     let output = serde_json::to_value(output).unwrap();
-    let accepted: Value = serde_json::from_str(output["result"]["text"].as_str().unwrap()).unwrap();
-    let accepted = find_object_with_fields(&accepted, &["message_id", "thread_id"])
-        .expect("named-human Ask accepted by the pinned owner");
-    assert_eq!(accepted["expect_reply"], true);
-    assert_eq!(accepted["to_human"], true);
-    let request_id = accepted["message_id"].as_str().unwrap().to_owned();
-
-    // The named-human Ask is accepted by the pinned owner; replying also routes its answer
-    // back to the asking Thread, so standalone omission is covered by the protocol-pair test.
-    let replied = owner
-        .call(
-            CoreCommand::MessageReply(MessageReplyArgs {
-                message_id: request_id.clone(),
-                text: "temporary standalone reply".into(),
-                sender_label: None,
-            }),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-    let replied = serde_json::to_value(replied).unwrap();
-    assert_eq!(
-        replied["result"]["reply_to"], request_id,
-        "reply response: {replied}"
-    );
-    let result = replied["result"].clone();
+    let reply: Value = serde_json::from_str(output["result"]["text"].as_str().unwrap()).unwrap();
+    let result = &reply["result"];
     assert!(
         result["message_id"]
             .as_str()
             .is_some_and(|id| !id.is_empty())
     );
+    assert!(result["reply_to"].as_str().is_some_and(|id| !id.is_empty()));
     assert!(
-        result["delivery"]["message_id"]
-            .as_str()
-            .is_some_and(|id| !id.is_empty())
+        result.get("delivery").is_none(),
+        "no-route Reply omits delivery: {reply}"
     );
 }
 fn find_object_with_fields<'a>(value: &'a Value, fields: &[&str]) -> Option<&'a Value> {
@@ -519,9 +504,15 @@ async fn routed_reply_delivery_is_returned_by_the_pinned_owner() {
     let reply_output = serde_json::to_value(reply_output).unwrap();
     let replied: Value =
         serde_json::from_str(reply_output["result"]["text"].as_str().unwrap()).unwrap();
-    let result = find_object_with_fields(&replied, &["reply_to", "message_id", "delivery"])
-        .expect("live routed Reply result with nested acceptance");
+    let result = replied
+        .get("result")
+        .expect("Reply result envelope at root");
     assert_eq!(result["reply_to"], request_id);
+    assert!(
+        result["message_id"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+    );
     assert_eq!(result["delivery"]["message_id"], result["message_id"]);
     assert_eq!(result["delivery"]["thread_id"], source);
 }
@@ -978,7 +969,7 @@ async fn mock_provider_controlled_with_route(
     let (gate_tx, gate_rx) = tokio::sync::mpsc::unbounded_channel();
     let route_source_used = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let route_target_used = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let standalone_ask_used = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let standalone_reply_used = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -991,7 +982,7 @@ async fn mock_provider_controlled_with_route(
             let route_target = route_target.clone();
             let route_source_used = route_source_used.clone();
             let route_target_used = route_target_used.clone();
-            let standalone_ask_used = standalone_ask_used.clone();
+            let standalone_reply_used = standalone_reply_used.clone();
             tokio::spawn(async move {
                 let mut seen = Vec::new();
                 let mut chunk = [0u8; 8192];
@@ -1040,10 +1031,10 @@ async fn mock_provider_controlled_with_route(
                         let _ = wait.await;
                     }
                 }
-                let tool_command = if request.contains("standalone-source")
-                    && !standalone_ask_used.swap(true, std::sync::atomic::Ordering::Relaxed)
+                let tool_command = if request.contains("studio-standalone-source")
+                    && !standalone_reply_used.swap(true, std::sync::atomic::Ordering::Relaxed)
                 {
-                    Some("shellboy message ask --text studio-standalone-human-question".to_owned())
+                    Some(r#"python3 -c 'import json,os,subprocess; d=os.environ["SHELLBOY_DATA_DIR"]; t=os.environ["SHELLBOY_THREAD_ID"]; r=json.loads(subprocess.check_output(["shellboy","message","list","--awaiting","--owed-by-thread",t,"--data-dir",d])); items=r.get("result",{}).get("items",[]); m=next(x for x in items if x.get("message_id")); subprocess.run(["shellboy","message","reply","--data-dir",d,"--message",m["message_id"],"--text","studio-standalone-answer"],check=True)' # studio-standalone-reply"#.to_owned())
                 } else if request.contains("studio-route-source")
                     && !route_source_used.swap(true, std::sync::atomic::Ordering::Relaxed)
                 {
