@@ -2,7 +2,7 @@
 
 `studio-reply-duties.png` is a development-build capture using invented Threads and messages, not a user's session. Keep this one light-theme PNG at 1x scale and no more than 250 KiB. A light image with its own opaque background remains readable against either GitHub theme.
 
-Capture source: Studio `a5f4de81963d002ed96d811f366c73ab1b1d091c` (tree `394fa6f101befb2cfd1d543f0b1cdcdf96ebda11`), Core `3ab5ada40910e727553d85d271c1d84ec5db2c41` (tree `014f3946ef74084edd8c603a4ed838e9b065d8a2`, protocol 34), headless Chrome 158.0.8127.88 on macOS arm64.
+Capture source: Studio `24c8a9e80bc003152a8aa7b90b1a7f90efda11d4` (runtime source identical to landed main `388fb282b24b4e877dc1734c87b83e85a3e6d768`) (tree `089218e1747625b51f4bcf5ade872287e462f9f6`), Core `3ab5ada40910e727553d85d271c1d84ec5db2c41` (tree `014f3946ef74084edd8c603a4ed838e9b065d8a2`, protocol 34), headless Chrome 158.0.8127.88 on macOS arm64.
 
 ## Regenerate
 
