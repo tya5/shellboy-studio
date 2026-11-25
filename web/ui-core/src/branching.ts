@@ -31,7 +31,16 @@ export async function readWholeFamily(ops: Operations, threadId: string, cancel?
       cursor = typeof out.value.next_cursor === "string" ? out.value.next_cursor : undefined;
       if (cursor === undefined) break;
     }
-    return { ok: true, family: readFamily(pages) };
+    const family = readFamily(pages);
+    const revisions = new Map(family.items.map(row => [row.threadId, row.selectionRevision]));
+    const inconsistent = family.items.some(row => row.parentId && revisions.has(row.parentId)
+      && row.divergence?.parentSelectionRevision !== undefined
+      && row.divergence.parentSelectionRevision !== revisions.get(row.parentId));
+    if (inconsistent) {
+      if (attempt < BRANCH_RESTARTS) continue;
+      return { ok: false, error: { kind: "invalid_response", message: "Branch parent path changed during read" } };
+    }
+    return { ok: true, family };
   }
 }
 
@@ -193,11 +202,11 @@ export class Branches {
     this.seen.set(id, Math.max(this.seen.get(id) ?? 0, revision));
   }
 
-  // A guarded tip and agreeing revisions do not prove the path interior (Core #418).
+  // A window must agree with the revision saved in the family snapshot, even at the same tip and size.
   private async admit(family: BranchFamily, id: string, cancel: Cancel, s?: HistoryWindowResult, cut?: Map<string, number>) {
     const lane = family.items.find(i => i.threadId === id);
     if (!lane) return false;
-    const { pathNodes: size, tipNodeId: tip } = lane;
+    const { pathNodes: size, tipNodeId: tip, selectionRevision } = lane;
     const paths = cut ?? this.revisions;
     let guard: HistoryWindowResult | undefined;
     if (!paths.has(id)) {
@@ -214,7 +223,7 @@ export class Branches {
       if (!w) continue;
       if (w.thread_id !== id) return false;
       this.observe(w);
-      if ((rev ?? w.revision) !== w.revision || this.seen.get(id) !== w.revision ||
+      if ((selectionRevision ?? w.revision) !== w.revision || (rev ?? w.revision) !== w.revision || this.seen.get(id) !== w.revision ||
           (size !== undefined && size !== w.total) ||
           (tip !== undefined && w.items.some(i => i.selection?.ordinal === w.total - 1 && i.node_id !== tip))) return "changed" as const;
       rev = w.revision;

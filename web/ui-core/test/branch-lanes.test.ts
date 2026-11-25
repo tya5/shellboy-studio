@@ -131,6 +131,24 @@ describe("lane reads", () => {
     expect(t.calls("history.window")).toHaveLength(3);
   });
 
+  it("discards a newer window at the family's same tip and size, then rereads the family", async () => {
+    const { t, b, reader } = setup();
+    const makeFamily = (revision: number) => ({ ...fixtureBranches, limit: 200, filters: { thread_id: "lead" },
+      items: fixtureBranches.items.map(row => ({ ...row, selection_revision: revision,
+        ...(row.divergence ? { divergence: { ...row.divergence, parent_selection_revision: revision } } : {}) })) });
+    b.state.value = { threadId: "lead", loading: false, family: readFamily([makeFamily(1)]), error: undefined };
+    b.want({ kind: "node", threadId: "lead", nodeId: "n225" });
+    const reply = (id: number, excerpt: string) => t.ok(id, { thread_id: "lead", revision: 2, total: 226,
+      items: [{ node_id: "n225", kind: "assistant_response", excerpt, selection: { ordinal: 225 } }] });
+    reply(t.calls("history.window")[0]!.id, "not admitted");
+    await flush();
+    expect(reader.node("n225")).toBeUndefined();
+    expect(t.calls("thread.branches")).toHaveLength(1);
+    t.ok(t.calls("thread.branches")[0]!.id, makeFamily(2)); await flush();
+    expect(b.state.value.family?.items[0]?.selectionRevision).toBe(2);
+    expect(reader.node("n225")).toBeUndefined();
+  });
+
   it("keeps a bounded queue, drops rows that left the screen, and reads nothing without the capability", () => {
     const { t, b, reader } = setup();
     for (let n = 0; n < LANE_QUEUE_MAX + 10; n++) b.want({ kind: "node", threadId: "lead", nodeId: `x${n}` });

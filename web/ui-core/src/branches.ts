@@ -14,15 +14,18 @@ export interface BranchItem {
   depth: number;
   state: "current" | "ancestor" | "branch";
   running: boolean;
-  divergence: { nodeId: string; ordinal: number; request: string | undefined } | undefined;
+  divergence: { nodeId: string; ordinal: number; request: string | undefined; parentSelectionRevision?: number } | undefined;
   /** `no_shared_prefix`: a child that shares no first node with its parent. */
   divergenceUnknown: string | undefined;
   tipNodeId: string | undefined;
   tipAt: string | undefined;
   tipRequest: string | undefined;
   pathNodes: number | undefined;
+  selectionRevision?: number;
   nodesAfterDivergence: number | undefined;
 }
+
+const revision = (v: unknown): number | undefined => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : undefined;
 
 export function readBranchItem(v: unknown): BranchItem | undefined {
   const o = obj(v);
@@ -42,12 +45,13 @@ export function readBranchItem(v: unknown): BranchItem | undefined {
     depth: num(o.depth) ?? 0,
     state,
     running: o.running === true,
-    divergence: d && nodeId && ordinal !== undefined ? { nodeId, ordinal, request: str(obj(d.request)?.text) } : undefined,
+    divergence: d && nodeId && ordinal !== undefined ? { nodeId, ordinal, request: str(obj(d.request)?.text), ...(revision(d.parent_selection_revision) !== undefined && { parentSelectionRevision: revision(d.parent_selection_revision) }) } : undefined,
     divergenceUnknown: str(o.divergence_unknown),
     tipNodeId: str(tip?.node_id),
     tipAt: str(tip?.at),
     tipRequest: str(obj(tip?.last_request)?.text),
     pathNodes: num(size?.path_nodes),
+    ...(revision(o.selection_revision) !== undefined && { selectionRevision: revision(o.selection_revision) }),
     nodesAfterDivergence: num(size?.nodes_after_divergence),
   };
 }

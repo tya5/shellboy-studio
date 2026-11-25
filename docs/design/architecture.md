@@ -320,7 +320,7 @@ M1; a tunnel provides it.
 - The bridge links the Shellboy crate at a git tag; it speaks exactly that
   tag's `PROTOCOL_VERSION`. Shellboy's owner accepts exactly one version
   (current-only, protocol.md Issue #33).
-- Current source pairing: Studio preparation branch with unreleased Core main `4b2575bcfb4b25787c14dd1b1fd49b6cde54c5c6`, protocol 33; this is not a release pairing. Version mismatches fail closed;
+- Current source pairing: Studio preparation branch with unreleased Core main `3ab5ada40910e727553d85d271c1d84ec5db2c41`, protocol 34; this is not a release pairing. Version mismatches fail closed;
   there is no downgrade, alias or payload rewrite. Handshake capabilities do not
   override an exact protocol-version mismatch. Validate the exact Core commit and
   lockfile pairing separately before release.
