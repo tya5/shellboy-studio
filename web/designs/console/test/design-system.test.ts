@@ -20,12 +20,6 @@ for (const styles of [componentStyleFiles, sharedStyleFiles]) {
 const componentsUrl = new URL("../system/components/", import.meta.url);
 const componentEntries: { name: string; isDirectory: () => boolean }[] = readdirSync(componentsUrl, { withFileTypes: true });
 const componentDirs = componentEntries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-const exportsFile = systemSources["../system/components/index.tsx"] ?? "";
-const barrelReExports = new Set(
-  [...exportsFile.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").matchAll(/^\s*export\b[^;\n]*?\s+from\s+["']\.\/([^"']+)["']\s*;?\s*$/gm)]
-    .map((match) => match[1]!),
-);
-
 function inlineStyleBodies(source: string): string[] {
   const bodies: string[] = [];
   const attribute = /\bstyle\s*=\s*/g;
@@ -108,9 +102,10 @@ describe("design-system source boundaries", () => {
     expect(missing).toEqual([]);
   });
 
-  it("every component directory has a README and a real barrel re-export", () => {
+  it("every component directory has a README and exports from its own entry", () => {
     const missing = componentDirs.filter((name) =>
-      !existsSync(new URL(`../system/components/${name}/README.md`, import.meta.url)) || !barrelReExports.has(name));
+      !existsSync(new URL(`../system/components/${name}/README.md`, import.meta.url)) ||
+      !/^export\s+(?:function|const|class|\{)/m.test(systemSources[`../system/components/${name}/index.tsx`] ?? ""));
     expect(missing).toEqual([]);
   });
 });

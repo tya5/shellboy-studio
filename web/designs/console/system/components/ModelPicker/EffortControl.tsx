@@ -1,5 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
-import { Button, ButtonGroup, Field } from "..";
+import { Button } from "../Button";
+import { ButtonGroup } from "../ButtonGroup";
+import { Field } from "../Field";
 
 const PRESETS = ["", "low", "medium", "high"] as const;
 
