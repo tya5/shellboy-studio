@@ -3,7 +3,19 @@ import {
   ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, rankingParts, periodTotals, PERIODS, readWeights, shortDay,
   splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
 } from "../../../ui-core/src";
-import { Button, ButtonGroup, IconButton, Chart, DataTable, Field, Notice, PageHeader, RangeBar, RankedBar, RankedBarLegend, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
+import { Button, IconButton } from "../system/components/Button";
+import { ButtonGroup } from "../system/components/ButtonGroup";
+import { Chart, type ChartPoint, type ChartSeries } from "../system/components/Chart";
+import { DataTable } from "../system/components/DataTable";
+import { Field } from "../system/components/Field";
+import { Notice } from "../system/components/Notice";
+import { PageHeader } from "../system/components/PageHeader";
+import { RangeBar } from "../system/components/RangeBar";
+import { RankedBar, RankedBarLegend } from "../system/components/RankedBar";
+import { Section } from "../system/components/Section";
+import { Stat } from "../system/components/Stat";
+import { SubView } from "../system/components/SubView";
+import { type IconRole } from "../system/components/Icon";
 import { IndexPane, MemoryPane, StoragePane } from "./Resources";
 import { tokenTotal } from "./usage-label";
 

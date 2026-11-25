@@ -2,7 +2,16 @@ import { useRef, useState } from "preact/hooks";
 import type { DefinitionAction, DefinitionKind, ShellDefinition } from "../../../data/src/schedules";
 import type { AppModel } from "../../../ui-core/src/model";
 import { activityStatusLabel } from "../../../ui-core/src";
-import { Button, Icon, KeyValue, ListDivider, ListRow, LogBlock, StatusMark, Switch, WorkSheet, ScheduleLayout, ScheduleRow, ScheduleControl, ScheduleDetailLayout, ScheduleActions } from "../system/components";
+import { Button } from "../system/components/Button";
+import { Icon } from "../system/components/Icon";
+import { KeyValue } from "../system/components/KeyValue";
+import { ListDivider } from "../system/components/ListDivider";
+import { ListRow } from "../system/components/ListRow";
+import { LogBlock } from "../system/components/LogBlock";
+import { StatusMark } from "../system/components/StatusMark";
+import { Switch } from "../system/components/Switch";
+import { WorkSheet } from "../system/components/WorkSheet";
+import { ScheduleLayout, ScheduleRow, ScheduleControl, ScheduleDetailLayout, ScheduleActions } from "../system/components/ScheduleLayout";
 
 
 const nameOf = (row: ShellDefinition) => row.description?.trim() || row.command;

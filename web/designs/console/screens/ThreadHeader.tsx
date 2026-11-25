@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CAPABILITY_REPARENT, CAPABILITY_TAGS, folderName, statusLabel, type AppModel } from "../../../ui-core/src";
-import { Button, ConversationHeader, Field, Icon, Notice, StatusMark, WorkSheet } from "../system/components";
+import { Button } from "../system/components/Button";
+import { ConversationHeader } from "../system/components/ConversationHeader";
+import { Field } from "../system/components/Field";
+import { Icon } from "../system/components/Icon";
+import { Notice } from "../system/components/Notice";
+import { StatusMark } from "../system/components/StatusMark";
+import { WorkSheet } from "../system/components/WorkSheet";
 import type { MenuEntry } from "../system/components/Menu";
 import { threadMenuEntries } from "../system/components/thread-menu";
 

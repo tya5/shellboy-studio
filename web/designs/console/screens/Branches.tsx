@@ -7,7 +7,17 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_HISTORY_WINDOW, type HistoryItem } from "../../../data/src";
 import { anchorCandidate, branchTitle, headNeed, formatAge, formatRoute, laneGraph, leavingRows, plainExcerpt, type AppModel, type BranchFamily, type BranchItem, type BranchTarget, type CompareSide, type Lane, type LaneGraph, type LaneNeed, type LaneRow, type NodeExcerpt, type RewindFacts, type Translate } from "../../../ui-core/src";
-import { BranchLanes, Button, Check, EmptyState, Field, Icon, KeyValue, LaneName, LaneTinted, LoadingRows, Notice, PageHeader, StatusMark, type LaneMark, type LaneRowView } from "../system/components";
+import { BranchLanes, LaneName, LaneTinted, type LaneMark, type LaneRowView } from "../system/components/BranchLanes";
+import { Button } from "../system/components/Button";
+import { Check } from "../system/components/Check";
+import { EmptyState } from "../system/components/EmptyState";
+import { Field } from "../system/components/Field";
+import { Icon } from "../system/components/Icon";
+import { KeyValue } from "../system/components/KeyValue";
+import { LoadingRows } from "../system/components/LoadingRows";
+import { Notice } from "../system/components/Notice";
+import { PageHeader } from "../system/components/PageHeader";
+import { StatusMark } from "../system/components/StatusMark";
 
 const markOf = (l: Lane): LaneMark => ({ column: l.column, tone: l.tone });
 const conversation = (threadId: string) => formatRoute({ view: "conversation", threadId });

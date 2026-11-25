@@ -1,6 +1,13 @@
 import { useState } from "preact/hooks";
 import { CAPABILITY_CONNECTION_SETUP, DIALECTS, formatRoute, OLLAMA_CONTEXT_URL, SERVICES, type DesignContext, type MessageKey } from "../../../ui-core/src";
-import { Button, ButtonGroup, Check, ChoiceList, Field, KeyValue, Notice, Section } from "../system/components";
+import { Button } from "../system/components/Button";
+import { ButtonGroup } from "../system/components/ButtonGroup";
+import { Check } from "../system/components/Check";
+import { ChoiceList } from "../system/components/ChoiceList";
+import { Field } from "../system/components/Field";
+import { KeyValue } from "../system/components/KeyValue";
+import { Notice } from "../system/components/Notice";
+import { Section } from "../system/components/Section";
 import { Rich } from "./Rich";
 import { SetupEmbedding } from "./SetupEmbedding";
 import { External, FIRST_SETUP_GUIDE, RestartAfterSetup, TestResult, Unavailable } from "./SetupParts";

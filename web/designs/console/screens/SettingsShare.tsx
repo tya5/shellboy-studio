@@ -2,7 +2,13 @@ import { RestartAfterSetup } from "./SetupParts";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CAPABILITY_CONFIG, formatRoute, showConfigValue, type AppModel, type MessageKey } from "../../../ui-core/src";
 import { exportableSettings, settingsPreview, parseSharedSettings, SETTINGS_FILE_LIMIT, type ImportedSettings } from "../../../ui-core/src/settings-share";
-import { Button, Check, FactList, Field, Notice, Section, SettingRow } from "../system/components";
+import { Button } from "../system/components/Button";
+import { Check } from "../system/components/Check";
+import { FactList } from "../system/components/FactList";
+import { Field } from "../system/components/Field";
+import { Notice } from "../system/components/Notice";
+import { Section } from "../system/components/Section";
+import { SettingRow } from "../system/components/SettingRow";
 
 type ShareProps = { model: AppModel; firstRun?: boolean; settingId?: string };
 

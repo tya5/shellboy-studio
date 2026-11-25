@@ -1,7 +1,11 @@
 import { settingSearch } from "./setting-search";
 import { useState } from "preact/hooks";
 import type { DesignContext } from "../../../ui-core/src";
-import { Button, Field, GuideCopy, Notice, Section } from "../system/components";
+import { Button } from "../system/components/Button";
+import { Field } from "../system/components/Field";
+import { GuideCopy } from "../system/components/GuideCopy";
+import { Notice } from "../system/components/Notice";
+import { Section } from "../system/components/Section";
 
 export function guideSearchRows(context: DesignContext) {
   const t = context.model.t.value;

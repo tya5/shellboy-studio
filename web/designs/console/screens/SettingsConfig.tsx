@@ -2,7 +2,13 @@ import type { ComponentChildren } from "preact";
 import type { RegisterSetting } from "./setting-search";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigFacts, type ConfigFieldSpec, type MessageKey } from "../../../ui-core/src";
-import { Button, ButtonGroup, Check, FactList, Field, Notice, Section, type Fact } from "../system/components";
+import { Button } from "../system/components/Button";
+import { ButtonGroup } from "../system/components/ButtonGroup";
+import { Check } from "../system/components/Check";
+import { FactList, type Fact } from "../system/components/FactList";
+import { Field } from "../system/components/Field";
+import { Notice } from "../system/components/Notice";
+import { Section } from "../system/components/Section";
 import { ConnectionModelList, ModelChooser, modelLabel, useConnectionModels } from "../system/components/ModelPicker/ConnectionModelList";
 import { Rich } from "./Rich";
 

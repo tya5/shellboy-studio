@@ -1,6 +1,12 @@
 import { useRef, useState } from "preact/hooks";
 import { errorMessage, formatAge, formatCount, formatRoute, HUMAN_RETAINED, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
-import { Button, EmptyState, Icon, PageHeader, QuestionCard, QuestionItem, StatusMark } from "../system/components";
+import { Button } from "../system/components/Button";
+import { EmptyState } from "../system/components/EmptyState";
+import { Icon } from "../system/components/Icon";
+import { PageHeader } from "../system/components/PageHeader";
+import { QuestionCard } from "../system/components/QuestionCard";
+import { QuestionItem } from "../system/components/QuestionItem";
+import { StatusMark } from "../system/components/StatusMark";
 
 export function Inbox({ model }: { model: AppModel }) {
   const t = model.t.value;

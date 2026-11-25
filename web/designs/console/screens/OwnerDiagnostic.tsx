@@ -1,5 +1,5 @@
 import type { OpError } from "../../../data/src";
-import { LogBlock } from "../system/components";
+import { LogBlock } from "../system/components/LogBlock";
 import type { Translate } from "../../../ui-core/src";
 
 export function OwnerDiagnostic({ t, code, message, hint, operationId }: {

@@ -2,7 +2,10 @@
 import type { ComponentChildren, VNode } from "preact";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { materializeHistoryPresentation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
-import { Button, EmptyState, LoadingRows, Notice } from "../system/components";
+import { Button } from "../system/components/Button";
+import { EmptyState } from "../system/components/EmptyState";
+import { LoadingRows } from "../system/components/LoadingRows";
+import { Notice } from "../system/components/Notice";
 
 import { conversationViewport, type MountedViewport } from "./conversationViewport";
 import { measureAcceptedRows } from "./acceptedRowMeasure";
