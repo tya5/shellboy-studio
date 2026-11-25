@@ -24,7 +24,9 @@ try{
  const measure=()=>evaluate(`(()=>{
   const list=document.querySelector(${JSON.stringify(list)}), r=list.getBoundingClientRect();
   const style=getComputedStyle(list);
-  return {left:r.left,right:r.right,mode:list.dataset.labels,width:list.clientWidth,scrollWidth:list.scrollWidth,
+  const rows = list.parentElement.querySelectorAll('.panel-tabs-measure .panel-tabs-row');
+  const expected = rows[0].getBoundingClientRect().width <= r.width ? 'all' : rows[1].getBoundingClientRect().width <= r.width ? 'active' : 'icons';
+  return {left:r.left,right:r.right,mode:list.dataset.labels,expected,width:list.clientWidth,scrollWidth:list.scrollWidth,
    overflow:style.overflowX,tabs:[...list.querySelectorAll('[role=tab]')].map(tab=>{
     const r=tab.getBoundingClientRect(), label=tab.querySelector('.panel-tab-label');
     return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,label:label.textContent,
@@ -32,6 +34,7 @@ try{
      badge:tab.querySelector('.panel-tab-count')?.textContent};
    })};
  })()`);
+ const settled = () => until(async()=>{const g=await measure();return g.mode===g.expected && g;});
  function checkGeometry(g, mode, key){
   assert.equal(g.mode,mode,key);
   assert.equal(g.overflow,'visible',key);
@@ -54,23 +57,23 @@ try{
   await call('Page.navigate',{url});
   await until(()=>evaluate(`location.href===${JSON.stringify(url)} && typeof window.publishPanelTabsCount==='function' && !!document.querySelector('#panel-tab-info')`));
   if(panelWidth!==null) await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','${panelWidth+33}px')`);
-  const initial=await until(async()=>{const g=await measure();return g.width===(panelWidth??307)&&g.mode==='active'&&g});
-  checkGeometry(initial,'active',key);
+  const initial=await until(async()=>{const g=await measure();return g.width===(panelWidth??307)&&g.mode===g.expected&&g});
+  checkGeometry(initial,initial.expected,key);
   assert(initial.tabs.some(tab=>tab.label===(lang==='en'?'Analytics':'分析')),key);
   await evaluate('window.publishPanelTabsCount()');
   await until(()=>evaluate(`document.querySelector('#panel-tab-reply-needed .panel-tab-count')?.textContent==='1'`));
-  checkGeometry(await measure(),'active',key);
+  { const g = await settled(); checkGeometry(g,g.expected,key); }
   for (const [id, label] of (lang==='en' ? [['reply-needed','Reply needed'],['awaiting-reply','Awaiting reply']] : [['reply-needed','要返信'],['awaiting-reply','返信待ち']])) {
    await evaluate(`document.querySelector('#panel-tab-${id}').click()`);
-   const g = await until(async()=> {const g=await measure();return g.tabs.some(tab=>tab.selected && tab.label===label)&&g});
-   checkGeometry(g,'active',key);
+   const g = await until(async()=> {const g=await measure();return g.mode===g.expected && g.tabs.some(tab=>tab.selected && tab.label===label)&&g});
+   checkGeometry(g,panelWidth===null && appWidth===1600 ? 'active' : g.expected,key);
    assert(g.tabs.at(-1).right<=g.right+1,key);
   }
   await evaluate(`document.querySelector('#panel-tab-settings').focus()`);
   await call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowLeft',code:'ArrowLeft',windowsVirtualKeyCode:37});
   await call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowLeft',code:'ArrowLeft',windowsVirtualKeyCode:37});
   await until(()=>evaluate(`document.activeElement.id==='panel-tab-info' && document.activeElement.getAttribute('aria-selected')==='true'`));
-  checkGeometry(await measure(),'active',key);
+  { const g = await settled(); checkGeometry(g,g.expected,key); }
   assert.equal(await evaluate(`document.querySelector(${JSON.stringify(list)}).querySelector('[role=tooltip]')===null`),true,key);
 
   // Give the same strip more space; selection/focus must survive both transitions.
@@ -84,7 +87,7 @@ try{
   await until(async()=> (await measure()).mode==='all');
   checkGeometry(await measure(),'all',key);
   if(panelWidth!==null) await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','${panelWidth+33}px')`);
-  await until(async()=> (await measure()).mode==='active');
+  { const g = await settled(); assert.equal(g.width,panelWidth,key); checkGeometry(g,g.expected,key); }
   assert(await evaluate(`document.activeElement.id==='panel-tab-info'`),key);
   }
 
@@ -123,11 +126,11 @@ try{
   await call('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
   await until(tooltipOutside);
   await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
-  checkGeometry(await measure(),'active',key);
+  { const g = await settled(); checkGeometry(g,g.expected,key); }
   const expandedPanel=await evaluate(`(()=>({activeHidden:document.querySelector('#panel-page-info').hidden,
    activeVisible:document.querySelector('#panel-page-info').getClientRects().length>0}))()`);
   assert.deepEqual(expandedPanel,{activeHidden:false,activeVisible:true},key);
-  console.log(JSON.stringify({lang,appWidth,panelWidth,scrollWidth:initial.scrollWidth,variants:'active/all/active',railTooltip:'focus and hover'}));
+  console.log(JSON.stringify({lang,appWidth,panelWidth,scrollWidth:initial.scrollWidth,initialMode:initial.mode,railTooltip:'focus and hover'}));
  }
 }finally{
  ws?.close();for(const p of [chrome,vite])if(p.exitCode===null){const done=once(p,'exit');p.kill('SIGTERM');await done.catch(()=>{})}await rm(profile,{recursive:true,force:true});
