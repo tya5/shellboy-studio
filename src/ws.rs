@@ -39,6 +39,7 @@ const RESULT_CHANNEL: usize = SESSION_IN_FLIGHT + SESSION_QUEUE + APP_CALLS + 4;
 /// Decode and authorize one call. Mutations from the web are recorded as human with the
 /// label `web` (architecture 4.4).
 pub fn build_command(command: &str, args: Option<Value>) -> Result<Command, BridgeError> {
+    let args = args.unwrap_or_else(|| json!({}));
     let value = json!({"command": command, "args": args});
     let mut parsed: Command = serde_json::from_value(value)
         .map_err(|_| BridgeError::new("invalid_call", "cannot decode call (command or args)"))?;
