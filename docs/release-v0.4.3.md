@@ -13,7 +13,7 @@ The macOS and Windows desktop bundle versions come from the Studio package versi
 - In **Possessions > Artifacts** on Windows, **Show in Explorer** no longer reports failure just because Explorer exits with code 1. Success and error messages appear below the artifact row instead of covering the title (#156).
 - On phones, the sidebar child-count chip is easier to tap to expand nested Threads. The size of the visible chip and the Thread row are unchanged (#157).
 - **Branches** keeps expanded messages open during ordinary appends and checks that the selected message still belongs to the path before updating the view. If a row cannot load, it shows the failure instead of repeatedly reloading the family (#142).
-- In desktop mode without authentication, startup no longer logs errors when checking for pairing hosts. Pairing remains disabled (#149).
+- In desktop mode with authentication off, checking for pairing hosts no longer returns a conflict. Pairing remains disabled (#149).
 
 ## Known gaps
 
