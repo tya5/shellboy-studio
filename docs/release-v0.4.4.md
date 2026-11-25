@@ -1,6 +1,6 @@
 # Studio v0.4.4 pairing
 
-Pairing: Core v0.17.0 (`5a164b37deac681520362a8b93b6ca08a47eb3a9`, protocol 36). Cargo.toml and Cargo.lock pin that exact tag commit. The exact-pair real-owner suite was run against this Core and this Studio worktree. It exercised Thread Ask acceptance and a subsequent standalone Reply with temporary owner data and a loopback mock provider; the paired protocol test checked that Ask uses the Send `MessageAccepted` schema and that routed and standalone Reply values follow `MessageReplied` (including omitted, not null, standalone delivery). The real-owner run did not exercise named Ask acceptance or a routed Reply. A Core v0.17.0 pairing is verified for this candidate; Studio v0.4.4 is still unpublished.
+Pairing: Core v0.17.0 (`5a164b37deac681520362a8b93b6ca08a47eb3a9`, protocol 36). Cargo.toml and Cargo.lock pin that exact tag commit. The exact-pair real-owner tests were run against this Core and this Studio worktree with temporary owner data and loopback mock providers. The live tests exercise a named-human Ask/Reply and a routed Thread Ask/Reply; the routed Reply witness verifies the nested acceptance's answer message and destination Thread. The protocol-pair test checks Ask's `MessageAccepted` registry/schema mapping and both routed and standalone `MessageReplied` shapes, including omitted (not null) delivery for standalone replies. A Core v0.17.0 pairing is verified for this candidate; Studio v0.4.4 is still unpublished.
 
 Before upgrading, quit both Studio and Core and back up the entire Core data directory.
 
@@ -14,7 +14,8 @@ The following landed commit subjects are quoted from `git log 87785a6..main` on 
 - **Owner hints (#152):** “Replay the full loaded record prefix on owner hints (#152)”. Changes within the loaded record prefix are replayed when the owner reports a change.
 - **Stop model (#160):** “Separate model and Run stop controls”, “Capture stop targets and report owner refusals”, and “Keep Activity sections and gate Run stop by detail”. Stop model now interrupts only the Turn. Stopping the Run and its shells requires the separately confirmed Stop everything action in Activity.
 - **Shared shell-output actions (#161):** “Unify shell output actions in Activity detail”. Copy, Wrap lines, and Formatted controls are shared between output views; inline output retains its title and execution-details action.
-- **Long-open tabs (#144):** “Document Console component render lifetimes (#144)”. A long-open tab's memory stays flat rather than accumulating DOM, listeners, and render closures.
+- **Long-open tabs (#144):** “Document Console component render lifetimes (#144)”. A long-open tab no longer keeps old conversation renders, settings handlers and DOM nodes after you switch Threads (#144).
+- **README and screenshot fixture (#162):** “Lead the Studio README with reply duties”, “Preserve README screenshot bytes on checkout”, and “Document the Studio screenshot fixture and published pairing”. The README now leads with reply duties, and its screenshot is documented as synthetic fixture data with reproducible generation guidance.
 - **Source archives:** “Keep screenshot tooling note archive-safe”. Development guidance no longer links to a browser README omitted from source archives.
 
 ## Upgrade

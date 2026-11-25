@@ -637,12 +637,14 @@ export interface ThreadCreateArgs {
   cwd?: string;
   parent_thread_id?: string;
 }
-/** Public message.send acceptance; the canonical node ID is message_id. */
+/** Wire acceptance for message.send and message.ask; the canonical node ID is message_id. */
 export interface MessageAccepted {
   message_id: string;
   thread_id: string;
   [key: string]: unknown;
 }
+/** Pinned message.ask result schema; the browser bridge still denies Ask. */
+export type MessageAskResult = MessageAccepted;
 /** Public message.reply result; routed acceptance is nested and may be absent. */
 export interface MessageReplied {
   message_id: string;
