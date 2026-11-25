@@ -56,6 +56,11 @@ export class Handoff {
     let h = this.held.find(h => h.attemptId === frame.attempt_id);
     if (h && this.active !== h.attemptId && h.record.status !== "streaming") return;
     if (!h) {
+      // Under capacity pressure, prefer the next live attempt to an owner-adopted preview.
+      if (this.held.length >= MAX_HANDOFF_RECORDS) {
+        const adopted = this.held.find(entry => entry.record.adopted);
+        if (adopted) this.remove(adopted);
+      }
       if (this.held.length >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
@@ -87,8 +92,8 @@ export class Handoff {
     h.admitted += incoming;
     h.source.apply(frame);
   }
-  end(attemptId: string, outcome: "adopted" | "not_adopted", outputLimit?: AttemptOutputLimit | null): boolean {
-    if (this.terminal.has(attemptId)) return false;
+  end(attemptId: string, outcome: "adopted" | "not_adopted", outputLimit?: AttemptOutputLimit | null): void {
+    if (this.terminal.has(attemptId)) return;
     this.terminal.add(attemptId);
     if (this.terminal.size > 256) this.terminal.delete(this.terminal.values().next().value!);
     const held = this.held.find(h => h.attemptId === attemptId);
@@ -97,12 +102,10 @@ export class Handoff {
       if (this.active === attemptId) this.active = undefined;
       this.publish();
       held.source.finish();
-      return true;
     } else if (outcome === "not_adopted") {
       if (this.active === attemptId) this.active = undefined;
       this.releaseAccepted(attemptId);
     }
-    return false;
   }
 
   finish(): void {
@@ -113,7 +116,13 @@ export class Handoff {
   releaseAccepted(attemptId: string): void {
     const h = this.held.find(h => h.attemptId === attemptId);
     if (!h) return;
-    h.stop(); this.held = this.held.filter(x => x !== h); this.publish();
+    this.remove(h);
+    this.publish();
+  }
+
+  private remove(held: Held): void {
+    held.stop();
+    this.held = this.held.filter(entry => entry !== held);
   }
 
   discard(_reason: PreviewDiscardReason): void {

@@ -95,7 +95,7 @@ function revisionIsCurrentOrNewer(candidate: number, current: number | undefined
 }
 
 type AdoptedBeforeRead = { handle: ThreadHandle; epoch: number; ids: ReadonlySet<string> };
-type PreparedConversationPublication = { adopted?: AdoptedBeforeRead; replacement: boolean; publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
+type PreparedConversationPublication = { retiring?: ReadonlySet<string>; replacement: boolean; publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
 
 export class ConversationWindow {
   private readonly reader: WindowReader;
@@ -471,25 +471,21 @@ export class ConversationWindow {
     const qualified = adopted && adopted.handle === binding?.handle && adopted.epoch === binding.epoch
       && this.following.peek() && (snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1) ? adopted : undefined;
     const candidate = this.prepareCaptured(snapshot, capability, this.captureConversationInput(snapshot, replacement, qualified?.ids), ownerRead ? "read" : "bump", replacement !== undefined);
-    return candidate && { ...candidate, adopted: qualified };
+    return candidate && { ...candidate, retiring: qualified?.ids };
   }
 
   private commitAccepted(candidate: PreparedConversationPublication, afterCommit: () => void = () => {}): boolean {
-    const { publication, binding, replacement, adopted } = candidate;
+    const { publication, binding, replacement, retiring } = candidate;
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
         const savedAttempts = savedAttemptIds(snapshot.rows);
         if (replacement) binding.handle.commitHandoffReplacement();
+        for (const record of binding.handle.handoff.peek()) {
+          if (savedAttempts.has(record.attemptId) || (record.adopted && retiring?.has(record.attemptId))) binding.handle.releaseAcceptedHandoff(record.attemptId);
+        }
         afterCommit();
         this.conversationCommit?.(snapshot);
-        // The owner had saved these attempts before this tail request. They may
-        // now be outside its bounded range, but cannot still own a live suffix.
-        const adoptedAtTail = adopted?.handle === binding.handle && adopted.epoch === binding.epoch
-          && this.following.peek() && (snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1);
-        for (const record of binding.handle.handoff.peek()) {
-          if (savedAttempts.has(record.attemptId) || (adoptedAtTail && record.adopted && adopted.ids.has(record.attemptId))) binding.handle.releaseAcceptedHandoff(record.attemptId);
-        }
       });
       const ref = this.acceptedView.peek();
       if (published && ref === publication.snapshot && publication.inputIdentity) this.acceptedInput = { ref, identity: publication.inputIdentity };
