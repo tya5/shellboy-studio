@@ -10,6 +10,7 @@ import {summary,details,settle,flush, type FakeTransport, type FakeOwnerDb} from
 import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
+import {DESIGNS} from '../../registry';
 import {App} from '../screens/App';
 import {Conversation,OrderedHistory} from '../screens/Conversation';
 import {Composer} from '../system/components/Composer';
@@ -800,7 +801,9 @@ it.each(["idle", "turn-running", "shell-waiting", "both"] as const)("Studio #158
  }});
  const host=document.createElement("div");document.body.append(host);
  try{
-  await act(async()=>{render(<Conversation model={f.model}/>,host);await settle(f.t,f.db);});
+  const prefs=signal(loadPrefs({read:()=>null,write:()=>{}},DESIGNS));
+  const context:DesignContext={model:f.model,prefs,setPrefs:()=>{},designs:DESIGNS,submitToken:async()=>false};
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   const dock=host.querySelector<HTMLElement>(".dock")!;
   expect(dock.querySelector(".composer-above")).toBeNull();
   expect(dock.querySelector('[aria-label="Send input to:"]')).toBeNull();
@@ -818,7 +821,7 @@ it.each(["idle", "turn-running", "shell-waiting", "both"] as const)("Studio #158
    expect(f.t.calls("shell.stop")).toHaveLength(0);
    f.t.ownerError(interrupt.id,'turn_not_running','Turn is no longer running');
    await act(async()=>{await flush(8);});
-   expect(f.model.actionError.value?.kind).toBe('error');
+   expect(host.querySelector('.alerts')?.textContent).toContain('Turn is no longer running');
    expect(dock.querySelector('textarea')).not.toBeNull();
   }
   const before=f.t.calls("message.send").length;
