@@ -107,13 +107,13 @@ export function RollingOverview({ context }: { context: DesignContext }) {
         <IconButton glyph="analytics.nextBucket" label={t("analytics.nextBucket")} onClick={() => model.insights.stepBucket(1)} />
       </div>}
     />
-    {drilldown && bucket && selection?.key === drilldown.key ? <BucketDrilldown key={JSON.stringify([drilldown.owner, drilldown.key, drilldown.since, drilldown.until, drilldown.threadId])} model={model} t={t} bucket={drilldown} /> : null}
+    {drilldown ? <BucketDrilldown key={JSON.stringify([drilldown.owner, drilldown.key, drilldown.threadId])} model={model} t={t} bucket={drilldown} /> : null}
   </div>;
 }
 
 function BucketDrilldown({ model, t, bucket }: { model: AppModel; t: Translate; bucket: NonNullable<AppModel["insights"]["bucketDrilldown"]["value"]> }) {
   const [rankLimit, setRankLimit] = useState(25);
-  const state = bucket.walk.state.value;
+  const { state, stale } = bucket;
   const groups = [...state.groups.values()].sort((a, b) => b.requests - a.requests || a.key.localeCompare(b.key));
   const max = Math.max(1, ...groups.map(group => group.requests));
   const isThreadScope = bucket.threadId !== undefined;
@@ -130,9 +130,10 @@ function BucketDrilldown({ model, t, bucket }: { model: AppModel; t: Translate; 
     <>{group.requests.toLocaleString(model.lang.value)}{!isThreadScope ? <> · <a class="nav-link" href={formatRoute({ view: "conversation", threadId: group.key })}>{t("analytics.bucketOpen")}</a></> : null}</>,
   ] }));
   return <Section title={title} sub={`${localLabel(bucket.since, true)} – ${localLabel(bucket.until, true)} (UTC${bucket.zone})${threadLabel ? ` · ${t("analytics.scopeThread", { thread: threadLabel })}` : ""}`} source={<code>usage.get group_by={isThreadScope ? "model" : "thread"}</code>}>
-    {state.status === "loading" ? <Notice tone="wait">{t("analytics.bucketLoading")}</Notice> : null}
-    {state.status === "stopped" ? <Notice tone="wait" actions={state.canContinue ? <Button variant="ghost" onClick={() => void bucket.walk.continue()}>{t("analytics.continue")}</Button> : undefined}>{t("analytics.stopped", { n: state.coverage.windows })}</Notice> : null}
-    {state.status === "failed" ? <Notice tone="bad" actions={state.canContinue ? <Button variant="ghost" onClick={() => void bucket.walk.continue()}>{t("analytics.continue")}</Button> : <Button variant="ghost" onClick={() => void bucket.walk.start()}>{t("analytics.retry")}</Button>}>{t("analytics.failed", { message: state.error?.message ?? "" })}</Notice> : null}
+    {stale ? <Notice tone="wait">{t("analytics.bucketStale")}</Notice> : null}
+    {!stale && state.status === "loading" ? <Notice tone="wait">{t("analytics.bucketLoading")}</Notice> : null}
+    {!stale && state.status === "stopped" ? <Notice tone="wait" actions={state.canContinue ? <Button variant="ghost" onClick={() => void bucket.walk.continue()}>{t("analytics.continue")}</Button> : undefined}>{t("analytics.stopped", { n: state.coverage.windows })}</Notice> : null}
+    {!stale && state.status === "failed" ? <Notice tone="bad" actions={state.canContinue ? <Button variant="ghost" onClick={() => void bucket.walk.continue()}>{t("analytics.continue")}</Button> : <Button variant="ghost" onClick={() => void bucket.walk.start()}>{t("analytics.retry")}</Button>}>{t("analytics.failed", { message: state.error?.message ?? "" })}</Notice> : null}
     <Field as="select" label={t("analytics.bucketScope")} value={bucket.threadId ?? ""} options={options} onSelectChange={threadId => {
       model.insights.setBucketThread(threadId || undefined);
     }} />

@@ -580,6 +580,37 @@ describe("rolling Overview", () => {
     expect(hourlyTotals([]).requests).toBeUndefined();
   });
 
+  it("admits no bucket read when the first Overview request is superseded before settling", async () => {
+    let now = NOW;
+    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview", nowMs: () => now });
+    const { insights } = model;
+    const usage = (group: string) => t.calls("usage.get").filter(c => (c.args as { group_by: string }).group_by === group);
+    insights.rolling.enabled.value = true;
+    await flush();
+    const old = usage("hour")[0]!;
+    const selected = insights.rolling.displayed.peek()!.interval.hours.at(-1)!;
+    insights.selectBucketThreads(selected.key);
+    expect(insights.rolling.admitted.peek()).toBeUndefined();
+    expect(usage("thread")).toHaveLength(0);
+    now += 60_000;
+    t.push({ t: "resync" });
+    db.answered.add(old.id);
+    await flush();
+    expect(t.cancels()).toContain(old.id);
+    expect(usage("hour")).toHaveLength(2);
+    expect(usage("thread")).toHaveLength(0);
+    t.ok(old.id, usagePage([]));
+    await flush();
+    expect(insights.rolling.admitted.peek()).toBeUndefined();
+    expect(usage("thread")).toHaveLength(0);
+    await settle(t, db);
+    const admitted = insights.rolling.admitted.peek()!;
+    expect(Date.parse(admitted.interval.until)).toBe(now);
+    expect(usage("thread")).toHaveLength(1);
+    expect(usage("thread")[0]!.args).toMatchObject({ since: selected.since, until: admitted.interval.hours.at(-1)!.until });
+    model.dispose();
+  });
+
   it("cancels obsolete bucket reads, rekeys clipped bounds after a hint, and clears on owner switch", async () => {
     let now = NOW;
     const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview", nowMs: () => now });
@@ -602,7 +633,7 @@ describe("rolling Overview", () => {
     now += 60_000;
     t.push({ t: "resync" });
     expect(t.cancels()).toContain(held.id);
-    expect(insights.bucketDrilldown.peek()).toBeUndefined();
+    expect(insights.bucketDrilldown.peek()).toMatchObject({ key: last.key, until: last.until, stale: true });
     db.answered.add(first.id);
     db.answered.add(held.id);
     await settle(t, db);

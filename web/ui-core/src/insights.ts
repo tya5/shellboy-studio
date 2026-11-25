@@ -228,6 +228,10 @@ export class RollingUsage {
   readonly comparison: RollingComparison;
   private readonly accepted = signal<{ interval: RollingPeriod; walk: WalkState } | undefined>(undefined);
   private readonly selected = signal<string | undefined>(undefined);
+  readonly selectedKey = computed(() => this.selected.value);
+  private readonly admission = signal<{ interval: RollingPeriod; owner: string; hint: number } | undefined>(undefined);
+  /** Only a settled interval from the current owner hint may admit follow-up reads. */
+  readonly admitted = computed(() => this.admission.value);
   private scope: { owner: string; hint: number; scheduled: boolean } | undefined;
 
   readonly displayed = computed(() => {
@@ -261,6 +265,7 @@ export class RollingUsage {
       // Close the obsolete generation now; coalesce only the replacement read.
       batch(() => {
         this.retainSettled();
+        this.admission.value = undefined;
         this.walk.reset();
         this.comparison.align(undefined);
       });
@@ -275,6 +280,7 @@ export class RollingUsage {
   leave(): void {
     this.scope = undefined;
     batch(() => {
+      this.admission.value = undefined;
       this.walk.reset();
       this.interval.value = undefined;
       this.accepted.value = undefined;
@@ -325,6 +331,7 @@ export class RollingUsage {
     const interval = rollingPeriod(this.options.nowMs(), this.options.offsetMinutes());
     const read = batch(() => {
       this.retainSettled();
+      this.admission.value = undefined;
       this.interval.value = interval;
       const read = this.walk.start();
       this.comparison.align(interval);
@@ -348,15 +355,17 @@ export class RollingUsage {
   private retainSettled(): void {
     const interval = this.interval.peek();
     const walk = this.walk.state.peek();
-    if (!interval || !this.hasSettledCut(walk)) return;
+    const scope = this.scope;
+    if (!interval || !scope || !this.hasSettledCut(walk)) return;
     batch(() => {
       if (!interval.hours.some(h => h.key === this.selected.peek())) this.selected.value = undefined;
       this.accepted.value = { interval, walk };
+      this.admission.value = { interval, owner: scope.owner, hint: scope.hint };
     });
   }
 }
 
-interface BucketDrilldown {
+interface BucketRead {
   key: string;
   since: string;
   until: string;
@@ -374,7 +383,15 @@ export class Insights {
   readonly rolling: RollingUsage;
   readonly byThread: UsageWalk;
   /** One owner-keyed selected-bucket read; bucket heading and its walk publish as one value. */
-  readonly bucketDrilldown: Signal<BucketDrilldown | undefined> = signal(undefined);
+  private readonly bucketRead = signal<BucketRead | undefined>(undefined);
+  private readonly retainedBucket = signal<(BucketRead & { state: WalkState }) | undefined>(undefined);
+  readonly bucketDrilldown = computed(() => {
+    const read = this.bucketRead.value;
+    const retained = this.retainedBucket.value;
+    const state = read?.walk.state.value;
+    if (read && state && (!retained || state.status !== "loading")) return { ...read, state, stale: false };
+    return retained ? { ...retained, stale: true } : undefined;
+  });
   private readonly drilldownOwner = signal<{ owner: string; hint: number } | undefined>(undefined);
   private readonly drilldownThread = signal<string | undefined>(undefined);
   private readonly disposeDrilldown: () => void;
@@ -407,26 +424,35 @@ export class Insights {
     this.byThread = new UsageWalk(ops, "thread", () => this.period.peek());
     this.disposeDrilldown = effect(() => {
       const owner = this.drilldownOwner.value;
-      const cut = this.rolling.displayed.value;
+      const admitted = this.rolling.admitted.value;
+      const key = this.rolling.selectedKey.value;
       const threadId = this.drilldownThread.value;
-      const hour = cut?.selection;
-      if (!owner || !cut || cut.stale || !hour) {
+      const hour = admitted?.interval.hours.find(h => h.key === key);
+      const previous = this.bucketRead.peek();
+      const panel = this.bucketDrilldown.peek();
+      const samePanel = panel && panel.owner === owner?.owner && panel.key === key && panel.threadId === threadId;
+      if (!owner || !key) {
         this.clearBucketThreads();
-        if (!hour) this.drilldownThread.value = undefined;
+        this.drilldownThread.value = undefined;
         return;
       }
-      const since = new Date(hour.since).toISOString();
-      const until = new Date(hour.until).toISOString();
-      const zone = cut.interval.zone;
-      const previous = this.bucketDrilldown.peek();
-      if (previous?.key === hour.key && previous.since === since && previous.until === until &&
-          previous.zone === zone && previous.owner === owner.owner && previous.hint === owner.hint &&
-          previous.threadId === threadId) return;
-      const walk = new UsageWalk(this.ops, threadId === undefined ? "thread" : "model", () => ({ since, until, zone }), threadId);
+      const eligible = admitted?.owner === owner.owner && admitted.hint === owner.hint && hour;
+      if (eligible && previous?.key === key && previous.since === hour.since && previous.until === hour.until &&
+          previous.zone === admitted.interval.zone && previous.owner === owner.owner &&
+          previous.hint === owner.hint && previous.threadId === threadId) return;
       batch(() => {
-        this.clearBucketThreads();
-        this.bucketDrilldown.value = { key: hour.key, since, until, zone, ...owner, threadId, walk };
-        void walk.start();
+        // Keep a snapshot of the same panel, not the cancelled walk's mutable state.
+        this.retainedBucket.value = samePanel ? panel : undefined;
+        previous?.walk.reset();
+        this.bucketRead.value = undefined;
+        if (!eligible) return;
+        const { since, until } = hour;
+        const zone = admitted.interval.zone;
+        const walk = new UsageWalk(this.ops, threadId === undefined ? "thread" : "model", () => ({ since, until, zone }), threadId);
+        this.bucketRead.value = { key, since, until, zone, ...owner, threadId, walk };
+        void walk.start().then(() => {
+          if (this.bucketRead.peek()?.walk === walk) this.retainedBucket.value = undefined;
+        });
       });
     });
   }
@@ -529,7 +555,7 @@ export class Insights {
 
   setBucketThread(threadId: string | undefined): void {
     const current = this.bucketDrilldown.peek();
-    if (!current || (threadId !== undefined && !current.walk.state.peek().groups.has(threadId))) return;
+    if (!current || (threadId !== undefined && !current.state.groups.has(threadId))) return;
     this.drilldownThread.value = threadId;
   }
 
@@ -541,8 +567,9 @@ export class Insights {
 
   private clearBucketThreads(): void {
     batch(() => {
-      this.bucketDrilldown.peek()?.walk.reset();
-      this.bucketDrilldown.value = undefined;
+      this.bucketRead.peek()?.walk.reset();
+      this.bucketRead.value = undefined;
+      this.retainedBucket.value = undefined;
     });
   }
 
