@@ -14,14 +14,14 @@ export interface BranchItem {
   depth: number;
   state: "current" | "ancestor" | "branch";
   running: boolean;
-  divergence: { nodeId: string; ordinal: number; request: string | undefined; parentSelectionRevision?: number } | undefined;
+  divergence: { nodeId: string; ordinal: number; request: string | undefined; parentSelectionRevision: number } | undefined;
   /** `no_shared_prefix`: a child that shares no first node with its parent. */
   divergenceUnknown: string | undefined;
   tipNodeId: string | undefined;
   tipAt: string | undefined;
   tipRequest: string | undefined;
   pathNodes: number | undefined;
-  selectionRevision?: number;
+  selectionRevision: number;
   nodesAfterDivergence: number | undefined;
 }
 
@@ -31,7 +31,11 @@ export function readBranchItem(v: unknown): BranchItem | undefined {
   const o = obj(v);
   const threadId = str(o?.thread_id);
   if (!o || !threadId) return undefined;
+  const selectionRevision = revision(o.selection_revision);
+  if (selectionRevision === undefined) return undefined;
   const d = obj(o.divergence);
+  const parentSelectionRevision = revision(d?.parent_selection_revision);
+  if (d && parentSelectionRevision === undefined) return undefined;
   const nodeId = str(d?.node_id);
   const ordinal = num(d?.ordinal);
   const tip = obj(o.tip);
@@ -45,13 +49,13 @@ export function readBranchItem(v: unknown): BranchItem | undefined {
     depth: num(o.depth) ?? 0,
     state,
     running: o.running === true,
-    divergence: d && nodeId && ordinal !== undefined ? { nodeId, ordinal, request: str(obj(d.request)?.text), ...(revision(d.parent_selection_revision) !== undefined && { parentSelectionRevision: revision(d.parent_selection_revision) }) } : undefined,
+    divergence: d && nodeId && ordinal !== undefined && parentSelectionRevision !== undefined ? { nodeId, ordinal, request: str(obj(d.request)?.text), parentSelectionRevision } : undefined,
     divergenceUnknown: str(o.divergence_unknown),
     tipNodeId: str(tip?.node_id),
     tipAt: str(tip?.at),
     tipRequest: str(obj(tip?.last_request)?.text),
     pathNodes: num(size?.path_nodes),
-    ...(revision(o.selection_revision) !== undefined && { selectionRevision: revision(o.selection_revision) }),
+    selectionRevision,
     nodesAfterDivergence: num(size?.nodes_after_divergence),
   };
 }

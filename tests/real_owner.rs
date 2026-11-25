@@ -1398,6 +1398,7 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
         .unwrap()["node_id"]
         .as_str()
         .unwrap();
+    let mut cursor = Client::event_cursor(&owner).await;
     let compact = isolated_command(&bin, &root.join("home"))
         .args([
             "compact",
@@ -1420,9 +1421,29 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
         String::from_utf8_lossy(&compact.stderr)
     );
     let compact: Value = serde_json::from_slice(&compact.stdout).unwrap();
-    let summary_id = compact["result"]["compact"]["summary_node_id"]
-        .as_str()
-        .unwrap_or_else(|| panic!("missing adopted Summary: {compact}"));
+    assert_eq!(compact["result"]["status"], "queued", "{compact}");
+    let summary_id = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let selected = c
+                .ok(
+                    "history.list",
+                    json!({"thread_id":thread,"limit":200}),
+                    None,
+                )
+                .await;
+            if let Some(summary) = selected["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["kind"] == "summary")
+            {
+                break summary["node_id"].as_str().unwrap().to_owned();
+            }
+            Client::wait_owner_change(&owner, &thread, &mut cursor).await;
+        }
+    })
+    .await
+    .expect("the queued compaction adopts a Summary");
     let parts = c
         .ok(
             "history.read",

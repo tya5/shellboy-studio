@@ -42,7 +42,7 @@ export function threadTree(items: ThreadSummary[], pending: ReadonlyMap<string, 
       childCount: kids.length,
       parentTitle: s.parent_thread_id !== undefined ? known.get(s.parent_thread_id)?.title : undefined,
       pending: count,
-      pendingExact: s.awaiting_named_count === undefined || s.awaiting_named_count_exact !== false,
+      pendingExact: s.awaiting_named_count_exact === true,
     });
     for (const k of kids) walk(k, depth + 1);
   };

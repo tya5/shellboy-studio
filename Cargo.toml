@@ -27,12 +27,12 @@ windows-desktop = []
 # Explicit integration suite: never part of owner-free unit/synthetic checks.
 real-owner-tests = []
 default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
-# Exact stable Core pair: v0.16.0 at 3ab5ada40910e727553d85d271c1d84ec5db2c41, protocol 26.
+# Unreleased Core preparation pair: at 3ab5ada40910e727553d85d271c1d84ec5db2c41, protocol 34.
 next-shellboy = []
 # #262 owner branch adds message.ask; never forward it from Studio.
 next-reply = ["next-shellboy"]
 # First-run connection setup (Shellboy #269): `credentials.set`, `credentials.clear`, `connection.test`.
-# Connection operations are enabled for the pinned Core v0.16.0 tag;
+# Connection operations are enabled for the pinned Core revision;
 # validate the exact owner pair (docs/design/connection-setup.md).
 next-connection-setup = ["next-shellboy"]
 # Thread tags (Shellboy #222 stage 3): `thread.tag`, `thread.tags`, and `tags` / `cwd` on `thread.list`.
@@ -41,7 +41,7 @@ next-tags = ["next-shellboy"]
 next-cwds = ["next-tags"]
 
 [dependencies]
-# Stable Core v0.16.0 tag pin; exact-pair acceptance verifies manifest revision, lock commit, package, and binary.
+# Unreleased Core revision pin; exact-pair acceptance verifies manifest revision, lock commit, package, and binary.
 shellboy = { git = "https://github.com/tya5/shellboy", rev = "3ab5ada40910e727553d85d271c1d84ec5db2c41" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt", "io"] }

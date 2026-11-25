@@ -3,6 +3,31 @@ import type { Transport, TransportHandlers } from "../src/transport";
 
 export type CallFrame = Extract<ClientFrame, { t: "call" }>;
 
+// Build the pinned wire envelopes for synthetic owner replies. Malformed-wire
+// witnesses bypass this fixture builder via okRaw.
+function recordFixture(call: CallFrame | undefined, result: unknown): unknown {
+  if (!call || !result || typeof result !== "object" || Array.isArray(result)) return result;
+  const args = (call.args ?? {}) as Record<string, unknown>;
+  const raw = result as Record<string, unknown>;
+  const scope = { thread_id: args.thread_id };
+  const fill = (page: Record<string, unknown>, filters: object, defaultLimit: number) =>
+    ({ limit: args.limit ?? defaultLimit, filters, ...page });
+  switch (call.command) {
+    case "thread.list": return fill(raw, {}, 50);
+    case "thread.tags": case "thread.cwds": return fill(raw, {}, 50);
+    case "message.list": return fill(raw, { owed_by_thread_id: args.owed_by_thread_id ?? null,
+      asked_by_thread_id: args.asked_by_thread_id ?? null, ...(args.to !== undefined && { to_omitted: true }) }, 16);
+    case "status": return args.memory ? raw : fill(raw, { all: args.all ?? false, state: args.state ?? [], thread_id: args.thread_id ?? null }, 200);
+    case "shell.list": return fill(raw, scope, 50);
+    case "artifact.list": return fill(raw, scope, 32);
+    case "artifact.get": return raw.versions && typeof raw.versions === "object"
+      ? { ...raw, versions: fill(raw.versions as Record<string, unknown>, { artifact_id: args.artifact_id }, 32) } : raw;
+    case "thread.branches": return fill(raw, scope, 200);
+    case "compact.list": return fill({ period: {}, ...raw }, scope, 50);
+    default: return raw;
+  }
+}
+
 /** A transport double: tests push server frames and inspect what the client sent. */
 export class FakeTransport implements Transport {
   handlers: TransportHandlers | undefined;
@@ -47,6 +72,9 @@ export class FakeTransport implements Transport {
   }
 
   ok(id: number, result: unknown): void {
+    this.okRaw(id, recordFixture(this.calls().find(call => call.id === id), result));
+  }
+  okRaw(id: number, result: unknown): void {
     this.push({ t: "result", id, response: okResponse(result) });
   }
   ownerError(id: number, code: string, message = code, details?: unknown): void {
@@ -69,7 +97,7 @@ export const connected: OwnerState = { state: "connected", info: { protocol_vers
 export const connectedWithHistory: OwnerState = { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: ["history.window"] } };
 
 export function summary(id: string, extra: Record<string, unknown> = {}) {
-  return { thread_id: id, title: `t-${id}`, cwd: "/", state: "idle", activity: "idle", updated_at: "u", excerpt: "", ...extra };
+  return { thread_id: id, title: `t-${id}`, cwd: "/", state: "idle", activity: "idle", updated_at: "u", excerpt: "", awaiting_named_count_exact: true, awaiting_replies_count_exact: true, awaiting_thread_count_exact: true, ...extra };
 }
 export function details(id: string, extra: Record<string, unknown> = {}): ThreadDetails {
   return { thread_id: id, title: `t-${id}`, cwd: "/", connection: "c", model: "m", shells_count: 0, ...extra };

@@ -147,6 +147,7 @@ export function usagePage(items: unknown[], next?: string) {
 }
 
 export const fixtureCompaction = {
+  period: { since: null, until: null },
   coverage: { candidate_limit_reached: false, source_candidate_limit: 13 },
   more: false,
   items: [
@@ -231,14 +232,16 @@ const tip = (node: string, request: string) => ({ at: "2026-11-07T02:46:32.22388
 
 /** Shaped as `thread.branches` returned on a real owner. */
 export const fixtureBranches = {
+  limit: 200,
+  filters: { thread_id: "lead" },
   ancestors_truncated: false,
   family_threads: 4,
   family_truncated: false,
   items: [
-    { depth: 0, divergence: null, divergence_unknown: null, parent_thread_id: null, pruned_originals: false, running: false, size: branchSize(226, null), state: "current", thread_id: "lead", tip: tip("n225", "after"), title: "Improve history search" },
-    { depth: 1, divergence: { node_id: "n100", ordinal: 100, parent_continues: true, request: { node_id: "r21", text: "step 21", truncated: false } }, divergence_unknown: null, parent_thread_id: "lead", pruned_originals: false, running: true, size: branchSize(113, 12), state: "branch", thread_id: "fork-a", tip: tip("f12", "last asked"), title: null },
-    { depth: 1, divergence: { node_id: "n150", ordinal: 150, parent_continues: false, request: { node_id: "r31", text: "step 31", truncated: false } }, divergence_unknown: null, parent_thread_id: "lead", pruned_originals: true, running: false, size: branchSize(226, 75), state: "branch", thread_id: "rewound", tip: tip("g75", "kept"), title: "Before the ranking change" },
-    { depth: 1, divergence: null, divergence_unknown: "no_shared_prefix", parent_thread_id: "lead", pruned_originals: false, running: false, size: branchSize(9, null), state: "branch", thread_id: "plain-child", tip: tip("p9", "child work"), title: "Plain child" },
+    { selection_revision: 1, depth: 0, divergence: null, divergence_unknown: null, parent_thread_id: null, pruned_originals: false, running: false, size: branchSize(226, null), state: "current", thread_id: "lead", tip: tip("n225", "after"), title: "Improve history search" },
+    { selection_revision: 1, depth: 1, divergence: { parent_selection_revision: 1, node_id: "n100", ordinal: 100, parent_continues: true, request: { node_id: "r21", text: "step 21", truncated: false } }, divergence_unknown: null, parent_thread_id: "lead", pruned_originals: false, running: true, size: branchSize(113, 12), state: "branch", thread_id: "fork-a", tip: tip("f12", "last asked"), title: null },
+    { selection_revision: 1, depth: 1, divergence: { parent_selection_revision: 1, node_id: "n150", ordinal: 150, parent_continues: false, request: { node_id: "r31", text: "step 31", truncated: false } }, divergence_unknown: null, parent_thread_id: "lead", pruned_originals: true, running: false, size: branchSize(226, 75), state: "branch", thread_id: "rewound", tip: tip("g75", "kept"), title: "Before the ranking change" },
+    { selection_revision: 1, depth: 1, divergence: null, divergence_unknown: "no_shared_prefix", parent_thread_id: "lead", pruned_originals: false, running: false, size: branchSize(9, null), state: "branch", thread_id: "plain-child", tip: tip("p9", "child work"), title: "Plain child" },
   ],
   limits: { ancestors: 32, bytes: "not_measured", excerpt_chars: 160, family_threads: 256, request_scan_rows: 256 },
   root_parent_unavailable: false,
@@ -282,7 +285,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
       case "apps.call":
         return { ok: true, result: { ok: true, result: { echoed: a.op } } };
       case "thread.branches":
-        return { ok: true, result: fixtureBranches };
+        return { ok: true, result: { ...fixtureBranches, filters: { thread_id: a.thread_id } } };
       case "thread.rewind":
         return { ok: true, result: a.dry_run ? fixtureRewind : { ...fixtureRewind, dry_run: false, branch_thread_id: "kept" } };
       case "thread.set":
@@ -306,7 +309,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
         if (a.group_by === "thread") return { ok: true, result: usagePage([usageItem("lead", { input: 3000000, cached: 2000000, output: 40000, compactions: 3, summary: [4200, 320, 500] }), usageItem("gone-thread", { input: 1000, cached: 0, output: 10 })]) };
         return { ok: true, result: usage[String(a.cursor ?? "first")] };
       case "compact.list":
-        return { ok: true, result: fixtureCompaction };
+        return { ok: true, result: { ...fixtureCompaction, limit: a.limit, filters: { thread_id: a.thread_id } } };
       case "storage.status":
         return { ok: true, result: fixtureStorage };
       case "index.status":

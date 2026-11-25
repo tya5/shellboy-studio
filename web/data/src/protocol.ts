@@ -183,8 +183,8 @@ export interface Page<T, Filters = unknown> {
 
 export interface CompactListResult extends Record<string, unknown> {
   items: unknown[];
-  limit?: number;
-  filters?: CompactListFilters;
+  limit: number;
+  filters: CompactListFilters;
   more: boolean;
   period: unknown;
   coverage: unknown;
@@ -247,14 +247,14 @@ export interface ThreadSummary {
   last_end_message?: EndMessageMarker | null;
   latest_run_stop_reason?: string | null;
   awaiting_named_count?: number;
-  /** Absent means true; false makes count 17 a lower bound, not an exact count. */
-  awaiting_named_count_exact?: boolean;
+  /** False makes the reported count a lower bound. */
+  awaiting_named_count_exact: boolean;
   awaiting_named_oldest_at?: string | null;
   awaiting_thread_count?: number;
   /** False means the total count was truncated to a lower bound. */
-  awaiting_replies_count_exact?: boolean;
+  awaiting_replies_count_exact: boolean;
   /** False means the Thread-directed count was truncated to a lower bound. */
-  awaiting_thread_count_exact?: boolean;
+  awaiting_thread_count_exact: boolean;
   /** False means the excerpt scan stopped before older selected history. */
   excerpt_complete?: boolean;
   [extra: string]: unknown;

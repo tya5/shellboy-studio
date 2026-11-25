@@ -98,8 +98,7 @@ export class PageRun<T, H = never> {
       if (cursor === undefined || capped) break;
     }
     session.read = undefined;
-    session.pages = appendCursor === undefined ? readPages : session.pages + readPages;
-    capped ||= cursor !== undefined && session.pages >= MAX_REPLAY_PAGES;
+    session.pages = appendCursor === undefined ? readPages : Math.min(MAX_REPLAY_PAGES, session.pages + readPages);
     this.stateSignal.value = { items, ...(header === undefined ? {} : { header }), loading: false, loadingMore: false, loaded: true, cursor: capped ? undefined : cursor, capped, complete: cursor === undefined && !capped };
     this.rerunIfNeeded(session);
   }
