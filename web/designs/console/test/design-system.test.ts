@@ -258,8 +258,8 @@ describe("approved list section and status rules", () => {
     expect(icon).toContain('"status.idle": "circle"');
     expect(icon).toContain('"status.waiting": "circleWait"');
     expect(icon).toContain('"status.error": "circleAlert"');
-    expect(icon).toContain('circle: <circle cx="12" cy="12" r="10" />');
-    expect(icon).toContain('circleCheck: <><circle cx="12" cy="12" r="10" />');
+    expect(icon).toContain('circle: () => <circle cx="12" cy="12" r="10" />');
+    expect(icon).toContain('circleCheck: () => <><circle cx="12" cy="12" r="10" />');
     const mark = sharedStyleFiles["../system/shared/status.css"] ?? "";
     expect(mark).not.toMatch(/\.st\.run \.i\{[^}]*transform:scale/);
     expect(mark).toContain(".st.idle .i{width:var(--size-icon-small);height:var(--size-icon-small)}");
