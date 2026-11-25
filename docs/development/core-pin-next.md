@@ -1,9 +1,12 @@
-# Core main preparation (Studio #152)
+# Core main preparation (Studio #152 / #151)
 
-Core `5a164b37deac681520362a8b93b6ca08a47eb3a9`, v0.17.0, protocol 36. The manifest and lock resolve the same published tag commit. Studio pairing is verified on this branch; Studio itself remains unreleased.
+Core `83c2d54f7166141a2908115658b3b2d54a244d2c`, protocol 40. This is the Core main snapshot selected when the task started, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
 
 | Core change | Studio adoption |
 | --- | --- |
+| #421 Unit 2, protocol 39 | Register and decode `operation.get` as `OperationReceiptDetails`; require the typed identity/state/uncertainty/replay/targets fields and preserve `outcome` as opaque JSON plus optional downstream evidence. This is observation only: never automatically replay a mutation or infer absence of effects from pending, expired, or missing evidence. No operation-evidence UI in this pin. |
+| #423 Unit 3, protocol 38 | Preserve optional `held_by` typed evidence on pending message rows, including exact `foreground_shell.execution_id`; do not derive it from hints. Core `wait` adds exact `message_delivered`, and `shell.background` targets an execution ID. Studio keeps Background on the exact reported ID; browser Ask remains denied. The bridge must not send `deliver: "now"`. |
+| #311 4a-out, protocol 40 | Core `shell.read` accepts `tail`; carry the optional wire argument in the typed args, but Studio does not use tail reads in this change. Explicit Background reports the neutral `shell_backgrounded` reason for person and Thread callers; prior person-specific historical reasons remain readable. |
 | #416 Unit 1, protocol 30 | Carry effective `limit` and typed `filters` on consumed record pages, including artifact version history. Keep omission flags distinct from selectors; preserve cursor continuation for empty pages. Branch family limits and shell scan metadata remain separate. Compaction is a capped report with `more`, not cursor pagination. Status uses top-level limit without reflecting cursor or memory; memory remains independent. Do not use the new fingerprint as a cursor or a live observation. |
 | #416 Unit 1, count and snippet coverage | Use `awaiting_replies_count_exact`, keep directional lower bounds, and preserve `excerpt_omitted`, `excerpt_truncated`, and `execution_count_exact` independently. No inferred count or coverage. |
 | #421 Unit 3, protocol 35 | Record the `message.ask` result schema as `MessageAskResult = MessageAccepted` (same accepted shape as Send); decode Ask results with the existing `MessageAccepted` acceptance decoder, including unassigned and named results. The bridge still denies browser Ask; no new Ask route. |

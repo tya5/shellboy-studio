@@ -190,7 +190,7 @@ describe("Operations", () => {
 
   it("mutations carry an operation id, reuse a given one, and report it back", async () => {
     const { t, ops } = setup();
-    const send = ops.messageSend({ thread_id: "a", text: "hi", deliver: "now" });
+    const send = ops.messageSend({ thread_id: "a", text: "hi", deliver: "complete" });
     const stop = ops.runStop("run-1");
     const retry = ops.runRetry("run-1", "mine");
     const arch = ops.threadArchive(["a", "b"], { descendants: true });
@@ -201,7 +201,7 @@ describe("Operations", () => {
       ["run.retry", "mine"],
       ["thread.archive", "uuid-3"],
     ]);
-    expect(cmds[0]!.args).toEqual({ thread_id: "a", text: "hi", deliver: "now" }); // bridge sets human/sender_label
+    expect(cmds[0]!.args).toEqual({ thread_id: "a", text: "hi", deliver: "complete" }); // bridge sets human/sender_label
     expect(cmds[3]!.args).toEqual({ thread_ids: ["a", "b"], descendants: true });
     for (const c of cmds) t.ok(c.id, c.command === "message.send" ? {message_id:"accepted-message",thread_id:"a"} : { done: true });
     await flush();
@@ -281,8 +281,14 @@ describe("Operations", () => {
     const { t, ops } = setup();
     const p = ops.operationGet("uuid-1");
     expect(t.calls()[0]).toMatchObject({ command: "operation.get", args: { operation_id: "uuid-1" } });
-    t.ok(t.calls()[0]!.id, { state: "done" });
-    expect(await p).toMatchObject({ ok: true });
+    t.ok(t.calls()[0]!.id, { operation_id: "uuid-1", instance_id: "instance-1", created_at: "2026-11-25T00:00:00Z", current_instance: true, state: "completed", outcome: { message_id: "m" }, result_uncertain: false, result_expired: false, replay_policy: "return_saved_outcome", targets: { message_id: "m" } });
+    expect(await p).toMatchObject({ ok: true, value: { replay_policy: "return_saved_outcome", outcome: { message_id: "m" } } });
+    const malformed = ops.operationGet("uuid-2");
+    t.ok(t.calls()[1]!.id, { operation_id: "uuid-2", instance_id: "i", created_at: "now", current_instance: true, state: "pending", outcome: null, result_uncertain: false, result_expired: false, replay_policy: "execute_again", targets: {} });
+    expect(await malformed).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+    const wrongIdentity = ops.operationGet("uuid-3");
+    t.ok(t.calls()[2]!.id, { operation_id: "other", instance_id: "i", created_at: "now", current_instance: true, state: "pending", outcome: null, result_uncertain: false, result_expired: false, replay_policy: "do_not_reexecute", targets: {} });
+    expect(await wrongIdentity).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
   });
 });
 
