@@ -655,9 +655,13 @@ export class ShellboyData {
         { const entry=this.entries.get(f.thread_id);
           entry?.live.apply(f); }
         break;
-      case "attempt_end":
-        this.entries.get(f.thread_id)?.live.end(f.attempt_id, f.outcome, f.output_limit);
+      case "attempt_end": {
+        const entry = this.entries.get(f.thread_id);
+        const adopted = entry?.live.end(f.attempt_id, f.outcome, f.output_limit);
+        if (adopted && !entry?.paused)
+          void this.refresher.request(`history:${f.thread_id}`);
         break;
+      }
       case "live_end": {
         const entry = this.entries.get(f.thread_id);
         if (!entry) break;

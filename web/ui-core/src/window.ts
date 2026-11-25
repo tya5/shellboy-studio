@@ -94,7 +94,8 @@ function revisionIsCurrentOrNewer(candidate: number, current: number | undefined
   return relation === "uninitialized" || relation === "same" || relation === "newer";
 }
 
-type PreparedConversationPublication = { replacement: boolean; publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
+type AdoptedBeforeRead = { handle: ThreadHandle; epoch: number; ids: ReadonlySet<string> };
+type PreparedConversationPublication = { adopted?: AdoptedBeforeRead; replacement: boolean; publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
 
 export class ConversationWindow {
   private readonly reader: WindowReader;
@@ -120,7 +121,7 @@ export class ConversationWindow {
   private scrollHandle: WindowScrollRequest | undefined;
   private acceptedGeneration = 0;
   private acceptedInput?:{ref:WindowAcceptedSnapshot;identity:ConversationSemanticInput["identity"]};
-  private conversationInputOwner: ((snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) => ConversationSemanticInput) | undefined;
+  private conversationInputOwner: ((snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[], retiring?: ReadonlySet<string>) => ConversationSemanticInput) | undefined;
   private currentThread?: { handle: ThreadHandle; threadId: string; epoch: number };
   readonly acceptedView = new AcceptedView<WindowAcceptedSnapshot>({
     generation: 0, epoch: 0, disposed: false, rows: [], range: undefined,
@@ -411,16 +412,16 @@ export class ConversationWindow {
 
   private conversationCommit?: (snapshot: WindowAcceptedSnapshot) => void;
 
-  bindConversationInput(capture: (snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) => ConversationSemanticInput, committed?: (snapshot: WindowAcceptedSnapshot) => void): boolean {
+  bindConversationInput(capture: (snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[], retiring?: ReadonlySet<string>) => ConversationSemanticInput, committed?: (snapshot: WindowAcceptedSnapshot) => void): boolean {
     if (this.disposed || this.conversationInputOwner) return false;
     this.conversationCommit = committed;
     this.conversationInputOwner = capture;
     return true;
   }
 
-  captureConversationInput(snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]): ConversationSemanticInput {
+  captureConversationInput(snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[], retiring?: ReadonlySet<string>): ConversationSemanticInput {
     if (!this.conversationInputOwner) throw new Error('ConversationWindow requires a typed input binding');
-    return this.conversationInputOwner(snapshot, replacement);
+    return this.conversationInputOwner(snapshot, replacement, retiring);
   }
 
   /** A semantic source change uses the same constructor as an arriving history cut. */
@@ -457,13 +458,24 @@ export class ConversationWindow {
     return { publication, binding, replacement };
   }
 
-  private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, ownerRead: boolean): PreparedConversationPublication | undefined {
+  private adoptedBeforeTailRead(): AdoptedBeforeRead | undefined {
+    const binding = this.currentThread;
+    if (!binding || !this.following.peek()) return;
+    const ids = new Set(binding.handle.handoff.peek().filter(record => record.adopted).map(record => record.attemptId));
+    if (ids.size) return { handle: binding.handle, epoch: binding.epoch, ids };
+  }
+
+  private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, ownerRead: boolean, adopted?: AdoptedBeforeRead): PreparedConversationPublication | undefined {
     const replacement = ownerRead ? this.currentThread?.handle.captureHandoffReplacement() : undefined;
-    return this.prepareCaptured(snapshot, capability, this.captureConversationInput(snapshot, replacement), ownerRead ? "read" : "bump", replacement !== undefined);
+    const binding = this.currentThread;
+    const qualified = adopted && adopted.handle === binding?.handle && adopted.epoch === binding.epoch
+      && this.following.peek() && (snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1) ? adopted : undefined;
+    const candidate = this.prepareCaptured(snapshot, capability, this.captureConversationInput(snapshot, replacement, qualified?.ids), ownerRead ? "read" : "bump", replacement !== undefined);
+    return candidate && { ...candidate, adopted: qualified };
   }
 
   private commitAccepted(candidate: PreparedConversationPublication, afterCommit: () => void = () => {}): boolean {
-    const { publication, binding, replacement } = candidate;
+    const { publication, binding, replacement, adopted } = candidate;
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
@@ -471,8 +483,12 @@ export class ConversationWindow {
         if (replacement) binding.handle.commitHandoffReplacement();
         afterCommit();
         this.conversationCommit?.(snapshot);
+        // The owner had saved these attempts before this tail request. They may
+        // now be outside its bounded range, but cannot still own a live suffix.
+        const adoptedAtTail = adopted?.handle === binding.handle && adopted.epoch === binding.epoch
+          && this.following.peek() && (snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1);
         for (const record of binding.handle.handoff.peek()) {
-          if (savedAttempts.has(record.attemptId)) binding.handle.releaseAcceptedHandoff(record.attemptId);
+          if (savedAttempts.has(record.attemptId) || (adoptedAtTail && record.adopted && adopted.ids.has(record.attemptId))) binding.handle.releaseAcceptedHandoff(record.attemptId);
         }
       });
       const ref = this.acceptedView.peek();
@@ -499,7 +515,7 @@ export class ConversationWindow {
     return { ...selection, rows: canonicalInput?.rows ?? selection.rows, canonicalInput, disposed: false };
   }
 
-  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability, ownerRead = false, afterCommit?: () => void): void {
+  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability, ownerRead = false, afterCommit?: () => void, adopted?: AdoptedBeforeRead): void {
     if (this.disposed || capability !== this.acceptedView.currentCapability) return;
     const epoch = this.epoch, generation = this.nextAcceptedGeneration();
     const accepted = this.acceptedView.peek(), rows = this.rangeItems();
@@ -508,7 +524,7 @@ export class ConversationWindow {
       ? accepted.canonicalInput : undefined;
     const snapshot = this.snapshotForSelection({ generation, epoch, rows, range: this.renderRange(),
       total: this.total, revision: this.revision, pending: this.status.peek() === 'loading' }, capability, canonicalInput);
-    const staged = this.prepareAccepted(snapshot, capability, ownerRead);
+    const staged = this.prepareAccepted(snapshot, capability, ownerRead, adopted);
     if (staged && !this.disposed && epoch === this.epoch && generation === this.acceptedGeneration) {
       if (this.commitAccepted(staged, afterCommit)) this.version.value++;
     }
@@ -520,6 +536,7 @@ export class ConversationWindow {
     if(!this.acceptedView.isCurrent(expected))return;
     const startIdentity=this.acceptedInput?.ref===expected?this.acceptedInput.identity:undefined;
     const follow=this.following.peek(),cancel=new Cancel();this.tailCancel=cancel;
+    const adopted=this.adoptedBeforeTailRead();
     let owner=expected;
     const semanticOwnerCurrent=()=>{
       const accepted=this.acceptedView.peek(),input=this.acceptedInput;
@@ -620,7 +637,7 @@ export class ConversationWindow {
       const generation=this.nextAcceptedGeneration();
       const snapshot=this.snapshotForSelection({generation,epoch,rows:selected,range:selected.length?{first:firstOrdinal,last:lastOrdinal}:undefined,
         total:cursor.total,revision:cursor.revision,pending:false},capability);
-      const staged=this.prepareAccepted(snapshot,capability,true);
+      const staged=this.prepareAccepted(snapshot,capability,true,adopted);
       if(!staged||!readOwnerCurrent()||generation!==this.acceptedGeneration||follow&&!this.following.peek())return;
       const replacement=new Map<number,Bucket>();
       for(const row of selected){const ordinal=row.selection!.ordinal!,index=Math.floor(ordinal/WINDOW_NODES);
@@ -770,6 +787,7 @@ export class ConversationWindow {
     const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
     this.tailCancel = cancel;
+    const adopted = this.adoptedBeforeTailRead();
     const out = await this.reader.read(args, cancel);
     if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.tailCancel !== cancel) return;
     this.tailCancel = undefined;
@@ -802,7 +820,8 @@ export class ConversationWindow {
       return;
     }
     const last = out.value.items.at(-1);
-    this.install(out.value, capability);
+    const adoptedAtTail = out.value.total === 0 || (last && ordinalOf(last) === out.value.total - 1) ? adopted : undefined;
+    this.install(out.value, capability, adoptedAtTail);
     if (capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.disposed) return;
     if (this.following.peek()) {
       this.lastAnchor = undefined;
@@ -811,7 +830,7 @@ export class ConversationWindow {
       this.bump(capability, false, () => {
         if (!this.tailAgain && (this.total === 0 || (last && ordinalOf(last) === this.total - 1)) &&
             (this.total === 0 || this.acceptedView.peek().range?.last === this.total - 1)) this.newer.value = false;
-      });
+      }, adoptedAtTail);
     }
     if (last && (ordinalOf(last) ?? -1) < this.total - 1) {
       void this.readTail(true);
@@ -863,7 +882,7 @@ export class ConversationWindow {
     for (let i = b * WINDOW_NODES; i < (b + 1) * WINDOW_NODES; i++) this.heights.clear(i);
   }
 
-  private install(result: HistoryWindowResult, capability = this.acceptedView.currentCapability): void {
+  private install(result: HistoryWindowResult, capability = this.acceptedView.currentCapability, adopted?: AdoptedBeforeRead): void {
     if (capability !== this.acceptedView.currentCapability || this.disposed) return;
     this.applyHeights(() => {
       for (const item of result.items) {
@@ -890,7 +909,7 @@ export class ConversationWindow {
     batch(() => {
       this.status.value = "ready";
       this.error.value = undefined;
-      this.bump(capability, true);
+      this.bump(capability, true, undefined, adopted);
     });
   }
 

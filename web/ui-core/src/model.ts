@@ -846,7 +846,7 @@ export class AppModel {
       this.readerTick = h.historyTick.peek();
       const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
       reader.bindCurrentThread(h);
-      reader.bindConversationInput((snapshot, replacement) => this.captureWindowConversation(reader, h, snapshot, replacement),
+      reader.bindConversationInput((snapshot, replacement, retiring) => this.captureWindowConversation(reader, h, snapshot, replacement, retiring),
         snapshot => this.applyCommittedOwnRegion(reader, h, snapshot));
       this.longReader.value = reader;
       reader.refreshConversationInput(reader.acceptedView.peek());
@@ -878,10 +878,10 @@ export class AppModel {
     return { scope, workValue, current, records, accepted, pending, eligible, identity };
   }
 
-  private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) {
+  private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[], retiring?: ReadonlySet<string>) {
     const { scope, workValue, current, records, accepted, pending, eligible, identity } = this.windowConversationSource(reader, handle, snapshot, replacement);
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId, records,
-      work: captureCurrentWork(handle.threadId, workValue), current });
+      work: captureCurrentWork(handle.threadId, workValue), current, retiring });
     const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
     const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId ? pending : undefined;
     const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];

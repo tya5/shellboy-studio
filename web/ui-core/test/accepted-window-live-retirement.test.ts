@@ -484,3 +484,27 @@ it("collapses a saved tool association without leaving a matching live preview",
   expect(f.handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(false);
  }finally{f.w.dispose();f.data.stop();}
 });
+
+
+it("retires adopted attempts skipped by the bounded tail without dropping unconfirmed previews", async () => {
+  const f = await rig(150);
+  const adopted = canonicalAttemptId(1), unconfirmed = canonicalAttemptId(2), active = canonicalAttemptId(3);
+  try {
+    await f.settle();
+    f.w.following.value = false;
+    f.owner.append(8);
+    f.producer.advance(adopted);
+    f.t.push({ t: "attempt_end", thread_id: "t", attempt_id: adopted, outcome: "adopted", seq: 1 });
+    f.producer.advance(unconfirmed);
+    f.owner.append(220);
+    f.producer.advance(active);
+    await flush();
+    f.w.changed();
+    expect(f.handle.handoff.peek().map(record => record.attemptId)).toEqual([adopted, unconfirmed, active]);
+    f.w.jumpToEnd();
+    await f.settle();
+    expect(f.w.acceptedView.peek().range?.last).toBe(377);
+    expect(f.handle.handoff.peek().map(record => record.attemptId)).toEqual([unconfirmed, active]);
+    expect(f.w.acceptedView.peek().displayPlan?.localRegion.tailRows.flatMap(row => row.kind === "live" ? [row.item.source.attemptId] : [])).toEqual([unconfirmed, active]);
+  } finally { f.w.dispose(); f.data.stop(); }
+});
