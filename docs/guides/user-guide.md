@@ -91,6 +91,12 @@ The screen updates in place as Threads change: rows, your selected message and t
 
 ## Inspect usage and cost
 
+In **Analytics > Overview**, choose **24 hours** under **Period** to see hourly request bars for the last 24 hours across all Threads. Select a bar or use **Previous bucket** and **Next bucket** to move between hours. Open **Show values as a table** for exact counts.
+
+**Compare with previous 24 hours** starts off, and Studio remembers your choice in this browser. The earlier period appears as outlines behind the current bars. Differences are shown only when both periods are complete and both values are available. When the previous count is zero, you can still see the count difference, but not a percentage change.
+
+Select an hour to see its Threads ranked by requests. **Open conversation** opens that Thread without scrolling to the selected hour. Use **Show models for Thread** to see the selected hour's requests by model for one Thread. The Overview chart and totals still cover all Threads.
+
 Open the global **Analytics** screen and choose a **Period**. Under **By Thread**, compare **Excl. cached** (conversation other plus all summaries), **Total**, **Cached input** (conversation only), or **Summary tokens**. The bars and shares follow the selected metric. An incomplete scan does not show rankings. Open a Thread row for its exact breakdown and model usage in the same period; **Back to ranking** returns to that row. **Detailed usage table** keeps the recorded counters, cache rates and weighted values available. Summary usage is separate and is not attributed to models. **Show more usage rows** reveals more rows already read. Incomplete totals can be lower bounds; a missing value is not zero. **Cache rate** is the cached share of conversation input where the counters support a comparison. **Effective tokens** uses editable cached-input and output weights stored in this browser. Neither that value nor **Summary cost** is a currency amount or a provider bill.
 
 
@@ -231,6 +237,12 @@ Tab または Shift+Tab で行メニューから出ると、その行の外の�
 スレッドが変わっても画面はその場で更新され、行、選んだメッセージ、スクロール位置はそのまま残ります。
 
 ### 使用量とコストを確認する
+
+全体の **分析 > 概要** で **期間** を **24 時間** にすると、直近 24 時間のリクエスト数を 1 時間ごとの棒で確認できます。棒を選ぶか、**前の区間** と **次の区間** で表示する時間帯を切り替えます。正確な件数は **値を表で表示** で確認できます。
+
+**前の 24 時間と比べる** は初めはオフで、選んだ設定はこのブラウザに保存されます。前の期間の件数は、今回の棒の背後に輪郭で表示されます。両方の期間の集計が完了し、両方の値がそろっているときだけ差が表示されます。前の件数がゼロなら件数の差は表示されますが、増減率は表示されません。
+
+時間帯を選ぶと、その時間帯のリクエスト数が多い順にスレッドが並びます。**会話を開く** でそのスレッドを開けますが、選んだ時間帯までは移動しません。**Thread のモデルを表示** でスレッドを 1 つ選ぶと、その時間帯のリクエスト数をモデル別に確認できます。概要のグラフと合計は引き続き全スレッドが対象です。
 
 全体の **分析** で **期間** を選び、**スレッド別** で **キャッシュを除く**（会話のその他と要約全体）、**合計**、**キャッシュ済み入力**（会話のみ）、**要約のトークン** を比較できます。棒と割合は選択項目に対応し、集計が不完全なときは順位を表示しません。行を開くと同じ期間の内訳とモデル別使用量を確認でき、**ランキングに戻る** で元の行に戻ります。**詳細な使用量の表** では記録済みの内訳、キャッシュ率、実効トークンを引き続き確認できます。要約は別集計で、モデル別には配分しません。**使用量の続きを表示** は読み込み済みの行を追加で表示します。集計が不完全な場合は下限になり、値がない場合はゼロとは限りません。**キャッシュ率** は比較できる会話入力のうちキャッシュを使った割合です。**実効トークン** のキャッシュ入力と出力の重みはブラウザに保存されます。実効トークンも **要約コスト** も金額ではありません。
 

@@ -6,6 +6,7 @@ The macOS and Windows desktop bundle versions come from the Studio package versi
 
 ## Changes since v0.4.2
 
+- **Analytics > Overview** now shows the last **24 hours** as hourly request bars. Use the previous and next controls to select an hour, or open the exact-values table. Comparison with the preceding 24 hours starts off and Studio remembers your choice. Differences are shown only when both periods are complete and both values are available; percentage change also requires a previous value above zero. Select an hour to see Threads ranked by requests. Open a conversation without jumping to that hour, or choose one Thread to see its requests by model. See [Inspect usage and cost](guides/user-guide.md#inspect-usage-and-cost) (#147).
 - Running indicators and the conversation animation do less browser painting work without changing what they signal (#144).
 - On a Mac, **Option + number** now works with the physical number row even when Option changes the character typed. The [keyboard shortcuts section](guides/user-guide.md#keyboard-shortcuts) lists the supported keys and where they work.
 - If you send a message and scroll back, returning to the latest messages now replaces the pending row with the saved message, even if you scroll away again while the update is loading (#154).
