@@ -289,8 +289,12 @@ export class ConversationWindow {
     // Missing tail evidence is not a user detach and cannot create follow intent.
     const pendingTail = !!this.tailCancel || this.verifying || this.tailAgain;
     const follow = atBottom && (pendingTail ? this.following.peek() : now.last === this.total - 1);
+    if (follow && this.newer.peek()) {
+      // Reaching the loaded end does not consume a deferred owner hint.
+      this.jumpToEnd();
+      return;
+    }
     if (follow !== this.following.peek()) this.following.value = follow;
-    if (follow && this.newer.peek()) this.newer.value = false;
     const r = now;
     const wanted = new Set<number>();
     for (let b = Math.floor(r.first / WINDOW_NODES); b <= Math.floor(r.last / WINDOW_NODES); b++) wanted.add(b);

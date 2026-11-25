@@ -187,6 +187,75 @@ for(const outcome of ['ack first','late ACK','late error','lost ACK'] as const)i
   expect(host.querySelector<HTMLButtonElement>('.composer-root button:last-child')?.disabled).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+it.each(['accepted', 'failed', 'scope ended'] as const)('settles an off-screen send: %s', async outcome => {
+ const node = (id: string, kind: HistoryItem['kind'] = 'user', operationId?: string): HistoryItem => ({
+  node_id:id, kind, items:[{kind:'text', item_identity:`item-${id}`, text:id, text_complete:true}],
+  ...(operationId ? {provenance:{client_operation_id:operationId}} : {}),
+ });
+ const history = Array.from({length:480}, (_, i) => node(`old-${i}`));
+ const f = await fixtureConversation({nodes:history});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ const mark = async () => { await act(async () => {
+  f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false}); await settle(f.t,f.db);
+ }); };
+ const save = (...rows: HistoryItem[]) => { f.db.history.lead = [...history,...rows]; f.db.historyRevisions.lead!++; };
+ const getRect = HTMLElement.prototype.getBoundingClientRect;
+ HTMLElement.prototype.getBoundingClientRect = function(this:HTMLElement) {
+  const rect=getRect.call(this);
+  return this.matches('.conversation-height-token, [data-viewport-key]') ? new DOMRect(rect.x, rect.y, rect.width, 40) : rect;
+ };
+ try {
+  await act(async () => { render(<App context={context}/>,host); await settle(f.t,f.db); });
+  const box=host.querySelector<HTMLElement>('.scroll-frame > .scroll')!;
+  const rect=box.getBoundingClientRect();
+  box.querySelector<HTMLElement>('.vspace')!.getBoundingClientRect=()=>new DOMRect(rect.x, -box.scrollTop, rect.width, rect.height);
+  Object.defineProperties(box,{scrollHeight:{value:10000},clientHeight:{value:120}});
+  await act(async () => { box.scrollTop=9880; box.dispatchEvent(new Event('scroll')); await flush(); });
+  await act(async () => {
+   box.dispatchEvent(new WheelEvent('wheel',{deltaY:-800,bubbles:true}));
+   box.scrollTop=1; box.dispatchEvent(new Event('scroll')); await flush();
+  });
+  const win = f.model.longReader.peek()!;
+  expect(win.following.peek()).toBe(false);
+  expect(host.querySelector('[data-node="old-479"]')).toBeNull();
+  const windowReads = f.t.calls('history.window').length;
+  let sent!:Promise<boolean>;
+  await act(async () => { sent=f.model.send('sent off-screen'); await flush(); });
+  const call=f.t.calls('message.send').at(-1)!; f.db.answered.add(call.id);
+  expect(f.model.pendingOwnMessage.peek()?.operationId).toBe(call.operation_id);
+  expect(host.querySelector('[data-pending-own-message]')).toBeNull();
+  const earlier = node('earlier-answer','assistant_response');
+  save(earlier); await mark();
+  expect(f.model.pendingOwnMessage.peek()?.operationId).toBe(call.operation_id);
+  await act(async () => {
+   if (outcome==='scope ended') f.model.navigate({view:'conversation',threadId:'stream'});
+   if (outcome==='failed') f.t.ownerError(call.id,'busy');
+   else f.t.ok(call.id,{message_id:'accepted-node',thread_id:'lead'});
+   expect(await sent).toBe(outcome==='accepted'); await settle(f.t,f.db);
+  });
+  if (outcome==='accepted') {
+   save(earlier,node('accepted-node','user',call.operation_id),node('new-answer','assistant_response')); await mark();
+   expect(win.following.peek()).toBe(false);
+   expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:call.operation_id}]);
+   expect(host.querySelector('[data-node="accepted-node"]')).toBeNull();
+  }
+  if (outcome!=='scope ended') {
+   expect(win.newer.peek()).toBe(true);
+   expect(f.t.calls('history.window')).toHaveLength(windowReads);
+  }
+  if (outcome==='scope ended') await act(async () => { f.model.openThread('lead'); await settle(f.t,f.db); });
+  else await act(async () => { box.scrollTop=9880; box.dispatchEvent(new Event('scroll')); await settle(f.t,f.db); });
+  expect(f.model.acceptedOwnMessages.peek()).toEqual([]);
+  const tail = [...host.querySelectorAll<HTMLElement>('[data-node]')].map(row=>row.dataset.node).filter(id=>id==='earlier-answer'||id==='accepted-node'||id==='new-answer');
+  expect(tail).toEqual(outcome==='accepted' ? ['earlier-answer','accepted-node','new-answer'] : ['earlier-answer']);
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(outcome==='failed'?1:0);
+  if (outcome==='failed') expect(host.querySelector('[data-pending-phase="failed"]')).not.toBeNull();
+  else expect(f.model.pendingOwnMessage.peek()).toBeUndefined();
+  expect(f.t.calls('message.send')).toHaveLength(1);
+ } finally { HTMLElement.prototype.getBoundingClientRect=getRect; render(null,host);host.remove();f.model.dispose();f.data.stop(); }
+});
+
 it('an old acknowledgement never clears a newer draft generation',async()=>{
  const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void;
  try{
