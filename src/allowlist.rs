@@ -30,7 +30,7 @@ pub fn access(command: &Command) -> Access {
         | Command::ArtifactList(..)
         | Command::ArtifactGet(..)
         | Command::HistoryList(..)
-        | Command::HistoryGet(..)
+        | Command::HistoryRead(..)
         | Command::OperationGet(..)
         // Analytics and Settings: saved facts only, no provider request and no receipt.
         | Command::UsageGet(..)
@@ -134,7 +134,7 @@ pub fn access(command: &Command) -> Access {
 fn only_parent(args: &shellboy::protocol::ThreadSetArgs) -> bool {
     let mut rest = args.clone();
     rest.thread_id = None;
-    let has_parent = rest.parent_id.take().is_some();
+    let has_parent = rest.parent_thread_id.take().is_some();
     has_parent && rest == Default::default()
 }
 

@@ -939,7 +939,7 @@ export class ShellboyData {
     for (const id of ids) if (!returned.has(id)) activeStatus.delete(id);
     const shapeChanged = ids.some(id => {
       const old = before.get(id); const current = returned.get(id);
-      return !old || !current || old.parent_id !== current.parent_id;
+      return !old || !current || old.parent_thread_id !== current.parent_thread_id;
     });
     const filter = this.listSig.peek().filter ?? {};
     const filterMembershipMayChange = ids.some(id => {

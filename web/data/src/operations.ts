@@ -1,3 +1,4 @@
+import { recordFilters, validPageFacts, type ArtifactScopeFilter, type MessageListFilters, type NameListFilters, type ShellListFilters, type StatusFilters, type ThreadListFilters, type ThreadScopeFilter } from "./record-pages";
 import {HistoryWindowInput} from './history-input';
 import {decodeHistoryWindow} from './history-decoder';
 import {sanitizeMessageRelation,validHistoryProvenance} from './message-provenance';
@@ -15,8 +16,9 @@ import type {
   ArtifactSummary,
   ArtifactVersionStamp,
   CompactListArgs,
+  CompactListResult,
   HistoryBody,
-  HistoryGetArgs,
+  HistoryReadArgs,
   HistoryItem,
   HistoryWindowArgs,
   HistoryWindowResult,
@@ -61,7 +63,7 @@ const outcomeDecoder = <T>(decoder: Decoder<T>) => (raw: unknown): Outcome<T> =>
   catch(error) { return { ok:false, error:{kind:'invalid_response',message:error instanceof InputCaptureError ? error.reason : 'invalid-input'} }; }
 };
 
-function pageOf<T>(item: (v: unknown) => string | undefined): Decoder<Page<T>> {
+function pageOf<T, F>(item: (v: unknown) => string | undefined, filters: (v: unknown) => boolean): Decoder<Page<T, F>> {
   return (v) => {
     if (!isObject(v) || !Array.isArray(v.items)) return { ok: false, reason: "expected a page with items" };
     for (const it of v.items) {
@@ -70,7 +72,13 @@ function pageOf<T>(item: (v: unknown) => string | undefined): Decoder<Page<T>> {
     }
     if (v.next_cursor !== undefined && v.next_cursor !== null && typeof v.next_cursor !== "string")
       return { ok: false, reason: "next_cursor must be a string" };
-    const page: Page<T> = { items: v.items as T[] };
+    const page: Page<T, F> = { items: v.items as T[] };
+    // Some synthetic and older snapshot readers still provide the bare envelope.
+    if (Object.hasOwn(v, "limit") || Object.hasOwn(v, "filters")) {
+      if (!validPageFacts(v, filters)) return { ok: false, reason: "invalid record page metadata" };
+      page.limit = v.limit as number;
+      page.filters = v.filters as F;
+    }
     if (typeof v.next_cursor === "string") page.next_cursor = v.next_cursor;
     return { ok: true, value: page };
   };
@@ -78,8 +86,8 @@ function pageOf<T>(item: (v: unknown) => string | undefined): Decoder<Page<T>> {
 
 export const REPLY_PAGE_SIZE = 16;
 
-function replyPage(direction: ReplyDirection): Decoder<Page<PendingReply>> {
-  const decode = pageOf<PendingReply>(row => {
+function replyPage(direction: ReplyDirection): Decoder<Page<PendingReply, MessageListFilters>> {
+  const decode = pageOf<PendingReply, MessageListFilters>(row => {
     if (!isObject(row) || typeof row.message_id !== "string" || !row.message_id
       || typeof row.created_at !== "string" || typeof row.excerpt !== "string"
       || (row.asked_by !== null && typeof row.asked_by !== "string")
@@ -94,7 +102,7 @@ function replyPage(direction: ReplyDirection): Decoder<Page<PendingReply>> {
     if ("owed_by" in direction && !(recipient.kind === "thread" && recipient.thread_id === direction.owed_by)
       || "asked_by" in direction && row.asked_by !== direction.asked_by
       || "to" in direction && !(recipient.kind === "name" && recipient.name === direction.to)) return "pending reply does not match its direction";
-  });
+  }, recordFilters.messages);
   return raw => {
     if (!isObject(raw) || !Array.isArray(raw.items) || raw.items.length > REPLY_PAGE_SIZE)
       return { ok: false, reason: "expected a bounded pending reply page" };
@@ -108,14 +116,14 @@ function replyPage(direction: ReplyDirection): Decoder<Page<PendingReply>> {
 export const ATTACHMENT_PAGE_SIZE = 50;
 export const CAPABILITY_ATTACHMENT_PAGE = "attachment.list.page";
 
-function attachmentPage(threadId: string): Decoder<Page<AttachmentDetails>> {
-  const decode = pageOf<AttachmentDetails>(row => !(isObject(row) && row.thread_id === threadId
+function attachmentPage(threadId: string): Decoder<Page<AttachmentDetails, ThreadScopeFilter>> {
+  const decode = pageOf<AttachmentDetails, ThreadScopeFilter>(row => !(isObject(row) && row.thread_id === threadId
     && typeof row.attachment_id === "string" && row.attachment_id.length > 0
     && typeof row.source_node_id === "string" && typeof row.delivery_status === "string"
     && typeof row.path === "string" && (row.kind === "file" || row.kind === "image")
     && typeof row.selected === "boolean" && typeof row.managed === "boolean"
     && (row.unavailable_reason === undefined || typeof row.unavailable_reason === "string"))
-    ? "invalid attachment details" : undefined);
+    ? "invalid attachment details" : undefined, recordFilters.thread(threadId));
   return raw => {
     if (!isObject(raw) || !Array.isArray(raw.items) || raw.items.length > ATTACHMENT_PAGE_SIZE)
       return { ok: false, reason: "expected a bounded attachment page" };
@@ -134,17 +142,17 @@ const validArtifactVersion = (raw: unknown): boolean => isObject(raw) && validAr
 const validArtifactIdentity = (raw: Record<string, unknown>, thread: string): boolean => raw.thread_id === thread
   && typeof raw.artifact_id === "string" && raw.artifact_id.length > 0
   && typeof raw.created_at === "string" && typeof raw.updated_at === "string";
-function artifactPage<T>(raw: unknown, invalidItem: (item: unknown) => string | undefined, key: (item: T) => string | number): Decoded<Page<T>> {
+function artifactPage<T, F>(raw: unknown, invalidItem: (item: unknown) => string | undefined, key: (item: T) => string | number, filters: (x: unknown) => boolean): Decoded<Page<T, F>> {
   if (!isObject(raw) || !Array.isArray(raw.items) || raw.items.length > ARTIFACT_PAGE_SIZE) return { ok: false, reason: "expected a bounded artifact page" };
-  const page = pageOf<T>(invalidItem)(raw);
+  const page = pageOf<T, F>(invalidItem, filters)(raw);
   if (page.ok && new Set(page.value.items.map(key)).size !== page.value.items.length) return { ok: false, reason: "duplicate artifact page identity" };
   return page;
 }
-const decodeArtifactList = (thread: string): Decoder<Page<ArtifactSummary>> => (raw) => artifactPage(raw,
-  (item) => isObject(item) && validArtifactIdentity(item, thread) && validArtifactVersion(item.latest) ? undefined : "invalid artifact summary", (item) => item.artifact_id);
+const decodeArtifactList = (thread: string): Decoder<Page<ArtifactSummary, ThreadScopeFilter>> => (raw) => artifactPage(raw,
+  (item) => isObject(item) && validArtifactIdentity(item, thread) && validArtifactVersion(item.latest) ? undefined : "invalid artifact summary", (item) => item.artifact_id, recordFilters.thread(thread));
 const decodeArtifactHistory = (thread: string, artifact: string): Decoder<ArtifactHistory> => (raw) => {
   if (!isObject(raw) || raw.artifact_id !== artifact || !validArtifactIdentity(raw, thread) || !validArtifactVersion(raw.latest)) return { ok: false, reason: "invalid artifact history identity" };
-  const page = artifactPage<ArtifactVersionStamp>(raw.versions, (item) => validArtifactStamp(item) ? undefined : "invalid artifact version stamp", (item) => item.version);
+  const page = artifactPage<ArtifactVersionStamp, ArtifactScopeFilter>(raw.versions, (item) => validArtifactStamp(item) ? undefined : "invalid artifact version stamp", (item) => item.version, recordFilters.artifact(artifact));
   return page.ok ? { ok: true, value: { ...(raw as Omit<ArtifactHistory, "versions">), versions: page.value } } : page;
 };
 const decodeArtifactVersion = (thread: string, artifact: string, version: number): Decoder<ArtifactSelected> => (raw) =>
@@ -203,7 +211,7 @@ const decodeDeleteSetPreview = (ids: readonly string[]): Decoder<ThreadDeleteSet
   return { ok: true, value: v as unknown as ThreadDeleteSetPreview };
 };
 
-const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
+const decodeThreadPage = pageOf<ThreadSummary, ThreadListFilters>(summaryProblem, recordFilters.threads);
 const decodeDetails: Decoder<ThreadDetails> = (v) =>
   isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string"
     ? validEndMessage(v.last_end_message)
@@ -221,18 +229,18 @@ const decodeTurnDetails = (turnId: string, runId?: string, threadId?: string): D
   isObject(v) && v.turn_id === turnId && (runId === undefined || v.run_id === runId) && typeof v.run_id === "string" && typeof v.thread_id === "string" && (threadId === undefined || v.thread_id === threadId) && typeof v.state === "string" && turnStates.has(v.state as TurnState) && optionalString(v, "recovery_hint")
     ? { ok: true, value: v as TurnDetails }
     : { ok: false, reason: "turn.get result does not match the requested identity or lacks state" };
-const decodeShellPage = pageOf<ShellEntry>((v) =>
+const decodeShellPage = pageOf<ShellEntry, ShellListFilters>((v) =>
   isObject(v) && typeof v.execution_id === "string" && typeof v.state === "string"
     ? undefined
-    : "shell entry lacks execution_id or state",
+    : "shell entry lacks execution_id or state", recordFilters.shells,
 );
 export const ACTIVE_STATUS_PAGE_LIMIT = 200;
 
-const workPage = pageOf<WorkItem>((v) =>
+const workPage = pageOf<WorkItem, StatusFilters>((v) =>
   isObject(v) && typeof v.kind === "string" && typeof v.id === "string" && typeof v.state === "string" && typeof v.thread_id === "string"
-    ? undefined : "status item lacks kind, id, state or thread_id",
+    ? undefined : "status item lacks kind, id, state or thread_id", recordFilters.status,
 );
-const decodeThreadWorkPage = (threadId: string): Decoder<Page<WorkItem>> => (v) => {
+const decodeThreadWorkPage = (threadId: string): Decoder<Page<WorkItem, StatusFilters>> => (v) => {
   const decoded = workPage(v);
   if (!decoded.ok) return decoded;
   if (decoded.value.items.length > 200) return { ok: false, reason: "status page exceeds 200 items" };
@@ -240,11 +248,11 @@ const decodeThreadWorkPage = (threadId: string): Decoder<Page<WorkItem>> => (v) 
   return decoded;
 };
 const decodeBody: Decoder<HistoryBody> = (v) => {
-  if (!isObject(v) || typeof v.node_id !== 'string' || typeof v.text !== 'string') return { ok: false, reason: 'history.get result lacks node_id or text' };
-  if (!validHistoryProvenance(v.provenance,v.kind)) return { ok: false, reason: 'history.get has invalid provenance identity' };
+  if (!isObject(v) || typeof v.node_id !== 'string' || typeof v.text !== 'string') return { ok: false, reason: 'history.read result lacks node_id or text' };
+  if (!validHistoryProvenance(v.provenance,v.kind)) return { ok: false, reason: 'history.read has invalid provenance identity' };
   if (Object.hasOwn(v, 'source_node_ids')) {
     const ids = v.source_node_ids;
-    if (!Array.isArray(ids) || ids.length > 4096 || !ids.every(id => typeof id === 'string' && id.length > 0) || new Set(ids).size !== ids.length) return { ok: false, reason: 'history.get has invalid explicit source identities' };
+    if (!Array.isArray(ids) || ids.length > 4096 || !ids.every(id => typeof id === 'string' && id.length > 0) || new Set(ids).size !== ids.length) return { ok: false, reason: 'history.read has invalid explicit source identities' };
   }
   return { ok: true, value: sanitizeMessageRelation(v as HistoryBody) };
 };
@@ -278,7 +286,7 @@ const decodeShellOutput: Decoder<ShellOutput> = (v) => {
   const stderr = decodeStderr(v.text, segments);
   return { ok: true, value: { ...page, ...(stderr && { stderr }) } as ShellOutput };
 };
-const decodeNames = pageOf<string>((v) => (typeof v === "string" ? undefined : "a name in the page is not a string"));
+const decodeNames = pageOf<string, NameListFilters>((v) => (typeof v === "string" ? undefined : "a name in the page is not a string"), recordFilters.names);
 const decodeTagResult: Decoder<TagResult> = (v) =>
   isObject(v) && Array.isArray(v.changed) && Array.isArray(v.unchanged) && Array.isArray(v.not_found)
     ? { ok: true, value: v as unknown as TagResult }
@@ -474,11 +482,11 @@ export class Operations {
     return this.run(`service.${action}`, { service_id: id }, outcomeDecoder(decodeRecord), { operationId });
   }
 
-  threadList(args: ThreadListArgs = {}, read?: ReadOptions): Promise<Outcome<Page<ThreadSummary>>> {
+  threadList(args: ThreadListArgs = {}, read?: ReadOptions): Promise<Outcome<Page<ThreadSummary, ThreadListFilters>>> {
     return this.run("thread.list", args, outcomeDecoder(decodeThreadPage), undefined, read);
   }
   /** Distinct tag names in byte order. Names only: the owner reports no counts. Needs `thread.tags`. */
-  threadTags(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string>>> {
+  threadTags(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string, NameListFilters>>> {
     return this.run("thread.tags", args, outcomeDecoder(decodeNames), undefined, read);
   }
   /**
@@ -486,13 +494,13 @@ export class Operations {
    * `thread.tags` (`{limit, cursor}` in, a page of strings out). This is the only place that says so.
    * Needs `thread.cwds`.
    */
-  threadCwds(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string>>> {
+  threadCwds(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string, NameListFilters>>> {
     return this.run("thread.cwds", args, outcomeDecoder(decodeNames), undefined, read);
   }
-  attachmentList(threadId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<AttachmentDetails>>> {
+  attachmentList(threadId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<AttachmentDetails, ThreadScopeFilter>>> {
     return this.run("attachment.list", { thread_id: threadId, limit: ATTACHMENT_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(attachmentPage(threadId)), undefined, read);
   }
-  artifactList(threadId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<ArtifactSummary>>> {
+  artifactList(threadId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<ArtifactSummary, ThreadScopeFilter>>> {
     return this.run("artifact.list", { thread_id: threadId, limit: ARTIFACT_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(decodeArtifactList(threadId)), undefined, read);
   }
   artifactHistory(threadId: string, artifactId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<ArtifactHistory>> {
@@ -514,10 +522,10 @@ export class Operations {
     if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
     return this.run<HistoryWindowInput>("history.window", args, raw => HistoryWindowInput.decode(raw), undefined, read);
   }
-  historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
-    return this.run("history.get", args, outcomeDecoder(decodeBody), undefined, read);
+  historyGet(args: HistoryReadArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
+    return this.run("history.read", args, outcomeDecoder(decodeBody), undefined, read);
   }
-  shellList(args: ShellListArgs, read?: ReadOptions): Promise<Outcome<Page<ShellEntry>>> {
+  shellList(args: ShellListArgs, read?: ReadOptions): Promise<Outcome<Page<ShellEntry, ShellListFilters>>> {
     return this.run("shell.list", args, outcomeDecoder(decodeShellPage), undefined, read);
   }
   shellCommand(executionId: string, read?: ReadOptions): Promise<Outcome<string>> {
@@ -541,8 +549,13 @@ export class Operations {
     return this.run("usage.get", args, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** Compaction observations of one Thread, newest first. */
-  compactList(args: CompactListArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("compact.list", args, outcomeDecoder(decodeRecord), undefined, read);
+  compactList(args: CompactListArgs, read?: ReadOptions): Promise<Outcome<CompactListResult>> {
+    return this.run("compact.list", args, outcomeDecoder(raw => {
+      if (!isObject(raw) || !Array.isArray(raw.items) || typeof raw.more !== "boolean" || Object.hasOwn(raw, "next_cursor")
+        || ((Object.hasOwn(raw, "limit") || Object.hasOwn(raw, "filters")) && !validPageFacts(raw, recordFilters.compactions(args.thread_id))))
+        return { ok: false, reason: "invalid compaction report" };
+      return { ok: true, value: raw as CompactListResult };
+    }), undefined, read);
   }
   storageStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("storage.status", {}, outcomeDecoder(decodeRecord), undefined, read);
@@ -555,19 +568,19 @@ export class Operations {
     return this.run("status", { memory: true }, outcomeDecoder(decodeMemoryStatus), undefined, read);
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
-  handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
+  handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem, StatusFilters>>> {
     const decode=decodeThreadWorkPage(threadId);
     const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');
       Object.freeze(out.value.items); for(const item of out.value.items){if(item.response_nodes)Object.freeze(item.response_nodes);Object.freeze(item);} Object.freeze(out.value); return out.value;});
     return this.run("status", { thread_id: threadId, all: true, limit: 200 }, owned, undefined, read);
   }
-  threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
+  threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem, StatusFilters>>> {
     const decode=decodeThreadWorkPage(threadId);
     const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');
       Object.freeze(out.value.items); for(const item of out.value.items){if(item.response_nodes)Object.freeze(item.response_nodes);Object.freeze(item);} Object.freeze(out.value); return out.value;});
     return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, owned, undefined, read);
   }
-  coreStatus(instance: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
+  coreStatus(instance: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem, StatusFilters>>> {
     return this.run("status", { limit: ACTIVE_STATUS_PAGE_LIMIT, ...(cursor ? { cursor } : {}) }, outcomeDecoder(raw => {
       const page = workPage(raw);
       return isObject(raw) && raw.instance_id === instance && page.ok && page.value.items.length <= ACTIVE_STATUS_PAGE_LIMIT
@@ -582,7 +595,7 @@ export class Operations {
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("status", { limit: 1 }, outcomeDecoder(decodeRecord), undefined, read);
   }
-  activeStatus(cursor?: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
+  activeStatus(cursor?: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem, StatusFilters>>> {
     return this.run("status", { limit: ACTIVE_STATUS_PAGE_LIMIT, ...(cursor ? { cursor } : {}) }, outcomeDecoder(workPage), undefined, read);
   }
   /** Asks the connection's endpoint for its model list (one GET). No conversation request. */
@@ -599,7 +612,12 @@ export class Operations {
   }
   /** One page of a Thread's family: ancestors, then breadth first. */
   threadBranches(args: ThreadBranchesArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("thread.branches", args, outcomeDecoder(decodeRecord), undefined, read);
+    return this.run("thread.branches", args, outcomeDecoder(raw => {
+      const decoded = decodeRecord(raw);
+      return decoded.ok && (Object.hasOwn(decoded.value, "limit") || Object.hasOwn(decoded.value, "filters"))
+        && !validPageFacts(decoded.value, recordFilters.thread(args.thread_id))
+        ? { ok: false, reason: "invalid branch page metadata" } : decoded;
+    }), undefined, read);
   }
   /** `dry_run`: runs in a rolled-back savepoint and writes nothing, so it carries no operation id. */
   threadRewindPreview(args: ThreadRewindArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
@@ -649,8 +667,10 @@ export class Operations {
   messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MessageAccepted>> {
     return this.run("message.send", args, outcomeDecoder(decodeMessageAccepted), { operationId });
   }
-  messageList(direction: ReplyDirection, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<PendingReply>>> {
-    return this.run("message.list", { ...direction, limit: REPLY_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(replyPage(direction)), undefined, read);
+  messageList(direction: ReplyDirection, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<PendingReply, MessageListFilters>>> {
+    const selector = "owed_by" in direction ? { owed_by_thread_id: direction.owed_by }
+      : "asked_by" in direction ? { asked_by_thread_id: direction.asked_by } : { to: direction.to };
+    return this.run("message.list", { ...selector, limit: REPLY_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(replyPage(direction)), undefined, read);
   }
   messageReply(messageId: string, text: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("message.reply", { message_id: messageId, text }, outcomeDecoder(decodeRecord), { operationId });
@@ -695,7 +715,7 @@ export class Operations {
     return this.run("thread.set", { thread_id: threadId, title }, outcomeDecoder(decodeDetails), { operationId });
   }
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.set", { thread_id: threadId, parent_id: parent }, outcomeDecoder(decodeDetails), { operationId });
+    return this.run("thread.set", { thread_id: threadId, parent_thread_id: parent }, outcomeDecoder(decodeDetails), { operationId });
   }
   /** Add and remove tags on several Threads at once. Needs `thread.tags`. */
   threadTag(args: ThreadTagArgs, operationId = this.newId()): Promise<Outcome<TagResult>> {

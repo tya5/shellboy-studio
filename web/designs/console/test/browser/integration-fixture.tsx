@@ -73,7 +73,7 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get(
   if (sectionGeometryFixture) {
     db.threads = {
       lead: summary('lead', { title: 'Geometry lead', cwd: '/fixture/geometry', activity: 'tools' }),
-      child: summary('child', { title: 'Geometry child', cwd: '/fixture/geometry', parent_id: 'lead', awaiting_human_count: 1 }),
+      child: summary('child', { title: 'Geometry child', cwd: '/fixture/geometry', parent_thread_id: 'lead', awaiting_human_count: 1 }),
       other: summary('other', { title: 'Geometry other', cwd: '/fixture/other', activity: 'failed' }),
     };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
@@ -86,7 +86,7 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get(
       lead: summary('lead', {title:'Leader',cwd:'/fixture/work',activity:'tools',tags:['pin']}),
       secretary: summary('secretary', {title:'Secretary',cwd:'/fixture/work',awaiting_named_count:1,tags:['pin','mail']}),
       parent: summary('parent', {title:'Core worker',cwd:'/fixture/work'}),
-      child: summary('child', {title:'Child task',cwd:'/fixture/work',parent_id:'parent',awaiting_named_count:1}),
+      child: summary('child', {title:'Child task',cwd:'/fixture/work',parent_thread_id:'parent',awaiting_named_count:1}),
       other: summary('other', {title:'Studio worker',cwd:'/fixture/work',activity:'tools'}),
       outside: summary('outside', {title:'Architect',cwd:'/fixture/other',activity:'failed'}),
     };
@@ -106,7 +106,7 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get(
     return;
   }
   if (params.get('state') === 'awaiting') {
-    Object.assign(db.details.lead!, { parent_id: 'organization', shells_count: 1, pending_replies: { owed_by: { count: 1, exact: true }, asked_by: { count: 1, exact: true } } });
+    Object.assign(db.details.lead!, { parent_thread_id: 'organization', shells_count: 1, pending_replies: { owed_by: { count: 1, exact: true }, asked_by: { count: 1, exact: true } } });
     db.replies = [pendingReply('human-5', 'lead', {kind:'name',name:'human'}, 'P5_HUMAN_QUESTION'),
       pendingReply('thread-5', 'child', {kind:'thread',thread_id:'lead'}, 'P5_THREAD_DUTY')];
   }

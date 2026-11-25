@@ -116,9 +116,9 @@ export class FakeOwnerDb {
     this.reads.push(`${c.command}${a.thread_id ? ":" + a.thread_id : ""}${a.cursor ? "@" + a.cursor : ""}`);
     switch (c.command) {
       case "message.list": {
-        const rows = this.replies.filter(reply => a.owed_by !== undefined
-          ? reply.recipient.kind === "thread" && reply.recipient.thread_id === a.owed_by
-          : a.asked_by !== undefined ? reply.asked_by === a.asked_by
+        const rows = this.replies.filter(reply => a.owed_by_thread_id !== undefined
+          ? reply.recipient.kind === "thread" && reply.recipient.thread_id === a.owed_by_thread_id
+          : a.asked_by_thread_id !== undefined ? reply.asked_by === a.asked_by_thread_id
           : reply.recipient.kind === "name" && reply.recipient.name === a.to);
         return this.page(rows, Number(a.limit), a.cursor);
       }
@@ -183,7 +183,7 @@ export class FakeOwnerDb {
         return { ok: true, result: { items: this.shells[a.thread_id!] ?? [] } };
       case "shell.read":
         return { ok: true, result: { execution_id: a.execution_id, text: this.outputs[a.execution_id!] ?? "", output_complete: true } };
-      case "history.get":
+      case "history.read":
         return { ok: true, result: { node_id: a.node_id, kind: Object.values(this.work).some((rows) => rows.some((i) => i.message_id === a.node_id)) ? "user" : "assistant_response", text: this.bodies[a.node_id!] ?? "" } };
       default:
         return { ok: true, result: {} };

@@ -13,7 +13,7 @@ describe("sidebar parent trees", () => {
     [["A", "B"], [["B", 0], ["C", 1], ["A", 0], ["B", 1], ["C", 2]]],
   ])("shows each pin %j as a root with its whole subtree", (pins, expected) => {
     const tags = (id: string) => pins.includes(id) ? ["pin"] : [];
-    const rows = [summary("A", { cwd: "/a", tags: tags("A") }), summary("B", { parent_id: "A", cwd: "/b", tags: tags("B") }), summary("C", { parent_id: "B" })];
+    const rows = [summary("A", { cwd: "/a", tags: tags("A") }), summary("B", { parent_thread_id: "A", cwd: "/b", tags: tags("B") }), summary("C", { parent_thread_id: "B" })];
     const groups = sidebarGroups(rows, pins, "C");
     expect(shape(groups)).toEqual([["pins", expected], ["all", [["A", 0], ["B", 1], ["C", 2]]]]);
     const copies = groups.flatMap(group => group.rows);
@@ -30,7 +30,7 @@ describe("sidebar parent trees", () => {
   });
 
   it("shows flat filter results in owner order, with only matching pins and no descendant counts", () => {
-    const rows = [summary("B", { parent_id: "A", tags: ["pin"] }), summary("A"), summary("D", { parent_id: "A" })];
+    const rows = [summary("B", { parent_thread_id: "A", tags: ["pin"] }), summary("A"), summary("D", { parent_thread_id: "A" })];
     const groups = sidebarGroups(rows, ["B"], "B", true);
     expect(shape(groups)).toEqual([["pins", [["B", 0]]], ["all", [["B", 0], ["A", 0], ["D", 0]]]]);
     expect(groups.flatMap(group => group.rows).every(row => !row.childCount && !row.descendants && !row.reveal)).toBe(true);

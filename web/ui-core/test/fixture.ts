@@ -26,8 +26,8 @@ export function fixtureDb(): FakeOwnerDb {
   const db = new FakeOwnerDb();
   db.threads = {
     lead: summary("lead", { title: "Improve history search", cwd: "/home/me/dev/shellboy", state: "running", activity: "tools", updated_at: at(19), excerpt: "Coordinating review and verification" }),
-    child: summary("child", { title: "Review query path", cwd: "/home/me/dev/shellboy", parent_id: "lead", state: "running", activity: "awaiting_model", updated_at: at(18), excerpt: "Inspecting ranking logic" }),
-    done: summary("done", { title: "Inspect storage", cwd: "/home/me/dev/shellboy", parent_id: "lead", state: "completed", activity: "completed", updated_at: at(10), excerpt: "Indexes verified" }),
+    child: summary("child", { title: "Review query path", cwd: "/home/me/dev/shellboy", parent_thread_id: "lead", state: "running", activity: "awaiting_model", updated_at: at(18), excerpt: "Inspecting ranking logic" }),
+    done: summary("done", { title: "Inspect storage", cwd: "/home/me/dev/shellboy", parent_thread_id: "lead", state: "completed", activity: "completed", updated_at: at(10), excerpt: "Indexes verified" }),
     broken: summary("broken", { title: "Check embedding endpoint", cwd: "/home/me/dev/rag", state: "recovery_wait", activity: "recovery", updated_at: at(19), excerpt: "Connection interrupted" }),
     hold: summary("hold", { title: "Wait for the nightly build", cwd: "/home/me/dev/rag", state: "waiting", activity: "waiting", updated_at: at(5), excerpt: "Waiting for a child" }),
   } as FakeOwnerDb["threads"];
@@ -286,9 +286,9 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
       case "thread.rewind":
         return { ok: true, result: a.dry_run ? fixtureRewind : { ...fixtureRewind, dry_run: false, branch_thread_id: "kept" } };
       case "thread.set":
-        return { ok: true, result: details(String(a.thread_id), { parent_id: a.parent_id || undefined }) };
+        return { ok: true, result: details(String(a.thread_id), { parent_thread_id: a.parent_thread_id || undefined }) };
       case "thread.fork":
-        return { ok: true, result: details("forked", { title: "Forked", parent_id: a.thread_id }) };
+        return { ok: true, result: details("forked", { title: "Forked", parent_thread_id: a.thread_id }) };
       case "thread.archive":
         return { ok: true, result: { archived: a.thread_ids, already: [], not_found: [], descendants: [] } };
       case "thread.unarchive":

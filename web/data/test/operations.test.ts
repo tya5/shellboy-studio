@@ -255,10 +255,10 @@ describe("Operations", () => {
 });
 
 describe("Operations added for the presentation", () => {
-  it("history.get, shell.list and shell.read decode what the owner returns", async () => {
+  it("history.read, shell.list and shell.read decode what the owner returns", async () => {
     const { t, ops } = setup();
     const body = ops.historyGet({ node_id: "n" });
-    t.ok(t.calls("history.get")[0]!.id, { node_id: "n", kind: "user", text: "full" });
+    t.ok(t.calls("history.read")[0]!.id, { node_id: "n", kind: "user", text: "full" });
     expect(await body).toMatchObject({ ok: true, value: { text: "full" } });
     const list = ops.shellList({ thread_id: "a", limit: 5 });
     t.ok(t.calls("shell.list")[0]!.id, { items: [{ execution_id: "e", state: "exited", exit_code: 0 }], next_cursor: null });

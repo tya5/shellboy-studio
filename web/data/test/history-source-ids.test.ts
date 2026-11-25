@@ -15,7 +15,7 @@ it('retains a strict optional attempt association and unknown provenance extras'
  const r=await decode({provenance:{attempt_id:attemptId, future_marker:'kept'}});
  expect(r.ok).toBe(true);if(r.ok)expect(r.value.provenance).toMatchObject({attempt_id:attemptId,future_marker:'kept'});
 });
-it.each(['attempt','00000000-0000-4000-8000-00000000000', '00000000-0000-4000-8000-00000000000A',null,123])('rejects malformed history.get attempt association %#',async attempt_id=>{
+it.each(['attempt','00000000-0000-4000-8000-00000000000', '00000000-0000-4000-8000-00000000000A',null,123])('rejects malformed history.read attempt association %#',async attempt_id=>{
  expect((await decode({provenance:{attempt_id}})).ok).toBe(false);
 });
 

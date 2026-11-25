@@ -28,8 +28,8 @@ it("pages only the requested direction and ignores a late continuation after swi
   pages.observe("first");
   await flush();
   const [owed, asked] = t.calls("message.list");
-  expect(owed!.args).toEqual({ owed_by: "first", limit: 16 });
-  expect(asked!.args).toEqual({ asked_by: "first", limit: 16 });
+  expect(owed!.args).toEqual({ owed_by_thread_id: "first", limit: 16 });
+  expect(asked!.args).toEqual({ asked_by_thread_id: "first", limit: 16 });
   const row = pendingReply("m", "sender", { kind: "thread", thread_id: "first" }, "Review");
   t.ok(owed!.id, { items: [row], next_cursor: "next" });
   t.ok(asked!.id, { items: [] });
@@ -37,7 +37,7 @@ it("pages only the requested direction and ignores a late continuation after swi
   pages.more("owed_by");
   await flush();
   const continuation = t.calls("message.list").at(-1)!;
-  expect(continuation.args).toEqual({ owed_by: "first", limit: 16, cursor: "next" });
+  expect(continuation.args).toEqual({ owed_by_thread_id: "first", limit: 16, cursor: "next" });
   pages.observe("second");
   t.ok(continuation.id, { items: [{ ...row, message_id: "late" }] });
   await flush();
@@ -59,14 +59,14 @@ it("refreshes every loaded reply page after a change hint without dropping the p
   expect(second.args).toMatchObject({ cursor: "page-2" });
   t.ok(second.id, { items: [item("r16")], next_cursor: "page-3" }); await flush();
   t.push({ t: "changed", config_changed: false, thread_ids: ["thread"], list: false }); await flush();
-  const owed = () => t.calls("message.list").filter(call => (call.args as { owed_by?: string }).owed_by === "thread");
+  const owed = () => t.calls("message.list").filter(call => (call.args as { owed_by_thread_id?: string }).owed_by_thread_id === "thread");
   const refreshFirst = owed().at(-1)!;
   expect((refreshFirst.args as { cursor?: string }).cursor).toBeUndefined();
   t.ok(refreshFirst.id, { items: Array.from({ length: 16 }, (_, i) => item(`r${i}`)), next_cursor: "page-2" }); await flush();
   const refreshSecond = owed().at(-1)!;
   expect((refreshSecond.args as { cursor?: string }).cursor).toBe("page-2");
   t.ok(refreshSecond.id, { items: [item("r16")], next_cursor: "page-3" });
-  const askedRefresh = t.calls("message.list").filter(call => (call.args as { asked_by?: string }).asked_by === "thread").at(-1)!;
+  const askedRefresh = t.calls("message.list").filter(call => (call.args as { asked_by_thread_id?: string }).asked_by_thread_id === "thread").at(-1)!;
   t.ok(askedRefresh.id, { items: [] }); await flush();
   expect(pages.owed_by.value.items.map(row => row.message_id)).toEqual(Array.from({ length: 17 }, (_, i) => `r${i}`));
   stop(); data.stop();
@@ -92,7 +92,7 @@ it("retains reply rows and allows More after a failed hint, until Core expires t
   expect(pages.asked_by.value.complete).toBe(true);
   pages.more("owed_by"); await flush();
   const more = t.calls("message.list").at(-1)!;
-  expect(more.args).toMatchObject({ owed_by: "thread", cursor: "retained" });
+  expect(more.args).toMatchObject({ owed_by_thread_id: "thread", cursor: "retained" });
   t.push({ t: "result", id: more.id, response: { protocol_version: 5, operation_id: "expired", ok: false, error: { code: "cursor_expired", message: "cursor expired" } } });
   await flush();
   expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, complete: false, error: { code: "cursor_expired", message: "cursor expired" } });

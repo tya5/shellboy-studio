@@ -22,10 +22,10 @@ export function threadTree(items: ThreadSummary[], pending: ReadonlyMap<string, 
   const children = new Map<string, ThreadSummary[]>();
   const roots: ThreadSummary[] = [];
   for (const s of items) {
-    if (s.parent_id !== undefined && known.has(s.parent_id)) {
-      const list = children.get(s.parent_id);
+    if (s.parent_thread_id !== undefined && known.has(s.parent_thread_id)) {
+      const list = children.get(s.parent_thread_id);
       if (list) list.push(s);
-      else children.set(s.parent_id, [s]);
+      else children.set(s.parent_thread_id, [s]);
     } else roots.push(s);
   }
   const out: ThreadRow[] = [];
@@ -40,7 +40,7 @@ export function threadTree(items: ThreadSummary[], pending: ReadonlyMap<string, 
       status: statusOf(s, count),
       depth,
       childCount: kids.length,
-      parentTitle: s.parent_id !== undefined ? known.get(s.parent_id)?.title : undefined,
+      parentTitle: s.parent_thread_id !== undefined ? known.get(s.parent_thread_id)?.title : undefined,
       pending: count,
       pendingExact: s.awaiting_named_count === undefined || s.awaiting_named_count_exact !== false,
     });

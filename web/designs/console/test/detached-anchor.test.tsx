@@ -138,14 +138,14 @@ it.each([
     await act(async () => f.detach());
     expect(readingTops()).toEqual([-10]);
     const answer = f.db.answer.bind(f.db);
-    f.db.answer = call => call.command === 'history.get'
+    f.db.answer = call => call.command === 'history.read'
       ? { ok: true, result: { node_id: 'reading', kind: 'assistant_response', text: body } }
       : answer(call);
     const button = [...f.host.querySelectorAll<HTMLButtonElement>('[data-node="reading"] button')]
       .find(button => button.textContent === f.model.t.value('convo.fullMessage'))!;
     await act(async () => { button.click(); await settle(f.t, f.db); });
     expect(f.host.textContent).toContain('New earlier paragraph.');
-    expect(f.t.calls('history.get')).toHaveLength(1);
+    expect(f.t.calls('history.read')).toHaveLength(1);
     await act(async () => { resize!([], {} as ResizeObserver); frame!(0); });
     expect(readingTops()).toEqual(expectedTops);
     expect(f.box.scrollTop).toBe(expectedScroll);

@@ -2977,7 +2977,7 @@ dependencies = [
 [[package]]
 name = "shellboy"
 version = "0.16.0"
-source = "git+https://github.com/tya5/shellboy?rev=46212b5391e2d486efec770291359a2ba671fa01#46212b5391e2d486efec770291359a2ba671fa01"
+source = "git+https://github.com/tya5/shellboy?rev=4b2575bcfb4b25787c14dd1b1fd49b6cde54c5c6#4b2575bcfb4b25787c14dd1b1fd49b6cde54c5c6"
 dependencies = [
  "arboard",
  "base64 0.23.1",
@@ -3001,6 +3001,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "shlex",
  "sqlite-vec",
  "thiserror 2.0.21",
  "tokio",

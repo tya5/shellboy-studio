@@ -66,8 +66,8 @@ describe("bounded conversation work", () => {
     db.work.lead = Array.from({ length: 12 }, (_, n) => ({ kind: "message", id: `m${n}`, message_id: `m${n}`, thread_id: "lead", state: "held" }));
     t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await settle(t, db);
-    expect(t.calls("history.get")).toHaveLength(8);
-    expect(t.calls("history.get").every((call) => (call.args as {limit_bytes: number}).limit_bytes === 1024)).toBe(true);
+    expect(t.calls("history.read")).toHaveLength(8);
+    expect(t.calls("history.read").every((call) => (call.args as {limit_bytes: number}).limit_bytes === 1024)).toBe(true);
     model.dispose();
   });
   it("uses the cancellation receipt's per-message outcome", async () => {

@@ -53,7 +53,7 @@ it("orders the complete pin band by creation time without changing filtered All 
 
 it("keeps status updates in place, persists child folds, and adds a pinned copy only after the owner event", async () => {
   const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags", "thread.cwds"], configure(db) {
-    db.threads = { lead: summary("lead", { cwd: "/alpha" }), child: summary("child", { cwd: "/beta", parent_id: "lead", awaiting_named_count: 1 }), other: summary("other", { cwd: "/alpha", tags: ["project"] }) };
+    db.threads = { lead: summary("lead", { cwd: "/alpha" }), child: summary("child", { cwd: "/beta", parent_thread_id: "lead", awaiting_named_count: 1 }), other: summary("other", { cwd: "/alpha", tags: ["project"] }) };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
   const host = document.createElement("div"); document.body.append(host);
@@ -121,7 +121,7 @@ it("keeps the owner's created order on status hints and inserts a new Thread at 
   const f = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {
     const cwd = "/alpha";
     db.threads = {
-      child: summary("child", { cwd, parent_id: "lead" }),
+      child: summary("child", { cwd, parent_thread_id: "lead" }),
       other: summary("other", { cwd }),
       lead: summary("lead", { cwd }),
     };
@@ -258,7 +258,7 @@ it("opens all ten cross-directory descendants, gives overlapping pins independen
     db.threads = { lead: summary("lead", { cwd: "/alpha", tags: ["pin"] }) };
     for (let n = 0; n < 10; n++) {
       const id = `child${n}`;
-      db.threads[id] = summary(id, { cwd: "/beta", parent_id: n === 9 ? "child0" : "lead", ...(n === 0 ? { tags: ["pin"], awaiting_named_count: 1 } : {}) });
+      db.threads[id] = summary(id, { cwd: "/beta", parent_thread_id: n === 9 ? "child0" : "lead", ...(n === 0 ? { tags: ["pin"], awaiting_named_count: 1 } : {}) });
     }
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
@@ -554,9 +554,9 @@ it("keeps archived Threads out of All and shows them with their children in a cl
     db.threads = {
       live: summary("live"),
       arch: summary("arch", archivedAt),
-      archKid: summary("archKid", { ...archivedAt, parent_id: "arch" }),
+      archKid: summary("archKid", { ...archivedAt, parent_thread_id: "arch" }),
       // An archived child whose parent is listed: a root in Archive, absent from All.
-      stray: summary("stray", { ...archivedAt, parent_id: "live" }),
+      stray: summary("stray", { ...archivedAt, parent_thread_id: "live" }),
     };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
@@ -608,7 +608,7 @@ it("keeps an archived pin in Pinned, copies it into Archive as All does, and hid
     db.threads = {
       live: summary("live"),
       kept: summary("kept", { archived_at: "2026-01-02T00:00:00Z", tags: ["pin"] }),
-      keptKid: summary("keptKid", { archived_at: "2026-01-02T00:00:00Z", parent_id: "kept" }),
+      keptKid: summary("keptKid", { archived_at: "2026-01-02T00:00:00Z", parent_thread_id: "kept" }),
     };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
