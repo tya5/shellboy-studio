@@ -38,7 +38,7 @@ try{
   assert.equal(g.scrollWidth,g.width,key);
   for (const tab of g.tabs) {
    assert(tab.left>=g.left-1 && tab.right<=g.right+1,key);
-   assert.equal(tab.shown,mode==='all'||tab.selected,key);
+   assert.equal(tab.shown,mode==='all'||(mode==='active'&&tab.selected),key);
    assert.equal(tab.name,tab.label+(tab.badge?' '+tab.badge:''),key);
   }
   assert.equal(new Set(g.tabs.map(tab=>tab.top)).size,1,`one row: ${key}`);
@@ -49,7 +49,7 @@ try{
  await until(async()=>(await fetch(base)).ok);
  for(const lang of ['en','ja']) for(const appWidth of [1600,1440]) for(const panelWidth of [null,247,340]){
   const key=`${lang}/${appWidth}/${panelWidth??'default'}`;
-  const url=`${base}&lang=${lang}&width=${appWidth}&panel=${panelWidth}`;
+  const url=`${base}&lang=${lang}&width=${appWidth}${panelWidth===null?'':`&panel=${panelWidth}`}`;
   await call('Emulation.setDeviceMetricsOverride',{width:appWidth,height:900,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url});
   await until(()=>evaluate(`location.href===${JSON.stringify(url)} && typeof window.publishPanelTabsCount==='function' && !!document.querySelector('#panel-tab-info')`));
@@ -76,6 +76,10 @@ try{
   // Give the same strip more space; selection/focus must survive both transitions.
   if(panelWidth!==null){
   await call('Emulation.setDeviceMetricsOverride',{width:2400,height:900,deviceScaleFactor:1,mobile:false});
+  await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','190px')`);
+  await until(async()=> (await measure()).mode==='icons');
+  checkGeometry(await measure(),'icons',key);
+  assert(await evaluate(`document.querySelector('.panel-tabs-heading')?.innerText.includes(${JSON.stringify(lang==='en'?'Analytics':'分析')})`),key);
   await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','1000px')`);
   await until(async()=> (await measure()).mode==='all');
   checkGeometry(await measure(),'all',key);

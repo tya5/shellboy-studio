@@ -897,7 +897,7 @@ function PanelDetail({ model, tabLabel, onBack, artifactPlatform }: { model: App
   </section>;
 }
 
-function RightPanel({ model, panelCollapsed = false, phone, destination, clearDestination }: { model: AppModel; panelCollapsed?: boolean; phone?: boolean; destination?: SettingsDestination | undefined; clearDestination: () => void }) {
+function RightPanel({ model, panelCollapsed = false, phone, destination, clearDestination, onSheetActiveLabel }: { model: AppModel; panelCollapsed?: boolean; phone?: boolean; onSheetActiveLabel?: (label: string | undefined) => void; destination?: SettingsDestination | undefined; clearDestination: () => void }) {
   const t = model.t.value;
   const caps = model.data.capabilities.value;
   const supportsAttachments = caps.includes(CAPABILITY_ATTACHMENT_PAGE);
@@ -968,7 +968,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
   };
   const select = (id: string) => { clearDestination(); model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab); };
   return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-phone-panel={phone || undefined} data-panel-rail={panelCollapsed ? "" : undefined}>
-    <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} adaptive={!phone} onSelect={select} />
+    <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} placement={phone ? "sheet" : "dock"} onSheetActiveLabel={onSheetActiveLabel} onSelect={select} />
     <div class="panel-pages">
       {tabs.map(tab => {
         const active = tab.id === selectedTab;
@@ -1002,6 +1002,7 @@ export function OrderedHistory({ model, handle, win, t, openThreadSettings }: { 
 }
 
 export function Conversation({ model, panelCollapsed = false, rightPanelWidth, onPanelWidth, phonePanel, onTogglePhonePanel, onClosePhonePanel, onOpenPhonePanel }: { model: AppModel; panelCollapsed?: boolean; rightPanelWidth?: number; onPanelWidth?: (width: number) => void; phonePanel?: boolean; onTogglePhonePanel?: () => void; onClosePhonePanel?: () => void; onOpenPhonePanel?: () => void }) {
+  const [sheetActiveLabel, setSheetActiveLabel] = useState<string>();
   const t = model.t.value;
   const handle = model.handle.value;
   const win = model.longReader.value;
@@ -1104,7 +1105,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
         width={readRightPanelWidth(rightPanelWidth)} min={RIGHT_PANEL_WIDTH_MIN} max={RIGHT_PANEL_WIDTH_MAX}
         disabled={panelCollapsed} onWidth={onPanelWidth} /> : null}
       {handle && !phonePanel ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} destination={destination} clearDestination={clearDestination} /> : null}
-      {handle && phonePanel ? <WorkSheet open title={t("panel.title")} closeLabel={t("common.close")} onClose={() => onClosePhonePanel?.()} getReturnFocusTarget={() => root.current?.querySelector<HTMLElement>(".phone-panel-footer .shell-toggle-panel") ?? null}><RightPanel key={handle.threadId} model={model} phone destination={destination} clearDestination={clearDestination} /></WorkSheet> : null}
+      {handle && phonePanel ? <WorkSheet open title={sheetActiveLabel ? `${t("panel.title")} · ${sheetActiveLabel}` : t("panel.title")} closeLabel={t("common.close")} onClose={() => onClosePhonePanel?.()} getReturnFocusTarget={() => root.current?.querySelector<HTMLElement>(".phone-panel-footer .shell-toggle-panel") ?? null}><RightPanel key={handle.threadId} model={model} phone onSheetActiveLabel={setSheetActiveLabel} destination={destination} clearDestination={clearDestination} /></WorkSheet> : null}
       {shellStopTarget ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("action.shellStop")} closeLabel={t("thread.deleteCancel")} describedBy="shell-stop-description" onClose={() => setShellStopTarget(undefined)} getReturnFocusTarget={() => shellStopReturnFocus.current}>
         <div class="shell-stop-confirmation"><p id="shell-stop-description">{t("action.shellStopConfirmCommand", { command: shellStopTarget.command })}</p><Button variant="stop" onClick={() => { const {executionId}=shellStopTarget; setShellStopTarget(undefined); void model.stopShell(executionId); }}>{t("action.shellStop")}</Button></div>
       </WorkSheet> : null}

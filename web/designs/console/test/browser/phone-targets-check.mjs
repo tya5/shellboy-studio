@@ -69,8 +69,8 @@ try {
   await until("!!document.querySelector('.app .tabbar') && !!document.querySelector('.phone-panel-footer button')", 'mounted phone fixture');
 
   await click('.phone-panel-footer button');
-  await until("!!document.querySelector('dialog[open] .panel-tabs-phone-picker select')", 'right-panel sheet tabs');
-  await assertMinHeight('dialog[open] .panel-tabs-phone-picker select', 'right-panel tabs');
+  await until(`!!document.querySelector('dialog[open] [data-tab-placement="sheet"] [role="tab"]')`, 'right-panel sheet tabs');
+  await assertMinHeight('dialog[open] [data-tab-placement="sheet"] [role="tab"]', 'right-panel tabs');
   await click('dialog[open] .work-sheet-head button');
   await until("!document.querySelector('dialog[open]')", 'sheet close');
 
