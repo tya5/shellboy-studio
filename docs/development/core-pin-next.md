@@ -1,6 +1,6 @@
 # Core main preparation (Studio #152 / #151)
 
-Core `83c2d54f7166141a2908115658b3b2d54a244d2c`, protocol 40. This is the Core main snapshot selected when the task started, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
+Core `fcc04eeb1a2bc0b2dfdb640ac58f39e751fd70ea`, protocol 40. This is the Core main snapshot selected when the task started, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
 
 | Core change | Studio adoption |
 | --- | --- |
