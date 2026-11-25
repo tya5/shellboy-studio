@@ -356,13 +356,26 @@ export class RollingUsage {
   }
 }
 
+interface BucketDrilldown {
+  key: string;
+  since: string;
+  until: string;
+  zone: string;
+  owner: string;
+  hint: number;
+  threadId?: string;
+  walk: UsageWalk;
+}
+
 export class Insights {
   readonly periodDays: Signal<PeriodDays> = signal(7);
   readonly period: Signal<Period>;
   readonly daily: UsageWalk;
   readonly rolling: RollingUsage;
   readonly byThread: UsageWalk;
-  readonly bucketThreads: Signal<UsageWalk | undefined> = signal(undefined);
+  /** One owner-keyed selected-bucket read; bucket heading and its walk publish as one value. */
+  readonly bucketDrilldown: Signal<BucketDrilldown | undefined> = signal(undefined);
+  private drilldownOwner: { owner: string; hint: number } | undefined;
   readonly compaction: Signal<CompactionState> = signal({ threadId: undefined, loading: false, events: [], limited: false, more: false, error: undefined });
 
   readonly memory: Signal<ReadState<MemoryFacts>> = signal(nothing);
@@ -403,6 +416,7 @@ export class Insights {
   showing(section: string | undefined): void {
     if (section === this.shown) return;
     this.shown = section;
+    if (section !== "rolling-overview") this.clearBucketThreads();
     if (section !== "overview" && section !== "tokens" && section !== "compaction") this.daily.pause();
     if (section !== "threads") this.byThread.pause();
     if (section !== "compaction") this.cancelCompaction();
@@ -461,25 +475,54 @@ export class Insights {
     return new UsageWalk(this.ops, "model", () => period, threadId);
   }
 
-  /** One selected rolling bucket, clipped to the active interval; replacement cancels the prior scan. */
-  selectBucketThreads(bucket: { since: string; until: string } | undefined, threadId?: string): UsageWalk | undefined {
-    this.bucketThreads.peek()?.reset();
-    if (!bucket) { this.bucketThreads.value = undefined; return undefined; }
-    const interval = this.rolling.interval.peek();
-    if (!interval) { this.bucketThreads.value = undefined; return undefined; }
-    const since = new Date(Date.parse(bucket.since)).toISOString();
-    const until = new Date(Date.parse(bucket.until)).toISOString();
-    if (Date.parse(since) >= Date.parse(until)) { this.bucketThreads.value = undefined; return undefined; }
-    const period = { since, until, zone: interval.zone };
-    const walk = new UsageWalk(this.ops, threadId === undefined ? "thread" : "model", () => period, threadId);
-    this.bucketThreads.value = walk;
-    void walk.start();
-    return walk;
+  /** Observe the owner-wide invalidation hint and replace any selected-bucket read on change. */
+  observeRollingOwner(owner: string | undefined, hint: number): void {
+    this.rolling.observe(owner, hint);
+    const previous = this.drilldownOwner;
+    if (owner === undefined) {
+      this.drilldownOwner = undefined;
+      this.clearBucketThreads();
+      return;
+    }
+    this.drilldownOwner = { owner, hint };
+    const selected = this.bucketDrilldown.peek();
+    if (selected && (previous?.owner !== owner || previous.hint !== hint)) {
+      this.rolling.select(selected.key);
+      this.replaceBucketThreads(selected, owner, hint);
+    }
+  }
+
+  /** Explicit user selection only. A replacement cancels old work before publishing the new key. */
+  selectBucketThreads(bucket: { key: string; since: string; until: string } | undefined, threadId?: string): UsageWalk | undefined {
+    if (!bucket) { this.clearBucketThreads(); return undefined; }
+    const owner = this.drilldownOwner?.owner;
+    const interval = this.rolling.displayed.peek()?.interval;
+    if (!owner || !interval) { this.clearBucketThreads(); return undefined; }
+    const hour = interval.hours.find(candidate => candidate.key === bucket.key);
+    if (!hour) { this.clearBucketThreads(); return undefined; }
+    const since = new Date(Math.max(Date.parse(hour.since), Date.parse(bucket.since))).toISOString();
+    const until = new Date(Math.min(Date.parse(hour.until), Date.parse(bucket.until))).toISOString();
+    if (Date.parse(since) >= Date.parse(until)) { this.clearBucketThreads(); return undefined; }
+    const hint = this.drilldownOwner?.hint ?? 0;
+    batch(() => this.rolling.select(bucket.key));
+    return this.replaceBucketThreads({ key: bucket.key, since, until, zone: interval.zone, owner, hint, threadId }, owner, hint);
   }
 
   clearBucketThreads(): void {
-    this.bucketThreads.peek()?.reset();
-    this.bucketThreads.value = undefined;
+    this.bucketDrilldown.peek()?.walk.reset();
+    this.bucketDrilldown.value = undefined;
+  }
+
+  private replaceBucketThreads(selected: Omit<BucketDrilldown, "walk">, owner: string, hint: number): UsageWalk {
+    const period = { since: selected.since, until: selected.until, zone: selected.zone };
+    const walk = new UsageWalk(this.ops, selected.threadId === undefined ? "thread" : "model", () => period, selected.threadId);
+    const next = { ...selected, owner, hint, walk };
+    batch(() => {
+      this.bucketDrilldown.peek()?.walk.reset();
+      this.bucketDrilldown.value = next;
+    });
+    void walk.start();
+    return walk;
   }
 
   private ensureWalk(walk: UsageWalk): void {

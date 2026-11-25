@@ -580,6 +580,40 @@ describe("rolling Overview", () => {
     expect(hourlyTotals([]).requests).toBeUndefined();
   });
 
+  it("keeps one explicitly selected bucket read keyed by bounds, owner, hint and scope", async () => {
+    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview", settle: false });
+    model.insights.rolling.enabled.value = true;
+    await settle(t, db);
+    const interval = model.insights.rolling.interval.peek()!;
+    expect(model.insights.bucketDrilldown.peek()).toBeUndefined();
+    const first = interval.hours[8]!;
+    const second = interval.hours[9]!;
+    const firstWalk = model.insights.selectBucketThreads(first)!;
+    const firstCall = t.calls("usage.get").filter(call => (call.args as { group_by?: string }).group_by === "thread").at(-1)!;
+    expect(firstCall.args).toMatchObject({ group_by: "thread" });
+    expect(Date.parse((firstCall.args as { since: string }).since)).toBe(Date.parse(first.since));
+    expect(Date.parse((firstCall.args as { until: string }).until)).toBe(Date.parse(first.until));
+    const secondWalk = model.insights.selectBucketThreads(second)!;
+    expect(t.cancels()).toContain(firstCall.id);
+    expect(model.insights.bucketDrilldown.peek()).toMatchObject({ key: second.key, owner: "i1", hint: 0 });
+    expect(model.insights.bucketDrilldown.peek()?.walk).toBe(secondWalk);
+    const scopedWalk = model.insights.selectBucketThreads(second, "lead")!;
+    const modelCall = t.calls("usage.get").filter(call => (call.args as { group_by?: string }).group_by === "model").at(-1)!;
+    expect(t.cancels()).toContain(t.calls("usage.get").filter(call => (call.args as { group_by?: string }).group_by === "thread").at(-1)!.id);
+    expect(modelCall.args).toMatchObject({ group_by: "model", thread_id: "lead" });
+    expect(model.insights.bucketDrilldown.peek()).toMatchObject({ key: second.key, owner: "i1", hint: 0, threadId: "lead" });
+    expect(firstWalk.state.peek().status).toBe("idle");
+    model.insights.observeRollingOwner("i1", 1);
+    expect(t.cancels()).toContain(modelCall.id);
+    expect(model.insights.bucketDrilldown.peek()).toMatchObject({ key: second.key, owner: "i1", hint: 1, threadId: "lead" });
+    expect(model.insights.bucketDrilldown.peek()?.walk).not.toBe(scopedWalk);
+    model.insights.observeRollingOwner("owner-b", 1);
+    expect(model.insights.bucketDrilldown.peek()).toMatchObject({ key: second.key, owner: "owner-b", threadId: "lead" });
+    model.insights.observeRollingOwner(undefined, 0);
+    expect(model.insights.bucketDrilldown.peek()).toBeUndefined();
+    model.dispose();
+  });
+
   it("cancels a held cursor on resync and publishes the stopped replacement as partial", async () => {
     let now = NOW;
     const until = () => rollingPeriod(now, 540);

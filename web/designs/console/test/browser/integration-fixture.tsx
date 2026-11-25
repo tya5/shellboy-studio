@@ -145,7 +145,7 @@ const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { de
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 if (params.get('view') === 'analytics-24h') effect(() => model.insights.rolling.setComparison(prefs.value.analyticsCompare === true));
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; if (resizeStore) savePrefs(resizeStore, prefs.value); }, submitToken: async () => true });
-if (analyticsDrilldownFixture) setTimeout(()=>{ const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()==='24 hours'); button?.click(); t.push({t:'changed',thread_ids:['lead'],config_changed:false,list:true}); void settle(t,db).then(()=>{const interval=model.insights.rolling.interval.value;if(interval)model.insights.rolling.select(interval.hours[8]!.key);}); }, 100);
+if (analyticsDrilldownFixture) setTimeout(()=>{ const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()==='24 hours'); button?.click(); t.push({t:'changed',thread_ids:['lead'],config_changed:false,list:true}); void settle(t,db).then(()=>{const interval=model.insights.rolling.interval.value;if(interval)model.insights.selectBucketThreads(interval.hours[8]!);}); }, 100);
 addEventListener('hashchange', () => model.applyRoute(parseRoute(location.hash)));
 
 // Synthetic-only theme control; production App preferences still use the existing settings surface.

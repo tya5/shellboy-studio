@@ -631,10 +631,10 @@ export class AppModel {
           const owner = this.data.owner.value;
           const hint = this.data.listHint.value;
           this.insights.showing("rolling-overview");
-          this.insights.rolling.observe(connected && owner.state === "connected" ? owner.info.instance_id ?? "connected" : undefined, hint);
+          this.insights.observeRollingOwner(connected && owner.state === "connected" ? owner.info.instance_id ?? "connected" : undefined, hint);
           return;
         }
-        this.insights.rolling.observe(undefined, 0);
+        this.insights.observeRollingOwner(undefined, 0);
         if (!connected) return;
         const threadId = this.selectedId.value;
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
