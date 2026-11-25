@@ -5,9 +5,9 @@ import { readFamily } from "../src/branches";
 import type { Operations } from "../../data/src";
 
 const family = () => readFamily([{ thread_id: "a", root_thread_id: "a", items: [
-  { thread_id: "a", branch_kind: "unknown", tip: { node_id: "a-tip" } },
-  { thread_id: "b", parent_thread_id: "a", branch_kind: "fork", divergence: { node_id: "anchor", ordinal: 2 }, tip: { node_id: "b-tip" } },
-  { thread_id: "c", parent_thread_id: "a", branch_kind: "rewind", divergence: { node_id: "other", ordinal: 9 } },
+  { selection_revision: 1, thread_id: "a", branch_kind: "unknown", tip: { node_id: "a-tip" } },
+  { selection_revision: 1, thread_id: "b", parent_thread_id: "a", branch_kind: "fork", divergence: { parent_selection_revision: 1, node_id: "anchor", ordinal: 2 }, tip: { node_id: "b-tip" } },
+  { selection_revision: 1, thread_id: "c", parent_thread_id: "a", branch_kind: "rewind", divergence: { parent_selection_revision: 1, node_id: "other", ordinal: 9 } },
 ] }]);
 const tick = async () => { for (let n = 0; n < 12; n++) await Promise.resolve(); };
 function fixture() {
@@ -29,7 +29,7 @@ function fixture() {
 describe("limited Branches compare contracts", () => {
   it("keeps recorded kind, never infers roots/legacy/future", () => {
     const f = family(); expect(f.items.map(i => i.branchKind)).toEqual(["unknown", "fork", "rewind"]);
-    expect(readFamily([{ items: [{ thread_id: "x", branch_kind: "future" }] }]).items[0]!.branchKind).toBe("unknown");
+    expect(readFamily([{ items: [{ selection_revision: 1, thread_id: "x", branch_kind: "future" }] }]).items[0]!.branchKind).toBe("unknown");
   });
   it("only offers direct parent/child or same-parent same-anchor siblings", () => {
     const f = family(); const [a, b, c] = f.items;

@@ -79,8 +79,9 @@ export function branchesFamily(db: FakeOwnerDb, options: { running?: boolean } =
     const path = fixture.paths[id]!;
     const ordinal = split ? path.findIndex((n) => n.node_id === split) : -1;
     return {
+      selection_revision: fixture.revisions[id] ?? path.length,
       depth: parent ? (parent === "rel" ? 1 : 2) : 0,
-      divergence: split ? { node_id: split, ordinal, parent_continues: true, request: { node_id: split, text: path[ordinal]!.excerpt, truncated: false } } : null,
+      divergence: split ? { parent_selection_revision: fixture.revisions[parent!] ?? fixture.paths[parent!]!.length, node_id: split, ordinal, parent_continues: true, request: { node_id: split, text: path[ordinal]!.excerpt, truncated: false } } : null,
       divergence_unknown: null,
       parent_thread_id: parent,
       pruned_originals: false,

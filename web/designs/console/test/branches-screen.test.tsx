@@ -234,7 +234,7 @@ describe("Branches screen", () => {
     await act(async () => { button("Rewind Release notes to here")!.click(); });
     await flush();
     expect(model.branches.rewind.value.kind).toBe("ready");
-    // Core's revision is authoritative even when the family summary is byte-for-byte unchanged.
+    // Core's revision changes even when the family tip and length are unchanged.
     family.revisions.rel = 20;
     await refresh();
     expect(model.branches.targetRevision.value).toBe(20);
