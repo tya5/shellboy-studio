@@ -76,7 +76,7 @@ try{
   // Give the same strip more space; selection/focus must survive both transitions.
   if(panelWidth!==null){
   await call('Emulation.setDeviceMetricsOverride',{width:2400,height:900,deviceScaleFactor:1,mobile:false});
-  await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','190px')`);
+  await evaluate(`(()=>{const root=document.querySelector('[data-panel-root]');const active=root.querySelector('.panel-tabs-measure [data-labels=active]');root.style.setProperty('--size-right-panel', (Math.floor(active.getBoundingClientRect().width)+31)+'px');})()`);
   await until(async()=> (await measure()).mode==='icons');
   checkGeometry(await measure(),'icons',key);
   assert(await evaluate(`document.querySelector('.panel-tabs-heading')?.innerText.includes(${JSON.stringify(lang==='en'?'Analytics':'分析')})`),key);

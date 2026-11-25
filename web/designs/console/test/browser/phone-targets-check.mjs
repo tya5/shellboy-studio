@@ -71,6 +71,11 @@ try {
   await click('.phone-panel-footer button');
   await until(`!!document.querySelector('dialog[open] [data-tab-placement="sheet"] [role="tab"]')`, 'right-panel sheet tabs');
   await assertMinHeight('dialog[open] [data-tab-placement="sheet"] [role="tab"]', 'right-panel tabs');
+  const tablist = 'dialog[open] [data-tab-placement="sheet"] [role="tablist"]';
+  await click(`${tablist} [data-panel-tab="awaiting-reply"]`);
+  await evaluate(`(()=>{const root=document.querySelector('dialog[open] [data-phone-panel]');const active=root.querySelector('.panel-tabs-measure [data-labels=active]');root.style.inlineSize=(Math.floor(active.getBoundingClientRect().width)+31)+'px';})()`);
+  await until(`document.querySelector(${JSON.stringify(tablist)})?.dataset.labels==='icons' && document.querySelector('dialog[open] .work-sheet-head h2')?.textContent.endsWith('Awaiting reply')`, 'icons-only sheet and active heading');
+  assert(await evaluate(`(()=>{const row=document.querySelector(${JSON.stringify(tablist)}), tabs=[...row.querySelectorAll('[role=tab]')];return row.scrollWidth===row.clientWidth && new Set(tabs.map(tab=>tab.getBoundingClientRect().top)).size===1 && tabs.every(tab=>tab.getAttribute('aria-label') && !tab.querySelector('.panel-tab-label').getClientRects().length);})()`), 'sheet icons fit on one line with full accessible names');
   await click('dialog[open] .work-sheet-head button');
   await until("!document.querySelector('dialog[open]')", 'sheet close');
 
