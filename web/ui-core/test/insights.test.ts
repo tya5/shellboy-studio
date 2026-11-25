@@ -664,6 +664,53 @@ describe("rolling Overview", () => {
     expect(usageChange(undefined, 0)).toBeUndefined();
   });
 
+  it("pages both periods concurrently with independent cursors and fixed bounds", async () => {
+    let now = NOW;
+    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview", nowMs: () => now });
+    const rolling = model.insights.rolling;
+    const current = rollingPeriod(now, 540);
+    const previous = rollingPeriod(Date.parse(current.since), 540);
+    const hours = () => t.calls("usage.get").filter(c => (c.args as { group_by: string }).group_by === "hour");
+    const periods = [
+      { interval: current, cursor: "current-page", count: 7, walk: rolling.walk },
+      { interval: previous, cursor: "previous-page", count: 3, walk: rolling.comparison.walk },
+    ];
+    const ownCalls = (until: string) => hours().filter(c => (c.args as { until: string }).until === until);
+    rolling.setComparison(true);
+    rolling.enabled.value = true;
+    await flush();
+    expect(hours()).toHaveLength(2);
+
+    // Keep both walks in flight across the clock change and finish them out of order.
+    now += 3_600_000;
+    for (const { interval, cursor, count } of periods) {
+      const [first] = ownCalls(interval.until);
+      expect(first!.args).toMatchObject({ since: interval.since, until: interval.until, timezone: "+09:00" });
+      expect(first!.args).not.toHaveProperty("cursor");
+      db.answered.add(first!.id);
+      t.ok(first!.id, usagePage([usageItem(interval.hours[0]!.key, { count })], cursor));
+    }
+    await flush();
+    expect(hours()).toHaveLength(4);
+    for (const { interval, cursor, walk } of periods) {
+      const [, next] = ownCalls(interval.until);
+      expect(next!.args).toMatchObject({ cursor, since: interval.since, until: interval.until, timezone: "+09:00" });
+      expect(walk.state.peek().status).toBe("loading");
+    }
+    for (const { interval, count, walk } of [...periods].reverse()) {
+      const [, next] = ownCalls(interval.until);
+      db.answered.add(next!.id);
+      t.ok(next!.id, usagePage([usageItem(interval.hours[0]!.key, { count })]));
+      await flush();
+      expect(walk.state.peek().status).toBe("done");
+      expect(walk.state.peek().groups.get(interval.hours[0]!.key)?.requests).toBe(count * 2);
+    }
+    expect(hours()).toHaveLength(4);
+    expect(rolling.displayed.peek()?.interval).toEqual(current);
+    expect(rolling.comparison.interval.peek()).toEqual(previous);
+    model.dispose();
+  });
+
   it("reads the previous period only on opt-in and rejects its obsolete cursor reply after resync", async () => {
     let now = NOW;
     const current = () => rollingPeriod(now, 540);
