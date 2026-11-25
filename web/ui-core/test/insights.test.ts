@@ -629,11 +629,11 @@ describe("rolling Overview", () => {
     expect(t.cancels()).toContain(first.id);
     expect(Date.parse(argsOf(held).until)).toBe(Date.parse(last.until));
     expect(argsOf(held).timezone).toBe("+09:00");
-    expect(insights.bucketDrilldown.peek()).toMatchObject({ key: last.key, owner: "i1", hint: 0 });
+    expect(insights.bucketDrilldown.peek()).toMatchObject({ key: { bucket: last.key, owner: "i1", admitted: { hint: 0 } } });
     now += 60_000;
     t.push({ t: "resync" });
     expect(t.cancels()).toContain(held.id);
-    expect(insights.bucketDrilldown.peek()).toMatchObject({ key: last.key, until: last.until, stale: true });
+    expect(insights.bucketDrilldown.peek()).toMatchObject({ key: { bucket: last.key }, attempt: { state: "idle" } });
     db.answered.add(first.id);
     db.answered.add(held.id);
     await settle(t, db);
@@ -642,15 +642,145 @@ describe("rolling Overview", () => {
     expect(argsOf(replacement).since).toBe(argsOf(held).since);
     expect(Date.parse(argsOf(replacement).until)).toBe(Date.parse(last.until) + 60_000);
     const fresh = insights.bucketDrilldown.peek();
-    expect(fresh).toMatchObject({ key: last.key, owner: "i1" });
+    expect(fresh).toMatchObject({ key: { bucket: last.key, owner: "i1" } });
     t.ok(held.id, usagePage([usageItem("obsolete", { count: 500, input: null, cached: null, output: null })]));
     await flush();
     expect(insights.bucketDrilldown.peek()).toBe(fresh);
-    expect(fresh?.walk.state.peek().groups.has("obsolete")).toBe(false);
+    expect(fresh?.displayed?.rows.has("obsolete")).toBe(false);
     insights.observeRollingOwner("owner-b", 1, "owner-b");
     expect(insights.bucketDrilldown.peek()).toBeUndefined();
     expect(insights.rolling.displayed.peek()?.selection).toBeUndefined();
     model.dispose();
+  });
+
+  describe("bucket panel transition table", () => {
+    async function panelFixture() {
+      const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview" });
+      const { insights } = model;
+      insights.rolling.enabled.value = true;
+      await settle(t, db);
+      const hours = insights.rolling.admitted.peek()!.interval.hours;
+      const bucketCalls = () => t.calls("usage.get").filter(c => ["thread", "model"].includes((c.args as { group_by: string }).group_by));
+      const call = () => bucketCalls().at(-1)!;
+      const panel = () => insights.bucketDrilldown.peek();
+      const rows = (key: string, cursor?: string) => usagePage([usageItem(key, { count: 3, input: null, cached: null, output: null })], cursor);
+      const publish = async (result: ReturnType<typeof usagePage>) => {
+        db.answered.add(call().id);
+        t.ok(call().id, result);
+        await flush();
+      };
+      const initial = async () => {
+        insights.selectBucketThreads(hours[8]!.key);
+        await publish(rows("lead"));
+        return panel()!.displayed!;
+      };
+      const hint = async () => {
+        t.push({ t: "resync" });
+        await flush();
+        const hour = t.calls("usage.get").filter(c => (c.args as { group_by: string }).group_by === "hour").at(-1)!;
+        db.answered.add(hour.id);
+        t.ok(hour.id, usagePage([]));
+        await flush();
+      };
+      return { model, insights, t, hours, bucketCalls, call, panel, rows, publish, initial, hint };
+    }
+
+    it("select starts a read without publishing uncommitted rows", async () => {
+      const f = await panelFixture();
+      expect(f.panel()).toBeUndefined();
+      expect(f.bucketCalls()).toHaveLength(0);
+      f.insights.selectBucketThreads(f.hours[8]!.key);
+      expect(f.panel()?.attempt.state).toBe("reading");
+      expect(f.panel()?.displayed).toBeUndefined();
+      expect(f.bucketCalls()).toHaveLength(1);
+      f.model.dispose();
+    });
+
+    it("deselect removes the panel and cancels its attempt", async () => {
+      const f = await panelFixture();
+      f.insights.selectBucketThreads(f.hours[8]!.key);
+      f.insights.observeRollingOwner(undefined, 0, undefined);
+      expect(f.panel()).toBeUndefined();
+      expect(f.t.cancels()).toContain(f.call().id);
+      f.model.dispose();
+    });
+
+    it("same-key owner hint retains stale displayed rows during replacement", async () => {
+      const f = await panelFixture();
+      const displayed = await f.initial();
+      await f.hint();
+      expect(f.panel()?.displayed).toEqual({ ...displayed, stale: true });
+      expect(f.panel()?.attempt.state).toBe("reading");
+      expect(f.bucketCalls()).toHaveLength(2);
+      f.model.dispose();
+    });
+
+    it("key change clears the old heading and rows before starting the new scope", async () => {
+      const f = await panelFixture();
+      await f.initial();
+      f.insights.setBucketThread("lead");
+      expect(f.panel()?.displayed).toBeUndefined();
+      expect(f.call().args).toMatchObject({ group_by: "model", thread_id: "lead" });
+      f.model.dispose();
+    });
+
+    it.each(["first", "later"])("%s page refusal retains stale rows and Retry starts page one", async which => {
+      const f = await panelFixture();
+      const displayed = await f.initial();
+      await f.hint();
+      if (which === "later") {
+        await f.publish(f.rows("unpublished", "next"));
+        expect(f.call().args).toMatchObject({ cursor: "next" });
+      }
+      f.t.ownerError(f.call().id, "busy", "owner refused");
+      await flush();
+      expect(f.panel()?.attempt).toMatchObject({ state: "failed", error: { message: "owner refused" } });
+      expect(f.panel()?.displayed).toEqual({ ...displayed, stale: true });
+      f.insights.retryBucket();
+      expect(f.call().args).not.toHaveProperty("cursor");
+      expect(f.panel()?.attempt.state).toBe("reading");
+      expect(f.panel()?.displayed?.rows).toBe(displayed.rows);
+      f.model.dispose();
+    });
+
+    it("completed empty replaces stale rows with a fresh empty result", async () => {
+      const f = await panelFixture();
+      await f.initial();
+      await f.hint();
+      await f.publish(usagePage([]));
+      expect(f.panel()?.displayed).toMatchObject({ complete: true, stale: false });
+      expect(f.panel()?.displayed?.rows.size).toBe(0);
+      expect(f.panel()?.attempt.state).toBe("settled");
+      f.model.dispose();
+    });
+
+    it("settled data replaces old rows and publishes the admitted bounds", async () => {
+      const f = await panelFixture();
+      await f.initial();
+      await f.hint();
+      await f.publish(f.rows("replacement"));
+      expect(f.panel()?.displayed).toMatchObject({ bounds: f.panel()?.key.admitted?.bounds, complete: true, stale: false });
+      expect([...f.panel()!.displayed!.rows.keys()]).toEqual(["replacement"]);
+      f.model.dispose();
+    });
+
+    it.each([false, true])("Stop cancels and settles only reported data (page received: %s)", async received => {
+      const f = await panelFixture();
+      const displayed = await f.initial();
+      await f.hint();
+      if (received) await f.publish(f.rows("partial", "continue-here"));
+      const held = f.call();
+      f.insights.stopBucket();
+      expect(f.t.cancels()).toContain(held.id);
+      expect(f.panel()?.attempt).toMatchObject({ state: "settled", stopped: true });
+      if (received) expect(f.panel()?.displayed).toMatchObject({ complete: false, stale: false, rows: new Map([["partial", expect.anything()]]) });
+      else expect(f.panel()?.displayed).toEqual({ ...displayed, stale: true });
+      f.insights.continueBucket();
+      if (received) expect(f.call().args).toMatchObject({ cursor: "continue-here" });
+      else expect(f.call().args).not.toHaveProperty("cursor");
+      expect(f.panel()?.attempt.state).toBe("reading");
+      f.model.dispose();
+    });
   });
 
   it("cancels a held cursor on resync and publishes the stopped replacement as partial", async () => {

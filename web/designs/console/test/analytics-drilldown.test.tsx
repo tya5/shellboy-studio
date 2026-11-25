@@ -9,7 +9,7 @@ import { fixtureModel, NOW, settle, usageItem, usagePage } from '../../../ui-cor
 import { RollingOverview } from '../screens/RollingOverview';
 
 describe('Analytics selected-bucket screen path', () => {
-  it('does not read until a bucket is selected and switches the selected bucket to Thread model usage', async () => {
+  it.each([false, true])('keeps the expanded ranking and focus across a hint (first page refused: %s)', async rejectFirstPage => {
     let now = NOW;
     const { model, t, db } = await fixtureModel({ route: 'analytics', section: 'overview', settle: false, nowMs: () => now });
     const answer = db.answer.bind(db);
@@ -34,7 +34,7 @@ describe('Analytics selected-bucket screen path', () => {
       await act(async () => { next!.click(); await settle(t, db); });
       const selected = model.insights.bucketDrilldown.peek();
       expect(selected).toBeDefined();
-      expect(selected?.key).toBe(model.insights.rolling.displayed.peek()?.selection?.key);
+      expect(selected?.key.bucket).toBe(model.insights.rolling.displayed.peek()?.selection?.key);
       expect(host.textContent).toContain('Threads in this hour');
       const discloseRanks = async () => {
         const table = host.querySelector('select')!.closest('section')!.querySelector('tbody')!;
@@ -49,25 +49,35 @@ describe('Analytics selected-bucket screen path', () => {
       lastLink.focus();
       expect(document.activeElement).toBe(lastLink);
       expect(lastLink.parentElement?.textContent).toContain('1 ·');
-      const oldBounds = model.insights.bucketDrilldown.peek()!.until;
+      const oldBounds = model.insights.bucketDrilldown.peek()!.displayed!.bounds.until;
       now += 60_000;
       await act(async () => { t.push({ t: 'resync' }); await flush(); });
       expect(section.textContent).toContain('Showing the previous ranking');
-      expect(model.insights.bucketDrilldown.peek()).toMatchObject({ until: oldBounds, stale: true });
+      expect(model.insights.bucketDrilldown.peek()).toMatchObject({ displayed: { bounds: { until: oldBounds }, stale: true } });
       expect(document.activeElement).toBe(lastLink);
       expect(section.querySelectorAll('tbody tr')).toHaveLength(26);
       expect(lastLink.parentElement?.textContent).toContain('1 ·');
       const hourly = t.calls('usage.get').filter(call => (call.args as { group_by?: string }).group_by === 'hour').at(-1)!;
       await act(async () => { db.answered.add(hourly.id); t.ok(hourly.id, usagePage([])); await flush(); });
       expect(document.activeElement).toBe(lastLink);
-      expect(model.insights.bucketDrilldown.peek()).toMatchObject({ until: oldBounds, stale: true });
+      expect(model.insights.bucketDrilldown.peek()).toMatchObject({ displayed: { bounds: { until: oldBounds }, stale: true } });
+      if (rejectFirstPage) {
+        const refused = t.calls('usage.get').filter(call => (call.args as { group_by?: string }).group_by === 'thread').at(-1)!;
+        await act(async () => { db.answered.add(refused.id); t.ownerError(refused.id, 'busy', 'owner refused'); await flush(); });
+        expect(section.textContent).toContain('owner refused');
+        expect(section.textContent).toContain('Showing the previous ranking');
+        expect(document.activeElement).toBe(lastLink);
+        expect(section.querySelectorAll('tbody tr')).toHaveLength(26);
+        const retry = [...section.querySelectorAll('button')].find(button => button.textContent === 'Retry')!;
+        await act(async () => { retry.click(); });
+      }
       await act(async () => { await settle(t, db); });
-      expect(section.textContent).not.toContain('Showing the previous ranking');
       expect(document.activeElement).toBe(lastLink);
+      expect(section.textContent).not.toContain('Showing the previous ranking');
       expect(section.querySelectorAll('tbody tr')).toHaveLength(26);
-      expect(model.insights.bucketDrilldown.peek()).toMatchObject({ stale: false });
+      expect(model.insights.bucketDrilldown.peek()).toMatchObject({ displayed: { stale: false } });
       expect(lastLink.parentElement?.textContent).toContain('101 ·');
-      expect(Date.parse(model.insights.bucketDrilldown.peek()!.until)).toBe(Date.parse(oldBounds) + 60_000);
+      expect(Date.parse(model.insights.bucketDrilldown.peek()!.displayed!.bounds.until)).toBe(Date.parse(oldBounds) + 60_000);
       const scope = host.querySelector<HTMLSelectElement>('select');
       expect(scope).not.toBeNull();
       await act(async () => {

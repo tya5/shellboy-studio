@@ -107,39 +107,41 @@ export function RollingOverview({ context }: { context: DesignContext }) {
         <IconButton glyph="analytics.nextBucket" label={t("analytics.nextBucket")} onClick={() => model.insights.stepBucket(1)} />
       </div>}
     />
-    {drilldown ? <BucketDrilldown key={JSON.stringify([drilldown.owner, drilldown.key, drilldown.threadId])} model={model} t={t} bucket={drilldown} /> : null}
+    {drilldown ? <BucketDrilldown key={JSON.stringify([drilldown.key.owner, drilldown.key.bucket, drilldown.key.threadId])} model={model} t={t} bucket={drilldown} /> : null}
   </div>;
 }
 
 function BucketDrilldown({ model, t, bucket }: { model: AppModel; t: Translate; bucket: NonNullable<AppModel["insights"]["bucketDrilldown"]["value"]> }) {
   const [rankLimit, setRankLimit] = useState(25);
-  const { state, stale } = bucket;
-  const groups = [...state.groups.values()].sort((a, b) => b.requests - a.requests || a.key.localeCompare(b.key));
+  const { displayed, attempt, key: { threadId } } = bucket;
+  const bounds = displayed?.bounds ?? bucket.key.admitted?.bounds;
+  const groups = [...(displayed?.rows.values() ?? [])].sort((a, b) => b.requests - a.requests || a.key.localeCompare(b.key));
   const max = Math.max(1, ...groups.map(group => group.requests));
-  const isThreadScope = bucket.threadId !== undefined;
-  const partial = state.status !== "done" || state.coverage.scopeIncomplete || state.coverage.excludedTime > 0 || state.coverage.unknownTimeCompactions > 0 || state.coverage.malformedCompactions > 0 || state.capped === true;
+  const isThreadScope = threadId !== undefined;
   const options = [
     { value: "", label: t("analytics.allThreads") },
     ...(!isThreadScope ? groups : []).map(group => ({ value: group.key, label: model.rowById.value.get(group.key)?.summary.title ?? group.key })),
-    ...(bucket.threadId ? [{ value: bucket.threadId, label: model.rowById.value.get(bucket.threadId)?.summary.title ?? bucket.threadId }] : []),
+    ...(threadId ? [{ value: threadId, label: model.rowById.value.get(threadId)?.summary.title ?? threadId }] : []),
   ];
   const title = isThreadScope ? t("analytics.bucketModels") : t("analytics.bucketThreads");
-  const threadLabel = bucket.threadId ? model.rowById.value.get(bucket.threadId)?.summary.title ?? bucket.threadId : undefined;
+  const threadLabel = threadId ? model.rowById.value.get(threadId)?.summary.title ?? threadId : undefined;
   const rows = groups.slice(0, rankLimit).map(group => ({ key: group.key, cells: [
     <RankedBar name={isThreadScope ? group.key : model.rowById.value.get(group.key)?.summary.title ?? group.key} parts={[group.requests]} max={max} />,
     <>{group.requests.toLocaleString(model.lang.value)}{!isThreadScope ? <> · <a class="nav-link" href={formatRoute({ view: "conversation", threadId: group.key })}>{t("analytics.bucketOpen")}</a></> : null}</>,
   ] }));
-  return <Section title={title} sub={`${localLabel(bucket.since, true)} – ${localLabel(bucket.until, true)} (UTC${bucket.zone})${threadLabel ? ` · ${t("analytics.scopeThread", { thread: threadLabel })}` : ""}`} source={<code>usage.get group_by={isThreadScope ? "model" : "thread"}</code>}>
-    {stale ? <Notice tone="wait">{t("analytics.bucketStale")}</Notice> : null}
-    {!stale && state.status === "loading" ? <Notice tone="wait">{t("analytics.bucketLoading")}</Notice> : null}
-    {!stale && state.status === "stopped" ? <Notice tone="wait" actions={state.canContinue ? <Button variant="ghost" onClick={() => void bucket.walk.continue()}>{t("analytics.continue")}</Button> : undefined}>{t("analytics.stopped", { n: state.coverage.windows })}</Notice> : null}
-    {!stale && state.status === "failed" ? <Notice tone="bad" actions={state.canContinue ? <Button variant="ghost" onClick={() => void bucket.walk.continue()}>{t("analytics.continue")}</Button> : <Button variant="ghost" onClick={() => void bucket.walk.start()}>{t("analytics.retry")}</Button>}>{t("analytics.failed", { message: state.error?.message ?? "" })}</Notice> : null}
-    <Field as="select" label={t("analytics.bucketScope")} value={bucket.threadId ?? ""} options={options} onSelectChange={threadId => {
+  const subtitle = [bounds && `${localLabel(bounds.since, true)} – ${localLabel(bounds.until, true)} (UTC${bounds.zone})`, threadLabel && t("analytics.scopeThread", { thread: threadLabel })].filter(Boolean).join(" · ");
+  return <Section title={title} sub={subtitle} source={<code>usage.get group_by={isThreadScope ? "model" : "thread"}</code>}>
+    {displayed?.stale ? <Notice tone="wait">{t("analytics.bucketStale")}</Notice> : null}
+    {attempt.state === "idle" ? <Notice tone="wait">{t("analytics.bucketWaiting")}</Notice> : null}
+    {attempt.state === "reading" ? <Notice tone="wait" actions={<Button variant="ghost" onClick={() => model.insights.stopBucket()}>{t("analytics.stop")}</Button>}>{t("analytics.bucketLoading")}</Notice> : null}
+    {attempt.state === "settled" && attempt.stopped ? <Notice tone="wait" actions={attempt.continuation ? <Button variant="ghost" onClick={() => model.insights.continueBucket()}>{t("analytics.continue")}</Button> : undefined}>{t("analytics.stopped", { n: attempt.windows })}</Notice> : null}
+    {attempt.state === "failed" ? <Notice tone="bad" actions={<Button variant="ghost" onClick={() => model.insights.retryBucket()}>{t("analytics.retry")}</Button>}>{t("analytics.failed", { message: attempt.error?.message ?? "" })}</Notice> : null}
+    <Field as="select" label={t("analytics.bucketScope")} value={threadId ?? ""} options={options} onSelectChange={threadId => {
       model.insights.setBucketThread(threadId || undefined);
     }} />
-    {partial ? <Notice tone="wait">{t("usage.unfinished")} · {t("analytics.bucketPartial")}</Notice> : null}
+    {displayed && !displayed.complete ? <Notice tone="wait">{t("usage.unfinished")} · {t("analytics.bucketPartial")}</Notice> : null}
     {rows.length ? <DataTable caption={title} columns={[{ label: isThreadScope ? t("usage.model") : t("analytics.bucketThreads") }, { label: t("analytics.bucketRequests"), numeric: true }]} rows={rows} /> : null}
     {groups.length > rankLimit ? <Button variant="ghost" onClick={() => setRankLimit(rankLimit + 25)}>{t("usage.moreRows")}</Button> : null}
-    {state.status === "done" && !groups.length ? <Notice>{t("analytics.bucketEmpty")}</Notice> : null}
+    {displayed?.complete && !groups.length ? <Notice>{t("analytics.bucketEmpty")}</Notice> : null}
   </Section>;
 }

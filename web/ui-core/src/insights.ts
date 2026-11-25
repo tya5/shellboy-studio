@@ -365,15 +365,34 @@ export class RollingUsage {
   }
 }
 
-interface BucketRead {
-  key: string;
-  since: string;
-  until: string;
-  zone: string;
+// Selected-bucket panel transitions (events for an obsolete attempt are ignored):
+// Event                          | Displayed                         | Attempt
+// Select                         | Empty until a result              | Idle until admitted, then reading
+// Deselect / leave               | Remove panel                      | Cancel
+// Owner hint, same logical key    | Retain bounds + rows, mark stale  | Cancel; read admitted replacement
+// Key change (owner/bucket/scope) | Clear bounds + rows               | Cancel; admit the new key independently
+// First page refused             | Keep displayed, mark stale        | Failed; Retry from page one
+// Later page refused             | Keep displayed, mark stale        | Failed; discard attempt pages, Retry from page one
+// Completed empty                | Publish new bounds + empty rows   | Settled
+// Settled with data              | Publish new bounds + rows         | Settled; may Continue if bounded
+// Stop                           | Publish partial if data; else keep | Settled/incomplete, with explicit Continue
+// Retry / Continue               | Keep displayed, mark stale        | Read from page one / explicit saved cursor
+// Bounds are part of the request key, not the mounted panel identity. Same-bucket
+// bounds may change on a hint; the old bounds remain attached to the old rows.
+type BucketBounds = Pick<Period, "since" | "until" | "zone">;
+interface BucketKey {
+  bucket: string;
   owner: string;
-  hint: number;
-  threadId?: string;
-  walk: UsageWalk;
+  threadId: string | undefined;
+  admitted?: { hint: number; bounds: BucketBounds };
+}
+type BucketReading = { state: "reading"; walk: UsageWalk };
+type BucketAttempt = { state: "idle" } | BucketReading | { state: "failed"; error: OpError | undefined }
+  | { state: "settled"; continuation?: UsageWalk; windows: number; stopped: boolean };
+interface BucketPanel {
+  key: BucketKey;
+  displayed?: { bounds: BucketBounds; rows: WalkState["groups"]; complete: boolean; stale: boolean };
+  attempt: BucketAttempt;
 }
 
 export class Insights {
@@ -382,16 +401,8 @@ export class Insights {
   readonly daily: UsageWalk;
   readonly rolling: RollingUsage;
   readonly byThread: UsageWalk;
-  /** One owner-keyed selected-bucket read; bucket heading and its walk publish as one value. */
-  private readonly bucketRead = signal<BucketRead | undefined>(undefined);
-  private readonly retainedBucket = signal<(BucketRead & { state: WalkState }) | undefined>(undefined);
-  readonly bucketDrilldown = computed(() => {
-    const read = this.bucketRead.value;
-    const retained = this.retainedBucket.value;
-    const state = read?.walk.state.value;
-    if (read && state && (!retained || state.status !== "loading")) return { ...read, state, stale: false };
-    return retained ? { ...retained, stale: true } : undefined;
-  });
+  private readonly bucketPanel = signal<BucketPanel | undefined>(undefined);
+  readonly bucketDrilldown = computed(() => this.bucketPanel.value);
   private readonly drilldownOwner = signal<{ owner: string; hint: number } | undefined>(undefined);
   private readonly drilldownThread = signal<string | undefined>(undefined);
   private readonly disposeDrilldown: () => void;
@@ -427,33 +438,27 @@ export class Insights {
       const admitted = this.rolling.admitted.value;
       const key = this.rolling.selectedKey.value;
       const threadId = this.drilldownThread.value;
-      const hour = admitted?.interval.hours.find(h => h.key === key);
-      const previous = this.bucketRead.peek();
-      const panel = this.bucketDrilldown.peek();
-      const samePanel = panel && panel.owner === owner?.owner && panel.key === key && panel.threadId === threadId;
       if (!owner || !key) {
         this.clearBucketThreads();
         this.drilldownThread.value = undefined;
         return;
       }
-      const eligible = admitted?.owner === owner.owner && admitted.hint === owner.hint && hour;
-      if (eligible && previous?.key === key && previous.since === hour.since && previous.until === hour.until &&
-          previous.zone === admitted.interval.zone && previous.owner === owner.owner &&
-          previous.hint === owner.hint && previous.threadId === threadId) return;
-      batch(() => {
-        // Keep a snapshot of the same panel, not the cancelled walk's mutable state.
-        this.retainedBucket.value = samePanel ? panel : undefined;
-        previous?.walk.reset();
-        this.bucketRead.value = undefined;
-        if (!eligible) return;
-        const { since, until } = hour;
-        const zone = admitted.interval.zone;
-        const walk = new UsageWalk(this.ops, threadId === undefined ? "thread" : "model", () => ({ since, until, zone }), threadId);
-        this.bucketRead.value = { key, since, until, zone, ...owner, threadId, walk };
-        void walk.start().then(() => {
-          if (this.bucketRead.peek()?.walk === walk) this.retainedBucket.value = undefined;
-        });
-      });
+      const hour = admitted?.owner === owner.owner && admitted.hint === owner.hint
+        ? admitted.interval.hours.find(h => h.key === key) : undefined;
+      const target = hour && admitted ? { hint: admitted.hint, bounds: { since: hour.since, until: hour.until, zone: admitted.interval.zone } } : undefined;
+      const prior = this.bucketPanel.peek();
+      const same = prior?.key.owner === owner.owner && prior.key.bucket === key && prior.key.threadId === threadId;
+      const old = prior?.key.admitted;
+      if (same && old?.hint === target?.hint && old?.bounds.since === target?.bounds.since &&
+          old?.bounds.until === target?.bounds.until && old?.bounds.zone === target?.bounds.zone) return;
+      this.cancelBucketRead(prior);
+      const next: BucketPanel = {
+        key: { bucket: key, owner: owner.owner, threadId, admitted: target },
+        displayed: same ? this.staleRanking(prior.displayed) : undefined,
+        attempt: { state: "idle" },
+      };
+      if (target) this.readBucket(next);
+      else this.bucketPanel.value = next;
     });
   }
 
@@ -555,7 +560,7 @@ export class Insights {
 
   setBucketThread(threadId: string | undefined): void {
     const current = this.bucketDrilldown.peek();
-    if (!current || (threadId !== undefined && !current.state.groups.has(threadId))) return;
+    if (!current || (threadId !== undefined && !current.displayed?.rows.has(threadId))) return;
     this.drilldownThread.value = threadId;
   }
 
@@ -565,12 +570,63 @@ export class Insights {
     this.rolling.leave();
   }
 
+  retryBucket(): void {
+    const panel = this.bucketPanel.peek();
+    if (panel?.attempt.state === "failed") this.readBucket(panel);
+  }
+
+  continueBucket(): void {
+    const panel = this.bucketPanel.peek();
+    if (panel?.attempt.state === "settled" && panel.attempt.continuation) this.readBucket(panel, panel.attempt.continuation);
+  }
+
+  stopBucket(): void {
+    const panel = this.bucketPanel.peek();
+    if (panel?.attempt.state !== "reading") return;
+    panel.attempt.walk.stop();
+    this.settleBucket(panel.attempt);
+  }
+
+  private readBucket(panel: BucketPanel, continuation?: UsageWalk): void {
+    const bounds = panel.key.admitted?.bounds;
+    if (!bounds) return;
+    const { threadId } = panel.key;
+    const walk = continuation ?? new UsageWalk(this.ops, threadId === undefined ? "thread" : "model", () => bounds, threadId);
+    const attempt: BucketReading = { state: "reading", walk };
+    this.bucketPanel.value = { ...panel, displayed: this.staleRanking(panel.displayed), attempt };
+    void (continuation ? walk.continue() : walk.start()).then(() => this.settleBucket(attempt));
+  }
+
+  private settleBucket(attempt: BucketReading): void {
+    const panel = this.bucketPanel.peek();
+    if (panel?.attempt !== attempt) return;
+    const bounds = panel.key.admitted!.bounds;
+    const walk = attempt.walk.state.peek();
+    if (walk.status === "failed") {
+      this.bucketPanel.value = { ...panel, displayed: this.staleRanking(panel.displayed), attempt: { state: "failed", error: walk.error } };
+      return;
+    }
+    if (walk.status !== "done" && walk.status !== "stopped") return;
+    const { scopeIncomplete, excludedTime, unknownTimeCompactions, malformedCompactions, windows } = walk.coverage;
+    const complete = walk.status === "done" && !scopeIncomplete && !excludedTime && !unknownTimeCompactions && !malformedCompactions && !walk.capped;
+    const displayed = walk.status === "done" || walk.groups.size
+      ? { bounds, rows: walk.groups, complete, stale: false } : panel.displayed;
+    this.bucketPanel.value = { ...panel, displayed, attempt: {
+      state: "settled", windows, stopped: walk.status === "stopped", continuation: walk.canContinue ? attempt.walk : undefined,
+    } };
+  }
+
+  private staleRanking(displayed: BucketPanel["displayed"]): BucketPanel["displayed"] {
+    return displayed && (displayed.stale ? displayed : { ...displayed, stale: true });
+  }
+
+  private cancelBucketRead(panel: BucketPanel | undefined): void {
+    if (panel?.attempt.state === "reading") panel.attempt.walk.reset();
+  }
+
   private clearBucketThreads(): void {
-    batch(() => {
-      this.bucketRead.peek()?.walk.reset();
-      this.bucketRead.value = undefined;
-      this.retainedBucket.value = undefined;
-    });
+    this.cancelBucketRead(this.bucketPanel.peek());
+    this.bucketPanel.value = undefined;
   }
 
   private ensureWalk(walk: UsageWalk): void {
