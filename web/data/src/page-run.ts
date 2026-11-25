@@ -4,9 +4,6 @@ import { MAX_LIST_ROWS, type ShellboyData, type Handle } from "./store";
 import type { Page } from "./protocol";
 import type { Outcome, OpError } from "./errors";
 
-// Empty pages can advance a cursor without approaching the row cap.
-const MAX_REPLAY_PAGES = 128;
-
 type Load<T, H> = (cursor: string | undefined, cancel: Cancel) => Promise<Outcome<{ page: Page<T>; header?: H }>>;
 type Section<T, H> = { items: readonly T[]; header?: H; cursor?: string; loading: boolean; loadingMore?: boolean; error?: OpError; capped?: boolean; complete?: boolean; loaded?: boolean };
 /** A Thread ID (its hints), or a caller-owned hint source for a list that spans Threads. */
@@ -98,7 +95,7 @@ export class PageRun<T, H = never> {
       if (cursor === undefined || capped) break;
     }
     session.read = undefined;
-    session.pages = appendCursor === undefined ? readPages : Math.min(MAX_REPLAY_PAGES, session.pages + readPages);
+    session.pages = appendCursor === undefined ? readPages : session.pages + readPages;
     this.stateSignal.value = { items, ...(header === undefined ? {} : { header }), loading: false, loadingMore: false, loaded: true, cursor: capped ? undefined : cursor, capped, complete: cursor === undefined && !capped };
     this.rerunIfNeeded(session);
   }
