@@ -3,7 +3,6 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { composerAction } from "../../../../../ui-core/src";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
-import { ButtonGroup } from "../ButtonGroup";
 
 export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean | ((target: string) => boolean); busy: boolean; allowWhitespace?: boolean | ((target: string) => boolean); above?: ComponentChildren; routing?: Omit<Parameters<typeof ComposerRouting>[0], "target" | "onTarget" | "timingDisabled" | "eof"> & { onEof?: (executionId: string, command: string) => void; eofLabel: (command: string) => string }; interrupt?: { label: string; run: () => void }; draftStatus?: (text:string,target:string)=>{blocked:boolean;hint:string}; draftScope?: string;  start?: ComponentChildren; context?: ComponentChildren; stop?: { label: string; run: () => void }; onSend: (text: string, target: string, onReserved?: () => void) => Promise<boolean> }) {
   const [, renderDraft] = useState(0);
@@ -75,7 +74,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
   };
   return (
     <div class="composer-root">
-      {props.routing ? <div class="composer-above"><ComposerRouting {...props.routing} target={draft.target} unavailableTarget={unavailableTarget ? props.routing.unavailableTarget : undefined} timingDisabled={selectedShell !== undefined} eof={selectedShell && props.routing.onEof ? { label: props.routing.eofLabel(selectedShell.command), run: () => props.routing!.onEof!(selectedShell.id, selectedShell.command) } : undefined} onTarget={setDraftTarget} /></div> : props.above ? <div class="composer-above">{props.above}</div> : null}
+      {props.routing && (props.routing.shells.length > 0 || props.routing.turnRunning || unavailableTarget) ? <div class="composer-above"><ComposerRouting {...props.routing} target={draft.target} unavailableTarget={unavailableTarget ? props.routing.unavailableTarget : undefined} timingDisabled={selectedShell !== undefined || !props.routing?.turnRunning} eof={selectedShell && props.routing.onEof ? { label: props.routing.eofLabel(selectedShell.command), run: () => props.routing!.onEof!(selectedShell.id, selectedShell.command) } : undefined} onTarget={setDraftTarget} /></div> : props.above ? <div class="composer-above">{props.above}</div> : null}
       <textarea
         ref={textarea}
         id="composer"
@@ -112,14 +111,20 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
 }
 
 
-export function ComposerRouting(props: { label: string; modelLabel: string; target: string; shells: readonly { id: string; command: string }[]; onTarget: (id: string) => void; unavailableTarget?: string; eof?: { label: string; run: () => void }; timingLabel: string; timing: "next" | "now"; onTiming: (timing: "next" | "now") => void; timingDisabled?: boolean; nextLabel: string; nowLabel: string; nextExplanation: string; nowExplanation: string }) {
+export function ComposerRouting(props: { label: string; modelLabel: string; target: string; shells: readonly { id: string; command: string }[]; onTarget: (id: string) => void; unavailableTarget?: string; eof?: { label: string; run: () => void }; timingLabel: string; timing: "next" | "now"; onTiming: (timing: "next" | "now") => void; timingDisabled?: boolean; turnRunning?: boolean; nextLabel: string; nowLabel: string; nextExplanation: string; nowExplanation: string }) {
+  const selectedShell = props.shells.find(shell => shell.id === props.target);
+  const targetLabel = selectedShell?.command ?? props.unavailableTarget ?? props.modelLabel;
   return <div class="composer-routing">
-    <div class="composer-target-chip"><label>{props.label} <select aria-label={props.label} value={props.target} onChange={event => props.onTarget(event.currentTarget.value)}>
-      <option value="model">{props.modelLabel}</option>{props.unavailableTarget ? <option value={props.target}>{props.unavailableTarget}</option> : null}{props.shells.map(shell => <option value={shell.id} key={shell.id}>{shell.command}</option>)}
-    </select></label>{props.eof ? <Button variant="ghost" icon label={props.eof.label} onClick={props.eof.run}><Icon role="action.shellEof" size="small" /></Button> : null}</div>
-    <div class="composer-timing"><span>{props.timingLabel}</span><ButtonGroup label={props.timingLabel}>
-      <Button variant="ghost" aria-pressed={props.timing === "next"} disabled={props.timingDisabled} onClick={() => props.onTiming("next")}>{props.nextLabel}</Button>
-      <Button variant="ghost" aria-pressed={props.timing === "now"} disabled={props.timingDisabled} onClick={() => props.onTiming("now")}>{props.nowLabel}</Button>
-    </ButtonGroup><p class="composer-timing-explanation">{props.timing === "now" ? props.nowExplanation : props.nextExplanation}</p></div>
+    {props.shells.length > 0 || props.unavailableTarget ? <div class="composer-control" role="group" aria-label={props.label}>
+      <Button variant="ghost" class="composer-choice" aria-pressed={props.target === "model"} aria-label={`${props.modelLabel}. ${props.label}`} title={props.modelLabel} onClick={() => props.onTarget("model")}>{props.modelLabel}</Button>
+      {props.shells[0] ? <Button variant="ghost" class="composer-choice" aria-pressed={props.target === props.shells[0].id} aria-label={`${props.shells[0].command}. ${props.label}`} title={props.shells[0].command} onClick={() => props.onTarget(props.shells[0]!.id)}>{props.shells[0].command}</Button>
+        : props.unavailableTarget ? <Button variant="ghost" class="composer-choice" aria-pressed="true" aria-label={props.unavailableTarget} title={props.unavailableTarget} disabled>{props.unavailableTarget}</Button> : null}
+      {props.eof && selectedShell ? <Button variant="ghost" icon label={props.eof.label} title={props.eof.label} onClick={props.eof.run}><Icon role="action.shellEof" size="small" /></Button> : null}
+    </div> : null}
+    {props.turnRunning ? <div class="composer-control composer-timing-control" role="group" aria-label={props.timingLabel}>
+      <Button variant="ghost" class="composer-choice" disabled={props.timingDisabled} aria-pressed={props.timing === "next"} aria-label={`${props.nextLabel}. ${props.nextExplanation}`} title={props.nextExplanation} onClick={() => props.onTiming("next")}>{props.nextLabel}</Button>
+      <Button variant="ghost" class="composer-choice" disabled={props.timingDisabled} aria-pressed={props.timing === "now"} aria-label={`${props.nowLabel}. ${props.nowExplanation}`} title={props.nowExplanation} onClick={() => props.onTiming("now")}>{props.nowLabel}</Button>
+      <span class="composer-timing-hint">{props.timing === "now" ? props.nowExplanation : props.nextExplanation}</span>
+    </div> : null}
   </div>;
 }

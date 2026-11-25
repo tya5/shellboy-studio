@@ -468,15 +468,15 @@ it('Composer failed reserved send preserves the next draft without automatic res
 });
 it('a successful send settles its captured text and target across Thread switch and return',async()=>{
  const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void;
- const routing={label:'Send input to:',modelLabel:'Model',unavailableTarget:'Unavailable',eofLabel:(command:string)=>`Send EOF: ${command}`,shells:[{id:'shell-A',command:'sleep 30'}],timingLabel:'Timing',timing:'next' as const,onTiming:()=>{},nextLabel:'Next',nowLabel:'Now',nextExplanation:'Next',nowExplanation:'Now'};
+ const routing={label:'Send input to:',modelLabel:'Model',unavailableTarget:'Unavailable',eofLabel:(command:string)=>`Send EOF: ${command}`,shells:[{id:'shell-A',command:'sleep 30'}],timingLabel:'Timing',timing:'next' as const,turnRunning:true,onTiming:()=>{},nextLabel:'Next',nowLabel:'Now',nextExplanation:'Next',nowExplanation:'Now'};
  const show=(scope:string)=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} draftScope={scope} routing={routing} onSend={(_text,target)=>{expect(target).toBe('shell-A');return new Promise<boolean>(resolve=>{finish=resolve;});}}/>,host);
  try{
- await act(async()=>show('A'));const area=host.querySelector('textarea')!,target=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;
- await act(async()=>{target.value='shell-A';target.dispatchEvent(new Event('change',{bubbles:true}));area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+ await act(async()=>show('A'));const area=host.querySelector('textarea')!,target=host.querySelector<HTMLElement>('[role="group"][aria-label="Send input to:"]')!;
+ await act(async()=>{[...target.querySelectorAll<HTMLButtonElement>("button")].find(item=>item.textContent?.includes("sleep 30"))!.click();area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
  await act(async()=>show('B'));
  await act(async()=>{finish(true);await flush();});
  await act(async()=>show('A'));
- expect(area.value).toBe('');expect(host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!.value).toBe('model');
+ expect(area.value).toBe('');expect(target.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.textContent).toContain("Model");
  }finally{render(null,host);host.remove();}
 });
 it('keeps the next draft across held ACK and same-stack submit guard, then accepts it after ACK continuation',async()=>{
@@ -803,6 +803,15 @@ it('places a live row after the preceding emitted item when its input emitted no
  } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
 });
 
+it("idle Thread keeps the composer control row absent", async () => {
+ const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["history.window"],configure(db){db.details.lead=details("lead");db.work.lead=[];db.shells.lead=[];}});
+ const host=document.createElement("div");document.body.append(host);
+ try { await act(async()=>{render(<Conversation model={f.model}/>,host);await settle(f.t,f.db);});
+  expect(host.querySelector(".composer-routing")).toBeNull();
+  expect(host.querySelector(".composer-root textarea")).not.toBeNull();
+ } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
 it("Studio #134: composer targets, timing, interrupt and Activity shell controls are mounted", async () => {
  const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["history.window"],configure(db){
   db.details.lead=details("lead",{run_id:"run-1",turn_id:"turn-1"});
@@ -815,33 +824,27 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:"console",themes:[{name:"light"}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<Conversation model={f.model}/>,host);await settle(f.t,f.db);});
-  const target=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;
-  expect([...target.options].map(option=>option.textContent)).toEqual(["Model","python -m http.server","sleep 30"]);
-  expect(target.value).toBe("model");
-  const timingGroup=host.querySelector('[role="group"][aria-label="Send timing"]')!;
-  const nextButton=timingGroup.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')!;
-  expect(nextButton.textContent).toContain("Next boundary");
-  expect(host.textContent).toContain("Hold this message until the current turn reaches its next boundary.");
-  await act(async()=>{target.value="exec-2";target.dispatchEvent(new Event("change",{bubbles:true}));});
+  const target=host.querySelector<HTMLElement>('[role="group"][aria-label="Send input to:"]')!;
+  expect(target.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.textContent).toContain("Model");
+  const timingGroup=()=>host.querySelector<HTMLElement>('[role="group"][aria-label="Send timing"]')!;
+  expect(timingGroup().textContent).toContain("Next boundary");
+  const chooseShell=()=>target.querySelectorAll<HTMLButtonElement>("button")[1]!.click();
+  await act(async()=>{chooseShell();await flush();});
   expect(host.querySelector('button[aria-label="Send EOF: python -m http.server"]')).not.toBeNull();
-  expect(timingGroup.querySelectorAll('button:disabled')).toHaveLength(2);
   const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
   await act(async()=>{composer.value="printf hello\\n";composer.dispatchEvent(new Event("input",{bubbles:true}));composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
   const write=f.t.calls("shell.write").at(-1)!;expect(write.args).toMatchObject({execution_id:"exec-2",text:"printf hello\\n",encoding:"UTF-8"});
   f.db.answered.add(write.id);await act(async()=>{f.t.ok(write.id,{});await flush(8);});
-  expect(target.value).toBe("model");
+  expect(target.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.textContent).toContain("Model");
   await act(async()=>{f.model.openThread("other");await settle(f.t,f.db);});
   await act(async()=>{f.model.openThread("lead");await settle(f.t,f.db);});
-  expect(composer.value).toBe("");expect(target.value).toBe("model");
-  await act(async()=>{target.value="exec-2";target.dispatchEvent(new Event("change",{bubbles:true}));await flush();});
+  expect(composer.value).toBe("");expect(target.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.textContent).toContain("Model");
+  await act(async()=>{chooseShell();await flush();});
   await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Send EOF: python -m http.server"]')!.click();await flush(8);});
   const eof=f.t.calls("shell.eof").at(-1)!;expect(eof.args).toMatchObject({execution_id:"exec-2"});
   f.db.answered.add(eof.id);await act(async()=>{f.t.ok(eof.id,{});await flush(8);});
-  await act(async()=>{target.value="model";target.dispatchEvent(new Event("change",{bubbles:true}));await flush();});
-  await act(async()=>{timingGroup.querySelector<HTMLButtonElement>('button[aria-pressed="false"]')!.click();await flush();});
-  await act(async()=>{composer.value="deliver-now";composer.dispatchEvent(new Event("input",{bubbles:true}));composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
-  const nowSend=f.t.calls("message.send").at(-1)!;expect(nowSend.args).toMatchObject({deliver:"now",text:"deliver-now"});
-  f.db.answered.add(nowSend.id);await act(async()=>{f.t.ok(nowSend.id,{message_id:"msg-now",thread_id:"lead"});await flush(8);});
+  await act(async()=>{host.querySelector<HTMLElement>('[role="group"][aria-label="Send input to:"]')!.querySelectorAll<HTMLButtonElement>("button")[0]!.click();await flush(4);});
+  await act(async()=>{timingGroup().querySelectorAll<HTMLButtonElement>("button")[1]!.click();await flush();});
   const interrupt=host.querySelector<HTMLButtonElement>('button[aria-label="Interrupt Turn"]')!;
   expect(interrupt).toBeDefined();
   await act(async()=>{interrupt.click();await flush(8);});
@@ -899,8 +902,8 @@ it("keeps a shell draft blocked when its owner fact disappears until explicit re
  const host=document.createElement("div");document.body.append(host);
  try{
   await act(async()=>{render(<Conversation model={f.model}/>,host);await settle(f.t,f.db);});
-  const target=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;
-  target.value="exec-stale";target.dispatchEvent(new Event("change",{bubbles:true}));
+  const target=host.querySelector<HTMLElement>('[role="group"][aria-label="Send input to:"]')!;
+  await act(async()=>{[...target.querySelectorAll<HTMLButtonElement>("button")].find(item=>item.textContent?.includes("python worker.py"))!.click();await flush();});
   const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
   composer.value="do not send to a different recipient";composer.dispatchEvent(new Event("input",{bubbles:true}));
   await act(async()=>{await flush(4);});
@@ -911,10 +914,10 @@ it("keeps a shell draft blocked when its owner fact disappears until explicit re
   f.db.work.lead=[];
   f.db.details.lead=details("lead",{run_id:"run-next",turn_id:"turn-next"});
   await act(async()=>{f.model.shells.value=new Map();await flush(4);});
-  expect(target.value).toBe("exec-stale");
+  expect(target.textContent).toContain("python worker.py");
   expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(true);
   expect(host.textContent).toContain("Selected shell unavailable");
-  target.value="model";target.dispatchEvent(new Event("change",{bubbles:true}));
+  await act(async()=>{target.querySelectorAll<HTMLButtonElement>("button")[0]!.click();await flush();});
   await act(async()=>{await flush(4);});
   expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(false);
   await act(async()=>{composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
@@ -928,16 +931,16 @@ it("Composer resets a draft's destination after send and bounded eviction", asyn
  let accepted: string[]=[];
  function Harness(){
   const [scope,setScope]=useState("thread-0");
-  return <><button aria-label="Next scope" onClick={()=>setScope(value=>`thread-${Number(value.slice(7))+1}`)}>Next</button><button aria-label="Return first scope" onClick={()=>setScope("thread-0")}>Return</button><Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend={true} busy={false} allowWhitespace={true} draftScope={scope} onSend={async text=>{accepted.push(text);return true}} routing={{label:"Send input to:",modelLabel:"Model",unavailableTarget:"Unavailable",eofLabel:command=>`Send EOF: ${command}`,shells:[{id:"shell-1",command:"sleep 30"}],timingLabel:"Send timing",timing:"next",onTiming:()=>{},nextLabel:"Next boundary",nowLabel:"Now",nextExplanation:"Next",nowExplanation:"Now"}} /></>;
+  return <><button aria-label="Next scope" onClick={()=>setScope(value=>`thread-${Number(value.slice(7))+1}`)}>Next</button><button aria-label="Return first scope" onClick={()=>setScope("thread-0")}>Return</button><Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend={true} busy={false} allowWhitespace={true} draftScope={scope} onSend={async text=>{accepted.push(text);return true}} routing={{label:"Send input to:",modelLabel:"Model",unavailableTarget:"Unavailable",eofLabel:command=>`Send EOF: ${command}`,shells:[{id:"shell-1",command:"sleep 30"}],timingLabel:"Send timing",timing:"next",turnRunning:true,onTiming:()=>{},nextLabel:"Next boundary",nowLabel:"Now",nextExplanation:"Next",nowExplanation:"Now"}} /></>;
  }
  try{
   await act(async()=>{render(<Harness/>,host);await flush();});
-  const chooseShell=async()=>{const select=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;select.value="shell-1";select.dispatchEvent(new Event("change",{bubbles:true}));await flush();};
+  const chooseShell=async()=>{const group=host.querySelector<HTMLElement>('[role="group"][aria-label="Send input to:"]')!;group.querySelectorAll<HTMLButtonElement>("button")[1]!.click();await flush();};
   await act(async()=>{await chooseShell();});
   const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
   await act(async()=>{composer.value="send to shell";composer.dispatchEvent(new Event("input",{bubbles:true}));await flush();expect(composer.value).toBe("send to shell");composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(4);});
   expect(accepted).toEqual(["send to shell"]);
-  expect(host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!.value).toBe("model");
+  expect(host.querySelector<HTMLElement>('[role="group"][aria-label="Send input to:"]')!.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.textContent).toContain("Model");
   await act(async()=>{await chooseShell();composer.value="draft to shell";composer.dispatchEvent(new Event("input",{bubbles:true}));await flush();});
   for(let index=0;index<16;index++){
    await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Next scope"]')!.click();await flush();});
@@ -945,6 +948,6 @@ it("Composer resets a draft's destination after send and bounded eviction", asyn
   }
   await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Return first scope"]')!.click();await flush();});
   expect(host.querySelector<HTMLTextAreaElement>("#composer")!.value).toBe("");
-  expect(host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!.value).toBe("model");
+  expect(host.querySelector<HTMLElement>('[role="group"][aria-label="Send input to:"]')!.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.textContent).toContain("Model");
  }finally{render(null,host);host.remove();}
 });

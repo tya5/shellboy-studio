@@ -11,9 +11,15 @@
 
 .composer-above{display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap}
 
-.composer-target-chip{display:flex;align-items:center;gap:var(--space-4)}
-.composer-routing{display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap}
-.composer-routing select{min-height:var(--size-control);max-width:100%}
-.composer-timing{display:grid;gap:var(--space-4)}
-.composer-timing-explanation{margin:0;font:var(--type-caption);color:var(--muted)}
-@container app (max-width:899px){.composer-routing select{min-height:var(--size-touch)}}
+.composer-routing{display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap;max-width:100%;padding:var(--space-4) var(--space-8)}
+.composer-control{display:flex;align-items:center;gap:var(--space-4);min-width:0;max-width:100%}
+.composer-choice{max-width:min(45vw,20rem);min-width:0;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-s)}
+.composer-choice[aria-pressed=true]{background:var(--accent-bg);color:var(--fg)}
+.composer-timing-control{flex-wrap:wrap}
+.composer-timing-hint{min-width:0;max-width:100%;font:var(--type-caption);color:var(--muted);white-space:nowrap}
+@container app (max-width:899px){
+  .composer-routing{gap:var(--space-8)}
+  .composer-control{gap:var(--space-4)}
+  .composer-choice{min-height:var(--size-touch);max-width:42vw;padding-inline:var(--space-8)}
+  .composer-timing-hint{flex-basis:100%;overflow:hidden;text-overflow:ellipsis}
+}

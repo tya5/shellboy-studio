@@ -1090,7 +1090,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             routing={{ label: t("composer.sendInputTo"), modelLabel: t("composer.modelTarget"),
               shells: activeShells.map(shell => ({ id: shell.execution_id, command: shell.command_excerpt || t("composer.shellTarget") })),
               unavailableTarget: t("composer.shellUnavailable"), eofLabel: command => `${t("composer.sendEof")}: ${command}`, onEof: executionId => void model.sendShellEof(executionId),
-              timingLabel: t("composer.sendTiming"), timing: delivery,
+              timingLabel: t("composer.sendTiming"), timing: delivery, turnRunning: details?.turn_id !== undefined,
               onTiming: setDelivery, nextLabel: t("composer.nextBoundary"), nowLabel: t("composer.now"), nextExplanation: t("composer.nextBoundaryHelp"), nowExplanation: t("composer.nowHelp") }}
             onSend={(text,target,onReserved) => activeShells.some(shell=>shell.execution_id===target) ? model.sendShellInput(target,text) : target === "model" ? model.send(text,onReserved,delivery) : Promise.resolve(false)}
             interrupt={model.details.value?.turn_id ? { label: t("composer.interruptTurn"), run: () => void model.interruptTurn() } : undefined}

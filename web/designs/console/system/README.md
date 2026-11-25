@@ -108,18 +108,13 @@ Inside a Section card, a sub-subject is an `h4` in `type-label` at 600, `space-1
 
 A group label is clearly a label, not an item: `type-caption`, `muted`, weight 500, no icon, no hover or selection surface, not clickable, and uppercase with `letter-caps` (0.06em) in an English UI (Japanese has no case: smaller, `muted` and 500 only). Its left edge is the items' icon edge. Use the shared `.group-label`, ListDivider in panels, and SectionNav's grouped mode. A long group that collapses is a ThreadGroup band instead: the same text on a full-width `inset` surface between two `line`s; the whole band is the disclosure button. Owner data used as a band name (tags, directories) is never uppercased.
 
-### Composer controls in one row
+### Composer controls
 
-The composer's control row is always one line, in every state and width:
+The main action row remains one line in every state: model picker and hint at the start; ContextRing (ghost), Stop (only while running), and Send (`primary`, always last) at the end. The hint truncates first and is hidden at phone width. A long running status stays in the status line above the composer.
 
-- Start: the model control as a ghost button showing the connection and model in `type-code` and the effort in `type-label` `muted`, then the hint in `type-caption` `muted`.
-- End, in this order: ContextRing (ghost), Stop (only while running), Send (`primary`, always last).
-- When space runs out: first the hint truncates, then the model name truncates; at phone width the hint is hidden. Nothing wraps.
-- A long running status goes in a status line above the composer (`type-caption` `muted`, truncated), not in the row.
-- Attachments are removable tokens (bordered, `type-code`, a `size-row-action` remove button with the `composer.removeAttachment` icon) in a row above the text area.
-- Row padding `space-4` × `space-8`, gaps `space-8`; controls `size-control` (`size-touch` at phone width).
+When meaningful, a compact control row sits inside the composer border above the textarea: destination choices only when this Thread has an input-capable running shell, delivery timing only while a Turn runs. Use ghost Button choices with the selected value exposed through `aria-pressed`; include full explanations in accessible names and titles, and show only the current timing hint while a Turn runs. Idle Threads without special state render no extra row. At phone width controls are at least `size-touch`; gaps use `space-8` and row insets `space-4` × `space-8`. Do not use native selects or permanent explanatory prose.
 
-Sources: observed products ChatGPT, Claude.ai and Cursor (no official layout specification found); all keep controls in one row below the text and attachments above it.
+Attachments are removable tokens in a row above the text area. Sources: #134 approved composer mock and #153 compact control correction.
 
 ### Icons and labels
 

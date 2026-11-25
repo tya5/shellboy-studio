@@ -9,10 +9,11 @@ import { DESIGNS } from '../../../registry';
 const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
 const ownSendFixture = params.get('view') === 'own-send';
+const composerFixture = params.get('view') === 'composer';
 const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
 const sectionGeometryFixture = params.get('view') === 'section-geometry';
-const fixtureOptions = sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
+const fixtureOptions = composerFixture ? { route: 'conversation' as const, threadId: 'lead' } : sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const initialRoute = parseRoute(location.hash);
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, route: initialRoute.view, ...(initialRoute.view === 'conversation' && initialRoute.threadId ? { threadId: initialRoute.threadId } : {}), configure(db) {
@@ -30,6 +31,15 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, route: initialR
       other: summary('other', { title: 'Geometry other', cwd: '/fixture/other', activity: 'failed' }),
     };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+    return;
+  }
+  if (composerFixture) {
+    const state = params.get('state');
+    if (state === 'running' || state === 'both') db.details.lead = details('lead', { turn_id: 'turn-fixture' });
+    if (state === 'shell' || state === 'both') {
+      db.work.lead = [{ kind: 'shell', id: 'shell-fixture', thread_id: 'lead', run_id: 'run-fixture', execution_id: 'shell-fixture', state: 'running', turn_id: 'turn-fixture', started_at: '2026-11-25T00:00:00Z' }];
+      db.shells.lead = [{ execution_id: 'shell-fixture', thread_id: 'lead', run_id: 'run-fixture', turn_id: 'turn-fixture', state: 'running', started_at: '2026-11-25T00:00:00Z', command_excerpt: 'npm run check' }];
+    }
     return;
   }
   if (ownSendFixture) { db.history.lead = []; return; }
