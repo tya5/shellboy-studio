@@ -1,7 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ThreadDetails } from "../../../data/src";
 import { readThreadSettings, type AppModel, type MessageKey } from "../../../ui-core/src";
-import { Button, ButtonGroup, Field, Section, SettingRow } from "../system/components";
+import { Button } from "../system/components/Button";
+import { ButtonGroup } from "../system/components/ButtonGroup";
+import { Field } from "../system/components/Field";
+import { Section } from "../system/components/Section";
+import { SettingRow } from "../system/components/SettingRow";
 import { SettingFeedbackLine } from "./SettingsConfig";
 
 type FieldName = Parameters<AppModel["ops"]["setThreadSetting"]>[1];

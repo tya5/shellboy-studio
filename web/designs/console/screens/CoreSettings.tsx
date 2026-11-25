@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { Cancel } from "../../../data/src/operations";
 import type { StartupStage, WorkItem } from "../../../data/src/protocol";
 import { formatRoute, type AppModel } from "../../../ui-core/src";
-import { Button, GuideCopy, Icon, KeyValue, Notice, PageHeader, Section, StatusMark, WorkSheet } from "../system/components";
+import { Button } from "../system/components/Button";
+import { GuideCopy } from "../system/components/GuideCopy";
+import { Icon } from "../system/components/Icon";
+import { KeyValue } from "../system/components/KeyValue";
+import { Notice } from "../system/components/Notice";
+import { PageHeader } from "../system/components/PageHeader";
+import { Section } from "../system/components/Section";
+import { StatusMark } from "../system/components/StatusMark";
+import { WorkSheet } from "../system/components/WorkSheet";
 
 const coreHref = formatRoute({ view: "settings", section: "core" });
 const knownStages = new Set<StartupStage>(["database", "database_pragmas", "database_migration", "database_validate", "database_foreign_keys", "database_quick_check"]);

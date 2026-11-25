@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from "preact/hooks";
 import type { ThreadHandle } from "../../../data/src";
 import { CAPABILITY_LIVE_TEXT, type AppModel } from "../../../ui-core/src";
-import { Message } from "../system/components";
+import { Message } from "../system/components/Message";
 
 /**
  * The unsaved text of the attempt being written. It reads the preview signal itself, so a burst

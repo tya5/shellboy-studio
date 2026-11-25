@@ -1,6 +1,8 @@
 import { useState } from "preact/hooks";
 import type { DesignContext } from "../../../ui-core/src";
-import { Button, Field, Notice } from "../system/components";
+import { Button } from "../system/components/Button";
+import { Field } from "../system/components/Field";
+import { Notice } from "../system/components/Notice";
 
 export function AuthPrompt({ context }: { context: DesignContext }) {
   const t = context.model.t.value;

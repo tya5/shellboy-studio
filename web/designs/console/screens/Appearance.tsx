@@ -1,6 +1,7 @@
 import { settingSearch } from "./setting-search";
 import { LANGS, type DesignContext } from "../../../ui-core/src";
-import { Button, ButtonGroup } from "../system/components";
+import { Button } from "../system/components/Button";
+import { ButtonGroup } from "../system/components/ButtonGroup";
 
 const APPEARANCE = {
   theme: { id: "appearance.theme", label: "settings.appearance" },

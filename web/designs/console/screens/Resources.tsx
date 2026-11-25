@@ -1,7 +1,16 @@
 import { ReadDiagnostic } from "./OwnerDiagnostic";
 import { memoryReadIssue, type CacheFact } from "../../../data/src";
 import { formatBytes, formatClock, type AppModel, type Translate } from "../../../ui-core/src";
-import { BarList, Button, DataTable, FactList, LoadingRows, Meter, Notice, PageHeader, Section, Stat } from "../system/components";
+import { BarList } from "../system/components/BarList";
+import { Button } from "../system/components/Button";
+import { DataTable } from "../system/components/DataTable";
+import { FactList } from "../system/components/FactList";
+import { LoadingRows } from "../system/components/LoadingRows";
+import { Meter } from "../system/components/Meter";
+import { Notice } from "../system/components/Notice";
+import { PageHeader } from "../system/components/PageHeader";
+import { Section } from "../system/components/Section";
+import { Stat } from "../system/components/Stat";
 import { Rich } from "./Rich";
 
 const cacheName = (t: Translate, name: string): string => (["body", "layout", "attachment", "replay"].includes(name) ? t(`res.cache.${name}` as "res.cache.body") : name);

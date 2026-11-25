@@ -1,5 +1,7 @@
 import type { DesignContext, MessageKey, TestState } from "../../../ui-core/src";
-import { Button, Notice, Section } from "../system/components";
+import { Button } from "../system/components/Button";
+import { Notice } from "../system/components/Notice";
+import { Section } from "../system/components/Section";
 import { Rich } from "./Rich";
 
 export const FIRST_SETUP_GUIDE = "https://github.com/tya5/shellboy/blob/v0.16.0/docs/guides/configuration.md#first-setup-without-an-owner";

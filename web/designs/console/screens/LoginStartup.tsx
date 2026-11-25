@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "preact/hooks";
 import type { MessageKey, Translate } from "../../../ui-core/src/i18n";
-import { Section, SettingRow, Switch } from "../system/components";
+import { Section } from "../system/components/Section";
+import { SettingRow } from "../system/components/SettingRow";
+import { Switch } from "../system/components/Switch";
 
 const details = {
   on: "studio.startup.on", off: "studio.startup.off", approval: "studio.startup.approval",

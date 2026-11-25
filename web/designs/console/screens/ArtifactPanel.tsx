@@ -1,7 +1,14 @@
 import { artifactContent, artifactRevealPlatform, revealArtifact, Cancel, type ArtifactRevealError, type ArtifactRevealPlatform, type ArtifactContentTarget, type ArtifactSelected, type ArtifactVersion } from "../../../data/src";
 import { parseTime, type AppModel } from "../../../ui-core/src";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Button, CopyButton, Disclosure, Icon, KeyValue, ListDivider, ListRow, Tooltip } from "../system/components";
+import { Button } from "../system/components/Button";
+import { CopyButton } from "../system/components/CopyButton";
+import { Disclosure } from "../system/components/Disclosure";
+import { Icon } from "../system/components/Icon";
+import { KeyValue } from "../system/components/KeyValue";
+import { ListDivider } from "../system/components/ListDivider";
+import { ListRow } from "../system/components/ListRow";
+import { Tooltip } from "../system/components/Tooltip";
 import type { IconRole } from "../system/components/Icon";
 
 import { Markdown } from "../system/components/Message";

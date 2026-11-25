@@ -3,7 +3,13 @@ import { Rich } from "./Rich";
 import { appTabKey } from "../../../ui-core/src/apps";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { APP_TEMPLATES, formatRoute, readAppMessage, validAppInstance, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
-import { AppCard, AppFrame, AppTabs, AppRequest, Button, IconButton, EmptyState, Notice } from "../system/components";
+import { AppCard } from "../system/components/AppCard";
+import { AppFrame } from "../system/components/AppFrame";
+import { AppTabs } from "../system/components/AppTabs";
+import { AppRequest } from "../system/components/AppRequest";
+import { Button, IconButton } from "../system/components/Button";
+import { EmptyState } from "../system/components/EmptyState";
+import { Notice } from "../system/components/Notice";
 
 function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
   const t = model.t.value;

@@ -1,6 +1,10 @@
 import { useState } from "preact/hooks";
 import { formatRoute, type DesignContext, type MessageKey } from "../../../ui-core/src";
-import { Button, ChoiceList, Field, Notice, Section } from "../system/components";
+import { Button } from "../system/components/Button";
+import { ChoiceList } from "../system/components/ChoiceList";
+import { Field } from "../system/components/Field";
+import { Notice } from "../system/components/Notice";
+import { Section } from "../system/components/Section";
 import { Rich } from "./Rich";
 import { RestartAfterSetup, TestResult } from "./SetupParts";
 
