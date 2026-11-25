@@ -26,3 +26,5 @@ APG Dialog (Modal) focus return.
 Styles: style.css in this directory
 
 Long-content variant: keep the title and Close control in the fixed header and constrain scrolling to the single body. Do not put a second independently scrolling list inside the dialog body.
+
+Conversation panel placement: when the sheet body directly contains the Conversation right panel (`data-phone-panel`), the sheet can use the full viewport width and owns the `space-12` inline perimeter. The embedded panel drops its dock inset and divider so the six touch tabs fit in one row without shrinking their targets. Do not use this placement for unrelated modal flows or change their default perimeter.

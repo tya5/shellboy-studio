@@ -10,9 +10,9 @@
 .panel-tab-tip { display:none; position:absolute; inset-inline-end:100%; z-index:var(--z-popover); background:var(--raised); border:1px solid var(--line); color:var(--fg); padding:var(--space-4) var(--space-8); border-radius:var(--radius-s); }
 .panel-tabs-rail button:hover .panel-tab-tip,.panel-tabs-rail button:focus-visible .panel-tab-tip { display:block; }
 
-/* The inert max-content row measures the same parts and styles as the tabs. */
+/* The inert host tracks the available width at a fixed block size. Its rows retain their intrinsic widths. */
 .panel-tabs-control { position:relative; min-inline-size:0; }
-.panel-tabs-measure { position:absolute; inline-size:0; block-size:0; overflow:clip; visibility:hidden; pointer-events:none; }
+.panel-tabs-measure { position:absolute; inline-size:100%; block-size:0; overflow:clip; visibility:hidden; pointer-events:none; }
 .panel-tabs-measure .panel-tabs-row { inline-size:max-content; }
 .panel-tabs-row { display:flex; gap:var(--space-2); }
 .panel-tabs-row .panel-tab { display:flex; align-items:center; justify-content:center; flex:none; gap:var(--space-8); min-block-size:var(--size-control); padding:var(--space-4); border:0; border-block-end:var(--space-2) solid transparent; font:var(--type-label); white-space:nowrap; box-sizing:border-box; }
