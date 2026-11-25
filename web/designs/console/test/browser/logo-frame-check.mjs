@@ -9,7 +9,7 @@ const appPort=Number(process.env.FIXTURE_PORT ?? 19330);
 const appOrigin = await fixtureOrigin(appPort, 'brand');
 const browser=process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const profile=await mkdtemp(join(tmpdir(),'studio11-logo-'));
-const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--user-data-dir='+profile,'--remote-debugging-port='+port,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
+const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--use-mock-keychain','--password-store=basic','--user-data-dir='+profile,'--remote-debugging-port='+port,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
 try {
   let info; for(let n=0;n<100;n++){try {info=await (await fetch(`http://127.0.0.1:${port}/json`)).json();break}catch{await new Promise(r=>setTimeout(r,100))}}
   if(!info) throw Error('Chrome did not start');

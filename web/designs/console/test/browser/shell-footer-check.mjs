@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 const browser=process.env.CHROME_BIN??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const port=19622, appPort=19621;
 const vite=spawn('npm',['run','dev','--','--config','designs/console/test/browser/vite.config.mjs','--host','127.0.0.1','--port',String(appPort)],{cwd:new URL('../../../../',import.meta.url).pathname,stdio:'ignore'});
-const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run',`--user-data-dir=/tmp/studio68-shell-${process.pid}`,`--remote-debugging-port=${port}`,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
+const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--use-mock-keychain','--password-store=basic',`--user-data-dir=/tmp/studio68-shell-${process.pid}`,`--remote-debugging-port=${port}`,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
 try {
  let info; for(let n=0;n<100;n++){try{await fetch(`http://127.0.0.1:${appPort}`);info=await(await fetch(`http://127.0.0.1:${port}/json`)).json();break}catch{await new Promise(r=>setTimeout(r,100))}}
  if(!info)throw Error('Chrome or Vite did not start');

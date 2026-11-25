@@ -37,3 +37,7 @@ row cannot Undo because Core publishes the display title, not its raw override.
 ## Conversation status announcements (#121)
 
 The visible conversation status keeps its live elapsed-time display, but is not itself a live region. A separate polite, atomic status announces only the current state/activity label; do not include elapsed time, running descriptions, or other ticking values in it. Follow the WAI-ARIA APG [Status Message Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/status/) and use it for meaningful state transitions, not continuously changing measurements.
+
+## Shell output actions (#161)
+
+The inline shell step and Activity detail share one output-actions toolbar for Copy, Wrap lines, and Formatted. Keep the inline output title and Open execution details action at the inline placement only; do not add a second text-button toolbar. Use these controls only alongside retained shell output, not as a generic log toolbar.

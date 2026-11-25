@@ -431,35 +431,40 @@ function useOutputBody({ model, id, command, complete, boxed }: OutputProps, inl
   return { out, available, body, wrap, setWrap, raw, setRaw, lines, loading, stderrCount: projection?.stderrCount ?? 0 };
 }
 
+function OutputActions({ model, text, available, wrap, setWrap, raw, setRaw, lines, title, onDetails }: {
+  model: AppModel; text: string; available: boolean; wrap: boolean; setWrap: (update: (value: boolean) => boolean) => void;
+  raw: boolean; setRaw: (update: (value: boolean) => boolean) => void; lines?: readonly OutputLine[];
+  title?: ComponentChildren; onDetails?: (opener: HTMLButtonElement) => void;
+}) {
+  const t = model.t.value;
+  return <div class={`output-actions${title || onDetails ? " output-header" : ""}`}>
+    {title ? <span class="output-heading">{title}</span> : null}
+    <IconButton glyph="output.wrap" label={t("output.wrapLines")} aria-pressed={wrap} disabled={!available} onClick={() => setWrap(value => !value)} />
+    <CopyButton text={available ? text : ""} label={t("output.copyOutput")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} />
+    {available && lines ? <IconButton glyph="output.format" label={t("output.formatted")} aria-pressed={!raw} onClick={() => setRaw(value => !value)} /> : null}
+    {onDetails ? <IconButton glyph="output.openDetails" label={t("output.openDetails")} onClick={event => onDetails(event.currentTarget)} /> : null}
+  </div>;
+}
+
 export const Output = memo(function Output(props: OutputProps) {
-  const t = props.model.t.value;
-  const { out, body, wrap, setWrap, raw, setRaw, lines, loading } = useOutputBody(props);
+  const { out, available, body, wrap, setWrap, raw, setRaw, lines, loading } = useOutputBody(props);
   if (!out || loading || out.expired || (out.error && !out.text)) return body;
   return <>
-    <div class="output-actions"><Button onClick={() => { void navigator.clipboard.writeText(out.text).catch(() => {}); }}>{t("code.copy")}</Button><Button aria-pressed={wrap} onClick={() => setWrap(!wrap)}>{t("output.wrapLines")}</Button>
-      {lines ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
-    </div>
+    <OutputActions model={props.model} text={out.text} available={available} wrap={wrap} setWrap={setWrap} raw={raw} setRaw={setRaw} lines={lines} />
     {body}
   </>;
 });
 
 const InlineShellOutput = memo(function InlineShellOutput({ onDetails, ...props }: OutputProps & { onDetails: (opener: HTMLButtonElement) => void }) {
-  const t = props.model.t.value;
   const { out, available, body, wrap, setWrap, raw, setRaw, lines, loading, stderrCount } = useOutputBody(props, true);
   const text = available ? out?.text ?? "" : "";
   const count = useMemo(() => text ? (text.match(/\n/g)?.length ?? 0) + (text.endsWith("\n") ? 0 : 1) : 0, [text]);
   if (out && !loading && !available && !out.expired && !out.error && !out.cutOff) return null;
   const number = new Intl.NumberFormat(props.model.lang.value);
-  const title = !available ? t("details.output") : count === 1 ? t("output.line") : t("output.lines", { n: number.format(count) });
-  const stderrLabel = stderrCount > 0 ? t("output.stderrLines", { n: number.format(stderrCount) }) : undefined;
+  const title = !available ? props.model.t.value("details.output") : count === 1 ? props.model.t.value("output.line") : props.model.t.value("output.lines", { n: number.format(count) });
+  const stderrLabel = stderrCount > 0 ? props.model.t.value("output.stderrLines", { n: number.format(stderrCount) }) : undefined;
   return <div class="shell-step-output">
-    <div class="output-actions output-header">
-      <span class="output-heading">{title}{stderrLabel ? ` · ${stderrLabel}` : null}</span>
-      <IconButton glyph="output.wrap" label={t("output.wrapLines")} aria-pressed={wrap} disabled={!available} onClick={() => setWrap(value => !value)} />
-      <CopyButton text={text} label={t("output.copyOutput")} copiedLabel={t("code.copied")} failedLabel={t("output.copyFailed")} />
-      {available && lines ? <IconButton glyph="output.format" label={t("output.formatted")} aria-pressed={!raw} onClick={() => setRaw(value => !value)} /> : null}
-      <IconButton glyph="output.openDetails" label={t("output.openDetails")} onClick={event => onDetails(event.currentTarget)} />
-    </div>
+    <OutputActions model={props.model} text={text} available={available} wrap={wrap} setWrap={setWrap} raw={raw} setRaw={setRaw} lines={lines} title={<>{title}{stderrLabel ? ` · ${stderrLabel}` : null}</>} onDetails={onDetails} />
     {body}
   </div>;
 });
