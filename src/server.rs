@@ -255,9 +255,6 @@ pub(crate) fn authorized<O: Owner>(state: &AppState<O>, headers: &HeaderMap) -> 
 }
 
 async fn pairing_hosts<O: Owner>(State(state): State<AppState<O>>, headers: HeaderMap) -> Response {
-    if state.auth.is_disabled() {
-        return (StatusCode::CONFLICT, "pairing is disabled in no-auth mode").into_response();
-    }
     if !authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
@@ -265,7 +262,7 @@ async fn pairing_hosts<O: Owner>(State(state): State<AppState<O>>, headers: Head
         .config
         .extra_hosts
         .iter()
-        .filter(|h| auth::pairing_host(h))
+        .filter(|h| !state.auth.is_disabled() && auth::pairing_host(h))
         .collect();
     (
         [(header::CACHE_CONTROL, "no-store")],

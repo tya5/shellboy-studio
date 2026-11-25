@@ -776,7 +776,7 @@ async fn no_auth_http_keeps_host_origin_and_disables_pairing_credentials() {
                     .unwrap();
                 let expected = if path == "/auth-mode" {
                     StatusCode::OK
-                } else if disabled && path.starts_with("/pairing") {
+                } else if disabled && method == "POST" && path.starts_with("/pairing") {
                     StatusCode::CONFLICT
                 } else if disabled && method == "GET" {
                     StatusCode::OK
@@ -791,7 +791,7 @@ async fn no_auth_http_keeps_host_origin_and_disables_pairing_credentials() {
                     "{disabled} {host} {method} {path}"
                 );
                 assert!(!response.headers().contains_key(header::SET_COOKIE));
-                if path == "/auth-mode" {
+                if path == "/auth-mode" || (disabled && path == "/pairing" && method == "GET") {
                     assert_eq!(
                         response.headers().get(header::CACHE_CONTROL).unwrap(),
                         "no-store"
@@ -801,7 +801,11 @@ async fn no_auth_http_keeps_host_origin_and_disables_pairing_credentials() {
                         .unwrap();
                     assert_eq!(
                         serde_json::from_slice::<Value>(&bytes).unwrap(),
-                        json!({"authentication_required": !disabled})
+                        if path == "/auth-mode" {
+                            json!({"authentication_required": !disabled})
+                        } else {
+                            json!({"hosts": []})
+                        }
                     );
                 }
 
