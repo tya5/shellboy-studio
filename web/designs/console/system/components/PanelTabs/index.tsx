@@ -19,31 +19,23 @@ export function PanelTabs(props: {
 }) {
 
   const [railFocus, setRailFocus] = useState<string>();
-  const tablist = useRef<HTMLDivElement>(null);
+  const availableWidth = useRef<HTMLDivElement>(null);
   const fullRow = useRef<HTMLDivElement>(null);
   const activeRow = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"all" | "active" | "icons">("all");
   useLayoutEffect(() => {
-    const list = tablist.current;
+    const widthSource = availableWidth.current;
     const full = fullRow.current;
     const active = activeRow.current;
-    if (props.rail || !list || !full || !active) return;
+    if (props.rail || !widthSource || !full || !active) return;
     const fit = () => {
-      const width = list.getBoundingClientRect().width;
+      const width = widthSource.getBoundingClientRect().width;
       setMode(full.getBoundingClientRect().width <= width ? "all" : active.getBoundingClientRect().width <= width ? "active" : "icons");
     };
     fit();
-    // A mode change can alter the tab row height. Commit it outside observer delivery.
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(fit);
-    });
-    for (const element of [list, full, active]) observer.observe(element);
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(frame);
-    };
+    const observer = new ResizeObserver(fit);
+    for (const element of [widthSource, full, active]) observer.observe(element);
+    return () => observer.disconnect();
   }, [props.rail]);
   const activeLabel = mode === "icons" ? props.items.find(item => item.id === props.selected)?.label : undefined;
   useLayoutEffect(() => { props.onSheetActiveLabel?.(activeLabel); }, [props.onSheetActiveLabel, activeLabel]);
@@ -54,12 +46,12 @@ export function PanelTabs(props: {
   </>;
   const measureItems = () => props.items.map(item => <span key={item.id} class="panel-tab" data-selected={props.selected === item.id}>{parts(item)}</span>);
   return <div class="panel-tabs-control" data-tab-placement={props.placement ?? "dock"}>
-    {!props.rail ? <div class="panel-tabs-measure" aria-hidden="true">
+    {!props.rail ? <div ref={availableWidth} class="panel-tabs-measure" aria-hidden="true">
       <div ref={fullRow} class="panel-tabs-row">{measureItems()}</div>
       <div ref={activeRow} class="panel-tabs-row" data-labels="active">{measureItems()}</div>
     </div> : null}
     {!props.rail && props.placement !== "sheet" && activeLabel ? <h2 class="panel-tabs-heading">{props.label} · {activeLabel}</h2> : null}
-    <div ref={tablist} class={`panel-tabs${props.rail ? " panel-tabs-rail" : " panel-tabs-row"}`} data-labels={props.rail ? undefined : mode} role="tablist" aria-label={props.label} aria-orientation={props.rail ? "vertical" : "horizontal"} onKeyDown={event => {
+    <div class={`panel-tabs${props.rail ? " panel-tabs-rail" : " panel-tabs-row"}`} data-labels={props.rail ? undefined : mode} role="tablist" aria-label={props.label} aria-orientation={props.rail ? "vertical" : "horizontal"} onKeyDown={event => {
     const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")];
     const index = tabs.indexOf(event.target as HTMLButtonElement);
     if (index < 0 || tabs.length === 0) return;
