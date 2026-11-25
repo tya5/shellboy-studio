@@ -245,7 +245,30 @@ it.each(['accepted', 'failed', 'scope ended'] as const)('settles an off-screen s
    expect(f.t.calls('history.window')).toHaveLength(windowReads);
   }
   if (outcome==='scope ended') await act(async () => { f.model.openThread('lead'); await settle(f.t,f.db); });
-  else await act(async () => { box.scrollTop=9880; box.dispatchEvent(new Event('scroll')); await settle(f.t,f.db); });
+  else {
+   const scroll = async (top: number) => act(async () => {
+    if (top<box.scrollTop) box.dispatchEvent(new WheelEvent('wheel',{deltaY:-800,bubbles:true}));
+    box.scrollTop=top; box.dispatchEvent(new Event('scroll')); await flush();
+   });
+   await scroll(9880);
+   if (outcome==='accepted') {
+    const held=f.t.calls('history.window').at(-1)!;
+    expect(f.t.calls('history.window')).toHaveLength(windowReads+1);
+    f.db.answered.add(held.id);
+    await scroll(1);
+    expect(win.following.peek()).toBe(false);
+    expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:call.operation_id}]);
+    await scroll(9880);
+    expect(f.t.calls('history.window')).toHaveLength(windowReads+2);
+    const obsolete=f.db.answer(held);
+    if (!obsolete.ok) throw new Error('Expected a saved tail for the cancelled read');
+    await act(async () => { f.t.ok(held.id,obsolete.result); await flush(); });
+    expect(win.newer.peek()).toBe(true);
+    expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:call.operation_id}]);
+   }
+   await act(async () => { await settle(f.t,f.db); });
+   expect(win.newer.peek()).toBe(false);
+  }
   expect(f.model.acceptedOwnMessages.peek()).toEqual([]);
   const tail = [...host.querySelectorAll<HTMLElement>('[data-node]')].map(row=>row.dataset.node).filter(id=>id==='earlier-answer'||id==='accepted-node'||id==='new-answer');
   expect(tail).toEqual(outcome==='accepted' ? ['earlier-answer','accepted-node','new-answer'] : ['earlier-answer']);

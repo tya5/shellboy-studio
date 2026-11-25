@@ -269,9 +269,10 @@ export class ConversationWindow {
   /** Tell what shows. Cancels reads that left the margin now; requests what entered it after a pause. */
   view(scrollTop: number, clientHeight: number, atBottom: boolean, viewport?: { ordinal: number; totalHeight: number; range?: WindowAcceptedSnapshot["range"] }): void {
     if (this.disposed) return;
-    if (this.jumping) {
-      if (atBottom) return; // keep the old reading position until the target window arrives
-      this.jumping = false; // actual upward movement cancels explicit navigation too
+    if (this.jumping && atBottom) return; // keep the old reading position until the target window arrives
+    // A second detach cancels the read, not the deferred hint.
+    if (!atBottom && (this.jumping || (this.following.peek() && this.newer.peek()))) {
+      this.jumping = false;
       this.tailCancel?.cancel();
       this.tailCancel = undefined;
       this.verifying = false;
@@ -289,12 +290,10 @@ export class ConversationWindow {
     // Missing tail evidence is not a user detach and cannot create follow intent.
     const pendingTail = !!this.tailCancel || this.verifying || this.tailAgain;
     const follow = atBottom && (pendingTail ? this.following.peek() : now.last === this.total - 1);
-    if (follow && this.newer.peek()) {
-      // Reaching the loaded end does not consume a deferred owner hint.
-      this.jumpToEnd();
-      return;
+    if (follow !== this.following.peek()) {
+      this.following.value = follow;
+      if (follow && this.newer.peek()) void this.readTail();
     }
-    if (follow !== this.following.peek()) this.following.value = follow;
     const r = now;
     const wanted = new Set<number>();
     for (let b = Math.floor(r.first / WINDOW_NODES); b <= Math.floor(r.last / WINDOW_NODES); b++) wanted.add(b);
@@ -363,7 +362,6 @@ export class ConversationWindow {
     for (const read of this.inflight.values()) read.cancel.cancel();
     this.inflight.clear();
     this.following.value = true;
-    this.newer.value = false;
     this.jumping = true;
     this.scrollRequest = undefined;
     void this.readTail();
@@ -501,7 +499,7 @@ export class ConversationWindow {
     return { ...selection, rows: canonicalInput?.rows ?? selection.rows, canonicalInput, disposed: false };
   }
 
-  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability, ownerRead = false): void {
+  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability, ownerRead = false, afterCommit?: () => void): void {
     if (this.disposed || capability !== this.acceptedView.currentCapability) return;
     const epoch = this.epoch, generation = this.nextAcceptedGeneration();
     const accepted = this.acceptedView.peek(), rows = this.rangeItems();
@@ -512,7 +510,7 @@ export class ConversationWindow {
       total: this.total, revision: this.revision, pending: this.status.peek() === 'loading' }, capability, canonicalInput);
     const staged = this.prepareAccepted(snapshot, capability, ownerRead);
     if (staged && !this.disposed && epoch === this.epoch && generation === this.acceptedGeneration) {
-      if (staged && this.commitAccepted(staged)) this.version.value++;
+      if (this.commitAccepted(staged, afterCommit)) this.version.value++;
     }
   }
 
@@ -653,6 +651,7 @@ export class ConversationWindow {
         this.heights=nextHeights; this.tailKnown=nextTailKnown; this.lastAnchor=nextLastAnchor;
         this.scrollRequest = follow ? Number.MAX_SAFE_INTEGER : rewrite && nextLastAnchor ? this.scrollFor(nextLastAnchor) : old.scroll;
         if (rewrite && !follow && this.scrollRequest !== undefined) this.viewTop = this.scrollRequest;
+        if (follow && !this.tailAgain) this.newer.value = false;
       })){ return; }
       if(this.buckets!==replacement||this.disposed||capability!==this.acceptedView.currentCapability)return;
         for(const [index,read] of old.inflight)if(this.inflight.get(index)===read){read.cancel.cancel();this.inflight.delete(index);}
@@ -802,15 +801,18 @@ export class ConversationWindow {
       void this.readTail(true);
       return;
     }
+    const last = out.value.items.at(-1);
     this.install(out.value, capability);
     if (capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.disposed) return;
     if (this.following.peek()) {
       this.lastAnchor = undefined;
       this.jumping = false;
       this.scrollRequest = Number.MAX_SAFE_INTEGER;
-      this.bump(capability); // publish the new run only after its anchor selection changes
+      this.bump(capability, false, () => {
+        if (!this.tailAgain && (this.total === 0 || (last && ordinalOf(last) === this.total - 1)) &&
+            (this.total === 0 || this.acceptedView.peek().range?.last === this.total - 1)) this.newer.value = false;
+      });
     }
-    const last = out.value.items.at(-1);
     if (last && (ordinalOf(last) ?? -1) < this.total - 1) {
       void this.readTail(true);
       return;
@@ -823,7 +825,8 @@ export class ConversationWindow {
   private drainTailHint(): void {
     if (!this.tailAgain || this.disposed || this.tailCancel || this.verifying) return;
     this.tailAgain = false;
-    void this.readTail();
+    if (this.following.peek()) void this.readTail();
+    else this.newer.value = true;
   }
 
   private fail(message: string): void {
