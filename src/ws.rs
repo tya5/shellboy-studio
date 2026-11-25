@@ -539,15 +539,18 @@ mod tests {
                 "{command}"
             );
         }
-        assert_eq!(
-            build_command(
-                "message.send",
-                Some(json!({"thread_id":"t","text":"hi","deliver":"now"}))
-            )
-            .unwrap_err()
-            .code,
-            "not_allowed"
-        );
+        for deliver in ["now", "complete"] {
+            assert_eq!(
+                build_command(
+                    "message.send",
+                    Some(json!({"thread_id":"t","text":"hi","deliver":deliver}))
+                )
+                .unwrap_err()
+                .code,
+                "not_allowed",
+                "delivery mode {deliver}"
+            );
+        }
         assert_eq!(
             build_command("no.such", None).unwrap_err().code,
             "invalid_call"

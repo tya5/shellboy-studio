@@ -39,7 +39,7 @@ pub fn access(command: &Command) -> Access {
         | Command::StorageStatus(..)
         // Branches view.
         | Command::ThreadBranches(..) => Access::Read,
-        Command::MessageSend(args) if args.deliver == Deliver::Now => Access::Denied,
+        Command::MessageSend(args) if args.deliver != Deliver::Next => Access::Denied,
         Command::ThreadCreate(..)
         | Command::MessageSend(..)
         | Command::RunStop(..)
