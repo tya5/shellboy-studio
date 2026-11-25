@@ -299,7 +299,11 @@ async fn reveal<O: Owner, R: RevealRunner>(
     let Some(path) = reveal_path(&selected.version.uri).await else {
         return reveal_error(StatusCode::NOT_FOUND, "file_unavailable");
     };
-    match run_reveal(&runner, platform, &path).await {
+    reveal_response(&runner, platform, &path).await
+}
+
+async fn reveal_response(runner: &impl RevealRunner, platform: Platform, path: &Path) -> Response {
+    match run_reveal(runner, platform, path).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(()) => reveal_error(StatusCode::BAD_GATEWAY, "reveal_failed"),
     }
@@ -325,7 +329,7 @@ trait RevealRunner: Clone + Send + Sync + 'static {
         &self,
         program: &Path,
         args: &[std::ffi::OsString],
-    ) -> impl std::future::Future<Output = Result<(), ()>> + Send;
+    ) -> impl std::future::Future<Output = std::io::Result<std::process::ExitStatus>> + Send;
 }
 
 #[derive(Clone, Copy)]
@@ -346,7 +350,11 @@ impl RevealRunner for SystemRunner {
         dir.is_absolute().then(|| dir.join("explorer.exe"))
     }
 
-    async fn run(&self, program: &Path, args: &[std::ffi::OsString]) -> Result<(), ()> {
+    async fn run(
+        &self,
+        program: &Path,
+        args: &[std::ffi::OsString],
+    ) -> std::io::Result<std::process::ExitStatus> {
         use std::process::Stdio;
         tokio::process::Command::new(program)
             .args(args)
@@ -356,10 +364,6 @@ impl RevealRunner for SystemRunner {
             .kill_on_drop(true)
             .status()
             .await
-            .map_err(|_| ())?
-            .success()
-            .then_some(())
-            .ok_or(())
     }
 }
 
@@ -385,12 +389,17 @@ async fn run_reveal(runner: &impl RevealRunner, platform: Platform, path: &Path)
             vec![path.parent().ok_or(())?.into()],
         ),
     };
-    tokio::time::timeout(
+    let status = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         runner.run(&program, &args),
     )
     .await
     .map_err(|_| ())?
+    .map_err(|_| ())?;
+    // Explorer can return 1 after successfully opening the requested location.
+    (matches!(platform, Platform::Windows) || status.success())
+        .then_some(())
+        .ok_or(())
 }
 
 // Keep the same shared permit until the body finishes or the browser cancels.
@@ -554,7 +563,11 @@ mod reveal_tests {
             fn explorer_path(&self) -> Option<PathBuf> {
                 panic!("refusal reached runner")
             }
-            async fn run(&self, _: &Path, _: &[OsString]) -> Result<(), ()> {
+            async fn run(
+                &self,
+                _: &Path,
+                _: &[OsString],
+            ) -> std::io::Result<std::process::ExitStatus> {
                 panic!("refusal reached runner")
             }
         }
@@ -661,7 +674,11 @@ mod reveal_tests {
             Some(std::env::temp_dir().join("Windows").join("explorer.exe"))
         }
 
-        async fn run(&self, program: &Path, args: &[OsString]) -> Result<(), ()> {
+        async fn run(
+            &self,
+            program: &Path,
+            args: &[OsString],
+        ) -> std::io::Result<std::process::ExitStatus> {
             let expected = if self.0 == "explorer" {
                 self.explorer_path().unwrap()
             } else {
@@ -669,7 +686,61 @@ mod reveal_tests {
             };
             assert_eq!(program, expected);
             assert_eq!(args, self.1);
-            Ok(())
+            Ok(exit_status(0))
+        }
+    }
+
+    fn exit_status(code: u8) -> std::process::ExitStatus {
+        #[cfg(unix)]
+        use std::os::unix::process::ExitStatusExt;
+        #[cfg(windows)]
+        use std::os::windows::process::ExitStatusExt;
+        #[cfg(unix)]
+        let raw = i32::from(code) << 8;
+        #[cfg(windows)]
+        let raw = u32::from(code);
+        std::process::ExitStatus::from_raw(raw)
+    }
+
+    #[tokio::test]
+    async fn reveal_windows_ignores_exit_code_but_not_spawn_error() {
+        use axum::body::to_bytes;
+
+        #[derive(Clone)]
+        struct Runner(bool);
+        impl RevealRunner for Runner {
+            fn explorer_path(&self) -> Option<PathBuf> {
+                Some(std::env::temp_dir().join("explorer.exe"))
+            }
+
+            async fn run(
+                &self,
+                _: &Path,
+                _: &[OsString],
+            ) -> std::io::Result<std::process::ExitStatus> {
+                if self.0 {
+                    Ok(exit_status(1))
+                } else {
+                    Err(std::io::ErrorKind::NotFound.into())
+                }
+            }
+        }
+        let path = Path::new("/fixture/report.txt");
+        assert_eq!(
+            reveal_response(&Runner(true), Platform::Windows, path)
+                .await
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+        for (runner, platform) in [
+            (Runner(false), Platform::Windows),
+            (Runner(true), Platform::Mac),
+            (Runner(true), Platform::Linux),
+        ] {
+            let response = reveal_response(&runner, platform, path).await;
+            assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+            let body = to_bytes(response.into_body(), 512).await.unwrap();
+            assert_eq!(body.as_ref(), br#"{"code":"reveal_failed"}"#);
         }
     }
 

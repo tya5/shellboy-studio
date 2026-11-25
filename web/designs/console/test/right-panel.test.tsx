@@ -365,12 +365,12 @@ describe('right panel purpose',()=>{
     expect(region?.textContent).toBe('');
     expect(region?.hasAttribute('hidden')).toBe(false);
     expect(region?.hasAttribute('aria-hidden')).toBe(false);
-    expect(region?.classList.contains('artifact-reveal-toast')).toBe(false);
+    expect(region?.classList.contains('artifact-reveal-message')).toBe(false);
     succeeds = true;
     await pump(() => revealRow.click());
     const toast = page.querySelector(selector);
     expect(toast).toBe(region);
-    expect(toast?.classList.contains('artifact-reveal-toast')).toBe(true);
+    expect(toast?.classList.contains('artifact-reveal-message')).toBe(true);
     expect(toast?.textContent).toBe(f.model.t.peek()('artifact.reveal.revealed'));
     expect(page.querySelector('[data-panel-row-id="z"] [role="alert"]')).toBeNull();
    }

@@ -27,11 +27,12 @@ const f = await fixtureModel({ route:'conversation', threadId:'lead', lang:'ja',
   return answer(call);
  };
 }});
+let revealFails = false;
 const previewCalls: unknown[] = [];
 const originalFetch = window.fetch.bind(window);
 window.fetch = (input, options) => {
  if (input === '/artifact-reveal') return Promise.resolve(options?.method === 'POST'
-  ? new Response(null, { status:204 }) : Response.json({ platform:'finder' }));
+  ? (revealFails ? Response.json({ code: "reveal_failed" }, { status: 502 }) : new Response(null, { status: 204 })) : Response.json({ platform:'finder' }));
  if (input !== '/artifact-content') return originalFetch(input, options);
  const target = JSON.parse(String(options?.body));
  previewCalls.push(target);
@@ -87,16 +88,31 @@ Object.assign(window, { measureArtifactReveal: async () => {
  };
  async function waitForToast(visible:boolean) {
   const deadline = performance.now() + 5000;
-  while (region.classList.contains('artifact-reveal-toast') !== visible && performance.now() < deadline) {
+  while (region.classList.contains('artifact-reveal-message') !== visible && performance.now() < deadline) {
    await new Promise(requestAnimationFrame);
   }
-  if (region.classList.contains('artifact-reveal-toast') !== visible) throw new Error('Unexpected reveal toast state');
+  if (region.classList.contains('artifact-reveal-message') !== visible) throw new Error('Unexpected reveal toast state');
   if (row.querySelector('[data-artifact-reveal-status]') !== region) throw new Error('Reveal status node replaced');
  }
  const before = measure();
  button.click();
  await waitForToast(true);
+ const belowTitle = (el: Element) => {
+  const status = el.getBoundingClientRect();
+  const heading = title.getBoundingClientRect();
+  const panel = row.closest('[data-panel-root]')!.getBoundingClientRect();
+  return status.height > 0 && status.top >= heading.bottom && status.left >= panel.left && status.right <= panel.right;
+ };
  const during = measure();
+ const successBelowTitle = belowTitle(region);
  await waitForToast(false);
- return { before, during, after: measure() };
+ const after = measure();
+ revealFails = true;
+ button.click();
+ const deadline = performance.now() + 5000;
+ while (!row.querySelector('[role="alert"]') && performance.now() < deadline) await new Promise(requestAnimationFrame);
+ const error = row.querySelector('[role="alert"]');
+ const failed = measure();
+ revealFails = false;
+ return { before, during, after, failed, successBelowTitle, errorBelowTitle: !!error && belowTitle(error) };
 }});

@@ -70,8 +70,8 @@ function RevealButton({ model, target, platform }: { model: AppModel; target: Ar
     if (!error) timer.current = setTimeout(() => setStatus(undefined), 1500);
   };
   return <><Tooltip label={label}><Button variant="ghost" icon label={label} disabled={status === "busy_request"} onClick={() => void reveal()}><Icon role="artifact.reveal" size="small" /></Button></Tooltip>
-    <span role="status" data-artifact-reveal-status="" class={status === "revealed" ? "artifact-reveal-toast" : undefined}>{status === "revealed" ? t("artifact.reveal.revealed") : null}</span>
-    {status && status !== "busy_request" && status !== "revealed" ? <span role="alert" class="caption">{t(`artifact.reveal.${status}`)}</span> : null}</>;
+    <span role="status" data-artifact-reveal-status="" class={status === "revealed" ? "artifact-reveal-message" : undefined}>{status === "revealed" ? t("artifact.reveal.revealed") : null}</span>
+    {status && status !== "busy_request" && status !== "revealed" ? <span role="alert" class="artifact-reveal-message">{t(`artifact.reveal.${status}`)}</span> : null}</>;
 }
 
 export function ArtifactList({ model, platform, onSelect }: { model: AppModel; platform: ArtifactRevealPlatform | undefined; onSelect: (id: string, opener: HTMLButtonElement) => void }) {
