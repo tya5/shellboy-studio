@@ -14,22 +14,18 @@ const items = [
   { id: "info", label: "情報", icon: "panel.information" as const },
 ];
 
-it("reveals on selection and expansion, not on a count update or collapse", async () => {
+it("preserves tab names and phone picker without scrolling on layout changes", async () => {
   const host = document.createElement("div");
   const scroll = vi.fn();
   const spy = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(scroll);
   try {
     await act(async () => render(<PanelTabs label="Panel" items={items} selected="work" onSelect={() => {}} />, host));
-    expect(scroll).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
-    scroll.mockClear();
     await act(async () => render(<PanelTabs label="Panel" items={items} selected="info" onSelect={() => {}} />, host));
-    expect(scroll).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
-    scroll.mockClear();
     await act(async () => render(<PanelTabs label="Panel" items={items} selected="info" rail onSelect={() => {}} />, host));
     expect(scroll).not.toHaveBeenCalled();
     await act(async () => render(<PanelTabs label="Panel" items={items} selected="info" onSelect={() => {}} />, host));
-    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: "nearest", inline: "nearest" });
-    scroll.mockClear();
+    expect(host.querySelector(".panel-tabs-measure")?.getAttribute("aria-hidden")).toBe("true");
+    expect(host.querySelectorAll('[role="tab"]')).toHaveLength(items.length);
     const counted = items.map(item => ({ ...item, count: 2 }));
     await act(async () => render(<PanelTabs label="Panel" items={counted} selected="info" onSelect={() => {}} />, host));
     expect(host.querySelector("#panel-tab-info")?.getAttribute("aria-label")).toBe("情報 2");
