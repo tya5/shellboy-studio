@@ -91,11 +91,11 @@ try{
    const tab=list.querySelector('#panel-tab-reply-needed'), badge=tab.querySelector('.panel-tab-count');
    return {orientation:list.getAttribute('aria-orientation'),overflow:getComputedStyle(list).overflowX,
     gap:getComputedStyle(list).gap,buttonGap:getComputedStyle(tab).gap,alignment:getComputedStyle(tab).alignItems,
-    badgeRadius:getComputedStyle(badge).borderRadius,badgePosition:getComputedStyle(badge).position,
+    badgeRounded:parseFloat(getComputedStyle(badge).borderRadius)===badge.getBoundingClientRect().height/2,badgePosition:getComputedStyle(badge).position,
     badgeAlign:getComputedStyle(badge).textAlign};
   })()`);
   assert.deepEqual(rail,{orientation:'vertical',overflow:'visible',gap:'4px',buttonGap:'4px',alignment:'center',
-   badgeRadius:'999px',badgePosition:'absolute',badgeAlign:'center'},key);
+   badgeRounded:true,badgePosition:'absolute',badgeAlign:'center'},key);
   const tooltipOutside=()=>evaluate(`(()=>{
    const tab=document.querySelector('#panel-tab-info'), tip=document.getElementById(tab.getAttribute('aria-describedby'));
    const r=tip.getBoundingClientRect(), t=tab.getBoundingClientRect();
