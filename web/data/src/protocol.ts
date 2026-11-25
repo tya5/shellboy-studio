@@ -643,6 +643,13 @@ export interface MessageAccepted {
   thread_id: string;
   [key: string]: unknown;
 }
+/** Public message.reply result; routed acceptance is nested and may be absent. */
+export interface MessageReplied {
+  message_id: string;
+  reply_to: string;
+  delivery?: MessageAccepted;
+  [key: string]: unknown;
+}
 
 export interface MessageSendArgs {
   thread_id: string;

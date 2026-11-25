@@ -162,6 +162,106 @@ fn temp_root() -> PathBuf {
 }
 
 #[tokio::test]
+async fn thread_ask_and_standalone_reply_shapes_against_the_pinned_owner() {
+    use shellboy::protocol::{
+        Command as CoreCommand, MessageAskArgs, MessageReplyArgs, ThreadCreateArgs, ThreadGetArgs,
+    };
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
+    let root = temp_root();
+    let data = root.join("data");
+    let url = mock_provider().await;
+    let _serve = start_owner_with(&bin, &root, &data, &url);
+    let owner = IpcOwner::new(data);
+    let created = owner
+        .call(
+            CoreCommand::ThreadCreate(ThreadCreateArgs {
+                cwd: Some(root.to_string_lossy().into_owned()),
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let thread = serde_json::to_value(created).unwrap()["result"]["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let accepted = owner
+        .call(
+            CoreCommand::MessageAsk(MessageAskArgs {
+                human: false,
+                sender_label: None,
+                thread_id: Some(thread.clone()),
+                to: None,
+                deliver: shellboy::protocol::Deliver::Next,
+                text: "temporary thread ask contract".into(),
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let accepted = serde_json::to_value(accepted).unwrap()["result"].clone();
+    assert_eq!(accepted["thread_id"], thread);
+    assert_eq!(accepted["expect_reply"], true);
+    assert!(
+        accepted["message_id"]
+            .as_str()
+            .is_some_and(|v| !v.is_empty())
+    );
+    let request_id = accepted["message_id"].as_str().unwrap().to_owned();
+
+    let mut settled = false;
+    for _ in 0..200 {
+        let details = owner
+            .call(
+                CoreCommand::ThreadGet(ThreadGetArgs {
+                    thread_id: Some(thread.clone()),
+                    display: false,
+                }),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        let details = serde_json::to_value(details).unwrap()["result"].clone();
+        if details.get("run_id").is_none_or(Value::is_null) {
+            settled = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(settled, "mock provider did not settle the Thread Ask");
+    let replied = owner
+        .call(
+            CoreCommand::MessageReply(MessageReplyArgs {
+                message_id: request_id.clone(),
+                text: "temporary standalone reply".into(),
+                sender_label: None,
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let replied = serde_json::to_value(replied).unwrap()["result"].clone();
+    assert_eq!(replied["reply_to"], request_id);
+    assert!(
+        replied["message_id"]
+            .as_str()
+            .is_some_and(|v| !v.is_empty())
+    );
+    assert!(
+        replied.get("delivery").is_none(),
+        "standalone reply omits delivery: {replied}"
+    );
+}
+
+#[tokio::test]
 async fn constrained_thread_lists_are_accepted_by_the_pinned_owner() {
     let bin = PathBuf::from(
         std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),

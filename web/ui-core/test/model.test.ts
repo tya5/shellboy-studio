@@ -636,7 +636,7 @@ describe("per-thread reply duties", () => {
     await flush();
     const call = t.calls("message.reply").at(-1)!;
     expect(call.args).toEqual({ message_id: "owed", text: "yes" });
-    db.answered.add(call.id); t.ok(call.id, {}); await answer;
+    db.answered.add(call.id); t.ok(call.id, { message_id: "answer", reply_to: "owed" }); await answer;
     expect(model.panelOperations.peek().get("owed")?.disposition).toBe("pending");
     db.replies = [];
     t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await settle(t, db);

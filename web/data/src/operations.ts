@@ -24,6 +24,7 @@ import type {
   HistoryWindowResult,
   MessageSendArgs,
   MessageAccepted,
+  MessageReplied,
   PendingReply,
   ReplyDirection,
   AttachmentDetails,
@@ -379,6 +380,15 @@ const decodeMessageAccepted: Decoder<MessageAccepted> = value =>
     && typeof value.thread_id === "string" && value.thread_id.length > 0
     ? { ok: true, value: value as MessageAccepted }
     : { ok: false, reason: "expected MessageAccepted with nonempty message_id and thread_id" };
+// Ask is registered by the pinned Core as the same acceptance result as Send.
+const decodeMessageAskResult: Decoder<MessageAccepted> = decodeMessageAccepted;
+
+const decodeMessageReplied: Decoder<MessageReplied> = value =>
+  isObject(value) && typeof value.message_id === "string" && value.message_id.length > 0
+    && typeof value.reply_to === "string" && value.reply_to.length > 0
+    && (!Object.hasOwn(value, "delivery") || decodeMessageAccepted(value.delivery).ok)
+    ? { ok: true, value: value as MessageReplied }
+    : { ok: false, reason: "expected MessageReplied with nonempty message_id and reply_to, and optional MessageAccepted delivery" };
 
 export type MutationResult = Record<string, unknown>;
 
@@ -673,13 +683,17 @@ export class Operations {
   messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MessageAccepted>> {
     return this.run("message.send", args, outcomeDecoder(decodeMessageAccepted), { operationId });
   }
+  /** The pinned wire registry returns MessageAccepted for Ask; the browser bridge still denies Ask. */
+  decodeMessageAskResult(value: unknown): Decoded<MessageAccepted> {
+    return decodeMessageAskResult(value);
+  }
   messageList(direction: ReplyDirection, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<PendingReply, MessageListFilters>>> {
     const selector = "owed_by" in direction ? { owed_by_thread_id: direction.owed_by }
       : "asked_by" in direction ? { asked_by_thread_id: direction.asked_by } : { to: direction.to };
     return this.run("message.list", { ...selector, limit: REPLY_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(replyPage(direction)), undefined, read);
   }
   messageReply(messageId: string, text: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
-    return this.run("message.reply", { message_id: messageId, text }, outcomeDecoder(decodeRecord), { operationId });
+    return this.run("message.reply", { message_id: messageId, text }, outcomeDecoder(decodeMessageReplied), { operationId });
   }
   messageCancel(messageId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("message.cancel", { message_ids: [messageId] }, outcomeDecoder(decodeRecord), { operationId });

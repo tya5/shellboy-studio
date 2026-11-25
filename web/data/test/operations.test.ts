@@ -211,6 +211,36 @@ describe("Operations", () => {
     expect(await arch).toMatchObject({ ok: true });
   });
 
+  it("uses MessageAccepted for Ask results and a distinct MessageReplied rule", async () => {
+    const { t, ops } = setup();
+    const accepted = {
+      message_id: "accepted-id", thread_id: "asking-thread", delivery_status: "held",
+      assignment: "pending", expect_reply: true,
+    };
+    expect(ops.decodeMessageAskResult(accepted)).toEqual({ ok: true, value: accepted });
+    expect(ops.decodeMessageAskResult({ ...accepted, thread_id: "" }).ok).toBe(false);
+
+    const routed = ops.messageReply("request-id", "answer");
+    expect(t.calls()[0]).toMatchObject({ command: "message.reply", args: { message_id: "request-id", text: "answer" } });
+    const nested = { ...accepted, message_id: "answer-id", thread_id: "asking-thread" };
+    t.ok(t.calls()[0]!.id, { message_id: "answer-id", reply_to: "request-id", delivery: nested });
+    await expect(routed).resolves.toMatchObject({ ok: true, value: { message_id: "answer-id", reply_to: "request-id", delivery: nested } });
+
+    const standalone = ops.messageReply("old-request", "standalone");
+    t.ok(t.calls()[1]!.id, { message_id: "answer-standalone", reply_to: "old-request" });
+    await expect(standalone).resolves.toMatchObject({ ok: true, value: { message_id: "answer-standalone", reply_to: "old-request" } });
+
+    for (const invalid of [
+      { message_id: "a" }, { message_id: "a", reply_to: "" },
+      { message_id: "a", reply_to: "r", delivery: null },
+      { message_id: "a", reply_to: "r", delivery: { message_id: "m" } },
+    ]) {
+      const bad = ops.messageReply("r", "text");
+      t.ok(t.calls().at(-1)!.id, invalid);
+      await expect(bad).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+    }
+  });
+
   it("tag calls: tag edits are mutations, the name lists and filters are plain reads", async () => {
     const { t, ops } = setup();
     const tag = ops.threadTag({ thread_ids: ["a"], add: ["x"] });
