@@ -362,6 +362,7 @@ export class Insights {
   readonly daily: UsageWalk;
   readonly rolling: RollingUsage;
   readonly byThread: UsageWalk;
+  readonly bucketThreads: Signal<UsageWalk | undefined> = signal(undefined);
   readonly compaction: Signal<CompactionState> = signal({ threadId: undefined, loading: false, events: [], limited: false, more: false, error: undefined });
 
   readonly memory: Signal<ReadState<MemoryFacts>> = signal(nothing);
@@ -460,6 +461,27 @@ export class Insights {
     return new UsageWalk(this.ops, "model", () => period, threadId);
   }
 
+  /** One selected rolling bucket, clipped to the active interval; replacement cancels the prior scan. */
+  selectBucketThreads(bucket: { since: string; until: string } | undefined, threadId?: string): UsageWalk | undefined {
+    this.bucketThreads.peek()?.reset();
+    if (!bucket) { this.bucketThreads.value = undefined; return undefined; }
+    const interval = this.rolling.interval.peek();
+    if (!interval) { this.bucketThreads.value = undefined; return undefined; }
+    const since = new Date(Date.parse(bucket.since)).toISOString();
+    const until = new Date(Date.parse(bucket.until)).toISOString();
+    if (Date.parse(since) >= Date.parse(until)) { this.bucketThreads.value = undefined; return undefined; }
+    const period = { since, until, zone: interval.zone };
+    const walk = new UsageWalk(this.ops, threadId === undefined ? "thread" : "model", () => period, threadId);
+    this.bucketThreads.value = walk;
+    void walk.start();
+    return walk;
+  }
+
+  clearBucketThreads(): void {
+    this.bucketThreads.peek()?.reset();
+    this.bucketThreads.value = undefined;
+  }
+
   private ensureWalk(walk: UsageWalk): void {
     walk.resume();
     const s = walk.state.peek();
@@ -490,6 +512,7 @@ export class Insights {
   private renewPeriod(): void {
     this.daily.reset();
     this.byThread.reset();
+    this.clearBucketThreads();
     this.period.value = this.computePeriod(this.periodDays.peek());
   }
 

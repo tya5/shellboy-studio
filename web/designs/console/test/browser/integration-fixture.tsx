@@ -8,11 +8,12 @@ import { DESIGNS } from '../../../registry';
 
 const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
+const analyticsDrilldownFixture = params.get('view') === 'analytics-drilldown';
 const ownSendFixture = params.get('view') === 'own-send';
 const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
 const sectionGeometryFixture = params.get('view') === 'section-geometry';
-const fixtureOptions = sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
+const fixtureOptions = analyticsDrilldownFixture ? { route: 'analytics' as const, section: 'overview' as const, lang: fixtureLang } : sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const initialRoute = parseRoute(location.hash);
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get('view') === 'analytics-24h' ? { lang: fixtureLang } : {}), route: initialRoute.view, ...(initialRoute.view === 'conversation' && initialRoute.threadId ? { threadId: initialRoute.threadId } : {}), configure(db) {
@@ -22,6 +23,23 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get(
     db.threads.hold = { ...db.threads.hold!, title: 'Waiting — next review window' };
     db.threads.done = { ...db.threads.done!, title: 'Completed — inspect storage' };
     db.replies = [pendingReply('mark-question', 'child', {kind:'name',name:'human'}, 'Review query path?')];
+  }
+  if (analyticsDrilldownFixture) {
+    const answer = db.answer.bind(db);
+    db.threads = { lead: summary('lead', {title:'Core worker | sol'}), other: summary('other', {title:'Studio worker | sol'}) };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+    const hour = rollingPeriod(NOW, 540).hours[8]!;
+    const page = (items: unknown[]) => ({ ...usagePage(items), group_by: 'thread' });
+    const modelPage = (items: unknown[]) => ({ ...usagePage(items), group_by: 'model' });
+    db.answer = call => {
+      const args = call.args as {group_by?:string;since?:string;thread_id?:string};
+      if (call.command !== 'usage.get') return answer(call);
+      if(args.group_by === 'hour') return {ok:true,result:{...usagePage([usageItem(hour.key,{count:68,input:54000,cached:31000,output:2600})]),group_by:'hour'}};
+      if(args.group_by === 'thread') return {ok:true,result:page([usageItem('lead',{count:42,input:22000,cached:12000,output:1100}),usageItem('other',{count:26,input:32000,cached:19000,output:1500})])};
+      if(args.group_by === 'model') return {ok:true,result:modelPage([usageItem('gpt-6.2-sol',{count:28,input:15000,cached:8500,output:700}),usageItem('gpt-5.1',{count:14,input:7000,cached:3500,output:400})])};
+      return answer(call);
+    };
+    return;
   }
   if (params.get('view') === 'analytics-24h') {
     const answer = db.answer.bind(db);
@@ -127,6 +145,7 @@ const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { de
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 if (params.get('view') === 'analytics-24h') effect(() => model.insights.rolling.setComparison(prefs.value.analyticsCompare === true));
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; if (resizeStore) savePrefs(resizeStore, prefs.value); }, submitToken: async () => true });
+if (analyticsDrilldownFixture) setTimeout(()=>{ const button=[...document.querySelectorAll('button')].find(item=>item.textContent?.trim()==='24 hours'); button?.click(); t.push({t:'changed',thread_ids:['lead'],config_changed:false,list:true}); void settle(t,db).then(()=>{const interval=model.insights.rolling.interval.value;if(interval)model.insights.rolling.select(interval.hours[8]!.key);}); }, 100);
 addEventListener('hashchange', () => model.applyRoute(parseRoute(location.hash)));
 
 // Synthetic-only theme control; production App preferences still use the existing settings surface.
