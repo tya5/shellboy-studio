@@ -33,7 +33,7 @@ export function PanelTabs(props: {
       setMode(full.getBoundingClientRect().width <= width ? "all" : active.getBoundingClientRect().width <= width ? "active" : "icons");
     };
     fit();
-    // A mode change can alter the measured strip's height. Commit it outside observer delivery.
+    // A mode change can alter the tab row height. Commit it outside observer delivery.
     let frame = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame);
