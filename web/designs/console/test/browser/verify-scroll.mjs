@@ -17,7 +17,7 @@ const server = await createServer({ configFile: false, root: fileURLToPath(new U
 await server.listen();
 const port = server.httpServer.address().port;
 const chrome = spawn(process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "about:blank"], { stdio: "ignore" });
+  ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--use-mock-keychain", "--password-store=basic", "--disable-gpu", "about:blank"], { stdio: "ignore" });
 let ws;
 const results = [];
 let diagnose = async () => undefined;

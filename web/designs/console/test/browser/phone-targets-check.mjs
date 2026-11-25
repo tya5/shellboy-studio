@@ -10,7 +10,7 @@ const debugPort = 19572;
 const browser = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const profile = await mkdtemp(join(tmpdir(), 'studio120-phone-targets-'));
 const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--config', 'designs/console/test/browser/vite.config.mjs', '--host', '127.0.0.1', '--port', String(appPort), '--strictPort'], { stdio: 'ignore' });
-const chrome = spawn(browser, ['--headless', '--disable-gpu', '--disable-extensions', '--no-first-run', `--user-data-dir=${profile}`, `--remote-debugging-port=${debugPort}`, '--remote-allow-origins=*', 'about:blank'], { stdio: 'ignore' });
+const chrome = spawn(browser, ['--headless', '--disable-gpu', '--disable-extensions', '--no-first-run','--use-mock-keychain','--password-store=basic', `--user-data-dir=${profile}`, `--remote-debugging-port=${debugPort}`, '--remote-allow-origins=*', 'about:blank'], { stdio: 'ignore' });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 let ws;
 try {

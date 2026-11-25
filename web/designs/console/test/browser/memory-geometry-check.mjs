@@ -19,7 +19,7 @@ try {
   server = spawn(process.execPath, [join(repo, 'web/designs/console/test/browser/production-serve.mjs')], { env: { ...process.env, FIXTURE_PORT: '0' }, stdio: ['ignore','pipe','inherit'] });
   serverTerminal = terminal(server);
   const serverReady = new Promise((resolve, reject) => { let text=''; server.stdout.on('data', chunk => { text += chunk; const line=text.split('\n').find(line => line.startsWith('STUDIO_FIXTURE_READY ')); if(line) resolve(JSON.parse(line.slice('STUDIO_FIXTURE_READY '.length))); }); server.once('error', reject); server.once('exit', (code, signal) => reject(new Error(`fixture server exited ${code}/${signal}`))); });
-  chrome = spawn(process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless','--disable-gpu','--no-first-run','--user-data-dir='+browserDir,'--remote-debugging-port=0','--remote-allow-origins=*','about:blank'], { stdio: 'ignore' });
+  chrome = spawn(process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless','--disable-gpu','--no-first-run','--use-mock-keychain','--password-store=basic','--user-data-dir='+browserDir,'--remote-debugging-port=0','--remote-allow-origins=*','about:blank'], { stdio: 'ignore' });
   chromeTerminal = terminal(chrome);
   const fixture=await serverReady;
   let debugPort; for(let i=0;i<100;i++){try{const port=Number((await readFile(join(browserDir,'DevToolsActivePort'),'utf8')).split('\n')[0]);debugPort=port;break}catch{if(chrome.exitCode !== null) throw Error(`Chrome exited ${chrome.exitCode}`); await new Promise(r=>setTimeout(r,100));}}

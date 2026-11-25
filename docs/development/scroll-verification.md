@@ -21,7 +21,9 @@ node web/designs/console/test/browser/verify-scroll.mjs
 
 The browser runner starts/stops its own loopback Vite server and temporary Chrome
 profile, chooses free ports, and writes PNGs plus JSON geometry to a new temp
-directory printed on stdout. It does not restart an installed/shared server.
+directory printed on stdout. It does not restart an installed/shared server. Chrome
+is launched with `--use-mock-keychain` and `--password-store=basic`; see the
+[browser fixture README](../../web/designs/console/test/browser/README.md).
 `CHROME_BIN` can override the macOS Chrome executable. An optional first argument
 is a **new**, nonexisting artifact directory; existing directories are refused.
 The fixture is a development HTML entry, not part of the production App bundle.

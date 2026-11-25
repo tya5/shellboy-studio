@@ -8,7 +8,7 @@ const appPort=19565, debugPort=19566;
 const browser=process.env.CHROME_BIN??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const profile=await mkdtemp(join(tmpdir(),'studio63-mounted-'));
 const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--config','designs/console/test/browser/vite.config.mjs','--host','127.0.0.1','--port',String(appPort),'--strictPort'],{stdio:'ignore'});
-const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run',`--user-data-dir=${profile}`,'--remote-debugging-port='+debugPort,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
+const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--use-mock-keychain','--password-store=basic',`--user-data-dir=${profile}`,'--remote-debugging-port='+debugPort,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));let ws, evaluate;
 async function until(fn){for(let i=0;i<100;i++){try{const value=await fn();if(value)return value}catch{}await delay(100)}throw Error('timed out: '+String(await evaluate('JSON.stringify({html:document.documentElement.outerHTML.slice(0,1200),error:document.querySelector(\"vite-error-overlay\")?.shadowRoot?.innerText})')))}
 try{

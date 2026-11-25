@@ -5,7 +5,7 @@ import { once } from 'node:events';
 const chromePath='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const profile=await mkdtemp('/tmp/studio38-tabs-chrome-');
 const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--config','designs/console/test/browser/vite.config.mjs','--host','127.0.0.1','--port','19438','--strictPort'],{stdio:'inherit'});
-const chrome=spawn(chromePath,['--headless','--disable-gpu','--no-first-run','--disable-extensions',`--user-data-dir=${profile}`,'--remote-debugging-port=19439','about:blank'],{stdio:'ignore'});
+const chrome=spawn(chromePath,['--headless','--disable-gpu','--no-first-run','--use-mock-keychain','--password-store=basic','--disable-extensions',`--user-data-dir=${profile}`,'--remote-debugging-port=19439','about:blank'],{stdio:'ignore'});
 const delay=ms=>new Promise(r=>setTimeout(r,ms));let ws;
 async function until(fn){for(let i=0;i<100;i++){try{const v=await fn();if(v)return v;}catch{}await delay(100)}throw Error('timed out');}
 try{

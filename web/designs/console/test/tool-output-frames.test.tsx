@@ -152,7 +152,8 @@ it('tags Core stderr ranges across pages and keeps Raw as one exact text node', 
   const panel = r.host.querySelector('[data-panel-detail]')!;
   expect(panel.querySelector('.output-log pre')?.textContent).toBe(first + tail);
   expect(panel.querySelector('[data-stream]')).toBeNull();
-  expect([...panel.querySelectorAll('.output-actions button')].map(button => button.textContent)).toEqual(['Copy', 'Wrap lines']);
+  expect([...panel.querySelectorAll('.output-actions button')].map(button => button.getAttribute('aria-label'))).toEqual(['Wrap lines', 'Copy output']);
+  expect(panel.querySelector<HTMLButtonElement>('button[aria-label="Wrap lines"]')?.getAttribute('aria-pressed')).toBe(row.querySelector<HTMLButtonElement>('button[aria-label="Wrap lines"]')?.getAttribute('aria-pressed'));
   const marked = row.querySelectorAll('[data-stream="stderr"]');
   expect(marked).toHaveLength(1);
   expect(marked[0]?.textContent).toBe('stderrpre\u{1f4a5}suffix\n');
@@ -249,7 +250,8 @@ it('opens the visible phone sheet from the inline action without changing panel 
   expect(detail).not.toBeNull();
   expect(detail.textContent).toContain('Retained fixture log');
   expect(detail.querySelector('.output-header, .output-format')).toBeNull();
-  expect([...detail.querySelectorAll('.output-actions button')].map(button => button.textContent)).toEqual(['Copy', 'Wrap lines']);
+  expect([...detail.querySelectorAll('.output-actions button')].map(button => button.getAttribute('aria-label'))).toEqual(['Wrap lines', 'Copy output']);
+  expect(detail.querySelector<HTMLButtonElement>('button[aria-label="Wrap lines"]')?.getAttribute('aria-pressed')).toBe(row.querySelector<HTMLButtonElement>('button[aria-label="Wrap lines"]')?.getAttribute('aria-pressed'));
 });
 
 it('toggles completed inline shell output between formatted and raw text', async () => {
@@ -257,12 +259,18 @@ it('toggles completed inline shell output between formatted and raw text', async
   const raw = '--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-before\n+after\n';
   r.db.outputs['exec-1'] = raw;
   const row = await r.expand();
+  const detail = r.host.querySelector('[data-panel-detail]')!;
   const button = () => row.querySelector<HTMLButtonElement>('.output-header button[aria-label="Formatted"]')!;
+  const detailButton = () => detail.querySelector<HTMLButtonElement>('.output-actions button[aria-label="Formatted"]')!;
   const log = () => row.querySelector('.output-log pre')!;
   expect(button().getAttribute('aria-pressed')).toBe('true');
+  expect(detailButton().getAttribute('aria-pressed')).toBe(button().getAttribute('aria-pressed'));
   expect(log().querySelector('.output-add')?.textContent).toContain('+after');
   expect(log().textContent).not.toBe(raw);
 
+  await act(async () => { detailButton().click(); });
+  expect(detailButton().getAttribute('aria-pressed')).toBe('false');
+  expect(detail.querySelector('.output-log pre')?.textContent).toBe(raw);
   await act(async () => { button().click(); });
   expect(button().getAttribute('aria-pressed')).toBe('false');
   expect(log().querySelector('.output-add')).toBeNull();

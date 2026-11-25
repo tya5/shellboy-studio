@@ -16,7 +16,7 @@ await mkdir(out, { recursive: true });
 const browser = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const profile = await mkdtemp(join(tmpdir(), 'studio138-branches-profile-'));
 const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--config', 'designs/console/test/browser/vite.config.mjs', '--host', '127.0.0.1', '--port', String(appPort), '--strictPort'], { stdio: 'ignore' });
-const chrome = spawn(browser, ['--headless', '--disable-gpu', '--disable-extensions', '--no-first-run', '--hide-scrollbars', `--user-data-dir=${profile}`, `--remote-debugging-port=${debugPort}`, '--remote-allow-origins=*', 'about:blank'], { stdio: 'ignore' });
+const chrome = spawn(browser, ['--headless', '--disable-gpu', '--disable-extensions', '--no-first-run','--use-mock-keychain','--password-store=basic', '--hide-scrollbars', `--user-data-dir=${profile}`, `--remote-debugging-port=${debugPort}`, '--remote-allow-origins=*', 'about:blank'], { stdio: 'ignore' });
 const delay = ms => new Promise(r => setTimeout(r, ms));
 let ws;
 try {
