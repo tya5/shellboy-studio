@@ -10,7 +10,10 @@ menu state, placement and keyboard handling through `useRowMenu`. Actions reveal
 on hover, row focus, selection or while open; touch always shows the action.
 
 Panel items provide a title, an optional `command` caption, and `onSelect`, which receives the actual row button
-for focus return. A per-target error can be displayed after the row. Thread rows
+for focus return. Use `error` for a per-target error, or `feedback` for custom
+status and alert content. ListRow places feedback on its own line after the row,
+not in the trailing action slot. Keep a live region mounted in `feedback` when
+its announcement text changes. Thread rows
 supply their native link or checkbox layout; the action stays a sibling of those
 controls. For Thread rows, `afterActions` keeps trailing metadata in its existing
 position. Panel rows can use this slot for an always-visible, independently

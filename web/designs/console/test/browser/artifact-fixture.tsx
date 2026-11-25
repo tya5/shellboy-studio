@@ -81,7 +81,8 @@ Object.assign(window, { measureArtifactReveal: async () => {
  const row = document.querySelector('[data-panel-row-id="report"]')!;
  const button = row.querySelector<HTMLButtonElement>('.tooltip-anchor button')!;
  const title = row.querySelector('.panel-list-title')!;
- const region = row.querySelector('[data-artifact-reveal-status]')!;
+ const feedback = row.nextElementSibling!;
+ const region = feedback.querySelector('[data-artifact-reveal-status]')!;
  const panel = row.closest('[data-panel-root]')!;
  const measure = () => {
   const buttonRect = button.getBoundingClientRect();
@@ -94,7 +95,7 @@ Object.assign(window, { measureArtifactReveal: async () => {
    await new Promise(requestAnimationFrame);
   }
   if (region.classList.contains('artifact-reveal-message') !== visible) throw new Error('Unexpected reveal status state');
-  if (row.querySelector('[data-artifact-reveal-status]') !== region) throw new Error('Reveal status node replaced');
+  if (feedback.querySelector('[data-artifact-reveal-status]') !== region) throw new Error('Reveal status node replaced');
  }
  const before = measure();
  button.click();
@@ -112,8 +113,8 @@ Object.assign(window, { measureArtifactReveal: async () => {
  revealFails = true;
  button.click();
  const deadline = performance.now() + 5000;
- while (!row.querySelector('[role="alert"]') && performance.now() < deadline) await new Promise(requestAnimationFrame);
- const error = row.querySelector('[role="alert"]');
+ while (!feedback.querySelector('[role="alert"]') && performance.now() < deadline) await new Promise(requestAnimationFrame);
+ const error = feedback.querySelector('[role="alert"]');
  const failed = measure();
  revealFails = false;
  return { before, during, after, failed, successBelowTitle, errorBelowTitle: !!error && belowTitle(error) };

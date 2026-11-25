@@ -356,11 +356,11 @@ describe('right panel purpose',()=>{
    expect(!!revealRow).toBe(platform === 'finder');
    if (revealRow) {
     await pump(() => revealRow.click());
-    expect(page.querySelector('[data-panel-row-id="z"] [role="alert"]')?.textContent).toContain('成果物のファイルが見つからない');
+    expect(page.querySelector('[data-panel-row-id="z"] + * [role="alert"]')?.textContent).toContain('成果物のファイルが見つからない');
     const request = fetchArtifact.mock.calls.find(([path, init]) => path === '/artifact-reveal' && init?.method === 'POST');
     expect(JSON.parse(String(request?.[1]?.body))).toEqual({thread_id:'lead',artifact_id:'z',version:2});
     expect(page.querySelector('[data-panel-detail]')).toBeNull();
-    const selector = '[data-panel-row-id="z"] [data-artifact-reveal-status][role="status"]';
+    const selector = '[data-panel-row-id="z"] + * [data-artifact-reveal-status][role="status"]';
     const region = page.querySelector(selector);
     expect(region?.textContent).toBe('');
     expect(region?.hasAttribute('hidden')).toBe(false);
@@ -372,7 +372,7 @@ describe('right panel purpose',()=>{
     expect(toast).toBe(region);
     expect(toast?.classList.contains('artifact-reveal-message')).toBe(true);
     expect(toast?.textContent).toBe(f.model.t.peek()('artifact.reveal.revealed'));
-    expect(page.querySelector('[data-panel-row-id="z"] [role="alert"]')).toBeNull();
+    expect(page.querySelector('[data-panel-row-id="z"] + * [role="alert"]')).toBeNull();
    }
    await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z"] button')!.click());
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-2.md');

@@ -13,6 +13,7 @@ type PanelRow = {
   readonly menuLabel?: string;
   readonly actions?: readonly { readonly key: string; readonly label: string; readonly run?: () => void; readonly href?: string; readonly disabled?: boolean }[];
   readonly error?: string;
+  readonly feedback?: ComponentChildren;
   readonly afterActions?: ComponentChildren;
   readonly onSelect: (opener: HTMLButtonElement) => void;
 };
@@ -34,5 +35,5 @@ export function ListRow(props: (PanelRow | ThreadRow) & { readonly selected?: bo
     {panel ? <button class="panel-list-main" type="button" onClick={event => panel.onSelect(event.currentTarget)}>{panel.icon ? <Icon role={panel.icon} size="small" /> : null}{panel.command ? <span class="panel-list-copy"><span class="panel-list-title">{panel.title}</span><span class="panel-list-title mono muted caption">{panel.command}</span></span> : <span class="panel-list-title">{panel.title}</span>}{panel.subtitle ? <span class="panel-list-subtitle">{panel.subtitle}</span> : null}{props.children}</button> : props.children}
     {options ? <span class="list-row-action" data-row-action="">{menu.trigger}</span> : null}
     {props.afterActions}{menu.menu}
-  </div>{panel?.error ? <div role="alert">{panel.error}</div> : null}</>;
+  </div>{panel?.error ? <div role="alert">{panel.error}</div> : null}{panel?.feedback ? <div class="list-row-feedback">{panel.feedback}</div> : null}</>;
 }

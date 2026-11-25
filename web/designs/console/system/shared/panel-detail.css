@@ -5,5 +5,3 @@
 .artifact-preview > pre { margin:0; font:var(--type-code); white-space:pre-wrap; overflow-wrap:anywhere; }
 [data-artifact-reveal-status]:not(.artifact-reveal-message){position:absolute;inline-size:0;block-size:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .artifact-reveal-message{min-inline-size:0;overflow-wrap:anywhere;font:var(--type-caption)}
-.list-row[data-panel-row-id]:has(> .artifact-reveal-message){flex-wrap:wrap}
-.list-row[data-panel-row-id] > .artifact-reveal-message{flex:0 0 100%;box-sizing:border-box;padding:0 var(--space-8) var(--space-4)}

@@ -1,6 +1,6 @@
-import { artifactContent, artifactRevealPlatform, revealArtifact, Cancel, type ArtifactRevealError, type ArtifactRevealPlatform, type ArtifactContentTarget, type ArtifactSelected, type ArtifactVersion } from "../../../data/src";
+import { artifactContent, artifactRevealPlatform, revealArtifact, Cancel, type ArtifactRevealError, type ArtifactSummary, type ArtifactRevealPlatform, type ArtifactContentTarget, type ArtifactSelected, type ArtifactVersion } from "../../../data/src";
 import { parseTime, type AppModel } from "../../../ui-core/src";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Button } from "../system/components/Button";
 import { CopyButton } from "../system/components/CopyButton";
 import { Disclosure } from "../system/components/Disclosure";
@@ -48,13 +48,21 @@ function fileArtifact(uri: string, platform: ArtifactRevealPlatform): boolean {
   } catch { return false; }
 }
 
-function RevealButton({ model, target, platform }: { model: AppModel; target: ArtifactContentTarget; platform: ArtifactRevealPlatform }) {
+function useRevealAction(model: AppModel, target: ArtifactContentTarget, platform?: ArtifactRevealPlatform) {
   const t = model.t.value;
-  const label = t(`artifact.reveal.${platform}`);
   const request = useRef<AbortController>();
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const [status, setStatus] = useState<ArtifactRevealError | "busy_request" | "revealed">();
-  useEffect(() => () => { request.current?.abort(); clearTimeout(timer.current); }, []);
+  useLayoutEffect(() => {
+    setStatus(undefined);
+    return () => {
+      request.current?.abort();
+      request.current = undefined;
+      clearTimeout(timer.current);
+    };
+  }, [target.thread_id, target.artifact_id, target.version, platform]);
+  if (!platform) return {};
+  const label = t(`artifact.reveal.${platform}`);
   const reveal = async () => {
     if (request.current) return;
     const abort = new AbortController();
@@ -69,22 +77,36 @@ function RevealButton({ model, target, platform }: { model: AppModel; target: Ar
     setStatus(error ?? "revealed");
     if (!error) timer.current = setTimeout(() => setStatus(undefined), 1500);
   };
-  return <><Tooltip label={label}><Button variant="ghost" icon label={label} disabled={status === "busy_request"} onClick={() => void reveal()}><Icon role="artifact.reveal" size="small" /></Button></Tooltip>
-    <span role="status" data-artifact-reveal-status="" class={status === "revealed" ? "artifact-reveal-message" : undefined}>{status === "revealed" ? t("artifact.reveal.revealed") : null}</span>
+  const action = <Tooltip label={label}><Button variant="ghost" icon label={label} disabled={status === "busy_request"} onClick={() => void reveal()}><Icon role="artifact.reveal" size="small" /></Button></Tooltip>;
+  const feedback = <><span role="status" data-artifact-reveal-status="" class={status === "revealed" ? "artifact-reveal-message" : undefined}>{status === "revealed" ? t("artifact.reveal.revealed") : null}</span>
     {status && status !== "busy_request" && status !== "revealed" ? <span role="alert" class="artifact-reveal-message">{t(`artifact.reveal.${status}`)}</span> : null}</>;
+  return { action, feedback };
 }
 
-export function ArtifactList({ model, platform, onSelect }: { model: AppModel; platform: ArtifactRevealPlatform | undefined; onSelect: (id: string, opener: HTMLButtonElement) => void }) {
+function RevealButton({ model, target, platform }: { model: AppModel; target: ArtifactContentTarget; platform: ArtifactRevealPlatform }) {
+  const { action, feedback } = useRevealAction(model, target, platform);
+  return <>{action}{feedback}</>;
+}
+
+type ArtifactListProps = { model: AppModel; platform: ArtifactRevealPlatform | undefined; onSelect: (id: string, opener: HTMLButtonElement) => void };
+
+function ArtifactRow({ model, platform, onSelect, row }: ArtifactListProps & { row: ArtifactSummary }) {
+  const target = { thread_id: row.thread_id, artifact_id: row.artifact_id, version: row.latest.version };
+  const { action, feedback } = useRevealAction(model, target, platform && fileArtifact(row.latest.uri, platform) ? platform : undefined);
+  return <ListRow id={row.artifact_id} title={row.latest.title} icon={artifactIcon(row.latest.mime)}
+    subtitle={`${row.latest.version > 1 ? `v${row.latest.version} · ` : ""}${time(row.updated_at, model.lang.value)}`}
+    selected={model.panelOpener.value.possessions?.kind === "artifact" && model.panelOpener.value.possessions.id === row.artifact_id}
+    afterActions={action} feedback={feedback}
+    onSelect={opener => onSelect(row.artifact_id, opener)}><Icon role="artifact.detail" size="small" /></ListRow>;
+}
+
+export function ArtifactList(props: ArtifactListProps) {
+  const { model } = props;
   const t = model.t.value;
   const page = model.artifacts.list.state.value;
-  const lang = model.lang.value;
   return <section>
     <ListDivider label={t("artifact.band")} />
-    {page.items.map(row => <ListRow key={row.artifact_id} id={row.artifact_id} title={row.latest.title} icon={artifactIcon(row.latest.mime)}
-      subtitle={`${row.latest.version > 1 ? `v${row.latest.version} · ` : ""}${time(row.updated_at, lang)}`}
-      selected={model.panelOpener.value.possessions?.kind === "artifact" && model.panelOpener.value.possessions.id === row.artifact_id}
-      afterActions={platform && fileArtifact(row.latest.uri, platform) ? <RevealButton key={row.latest.version} model={model} platform={platform} target={{ thread_id: row.thread_id, artifact_id: row.artifact_id, version: row.latest.version }} /> : null}
-      onSelect={opener => onSelect(row.artifact_id, opener)}><Icon role="artifact.detail" size="small" /></ListRow>)}
+    {page.items.map(row => <ArtifactRow key={row.artifact_id} {...props} row={row} />)}
     {page.loading && !page.loaded || page.loadingMore ? <p role="status">{t("artifact.loading")}</p> : null}
     {page.error ? <p role="alert">{t("artifact.failed")}</p> : null}
     {!page.items.length && !(page.loading && !page.loaded) && !page.error ? <p class="muted caption">{t("artifact.empty")}</p> : null}

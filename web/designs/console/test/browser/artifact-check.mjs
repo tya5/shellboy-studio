@@ -44,7 +44,7 @@ try{
    await writeFile(`${process.env.SHOTS}/studio-${name}-${width}.png`,Buffer.from(shot.data,'base64'));
   };
   await capturePanel('list');
-  await until(()=>evaluate("!!document.querySelector('[data-panel-row-id=report] [data-artifact-reveal-status]')"));
+  await until(()=>evaluate("!!document.querySelector('[data-panel-row-id=report] + * [data-artifact-reveal-status]')"));
   const reveal = await evaluate('window.measureArtifactReveal()');
   console.log(JSON.stringify({width,reveal}));
   assert(reveal.before.titleWidth > 0);

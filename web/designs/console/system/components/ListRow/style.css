@@ -1,5 +1,6 @@
 .list-row { display:flex; align-items:center; min-width:0; }
 .list-row[data-panel-row-id] { gap:var(--space-4); border-radius:var(--radius); }
+.list-row-feedback { padding-inline:var(--space-8); min-inline-size:0; }
 .list-row[data-waiting="true"] { background:var(--need-bg); }
 .list-row[data-panel-row-id][aria-current="true"] { background:var(--accent-bg); }
 .panel-list-main { display:flex; align-items:center; gap:var(--space-8); flex:1; min-width:0; min-height:var(--size-control); padding:var(--space-8); color:inherit; text-align:left; background:none; border:0; cursor:pointer; }
