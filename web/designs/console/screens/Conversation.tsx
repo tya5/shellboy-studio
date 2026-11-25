@@ -691,7 +691,8 @@ function panelOperationError(model: AppModel, id: string): string | undefined {
 
 function PanelActivity({ model }: { model: AppModel }) {
   const t = model.t.value;
-  const [runStopConfirm, setRunStopConfirm] = useState(false);
+  const [runStopConfirm, setRunStopConfirm] = useState<{ runId: string; opener: HTMLButtonElement }>();
+  const runStopOpener = useRef<HTMLButtonElement | null>(null);
   const requestStop = useContext(RequestShellStop);
   const work = model.work.value;
   const selected = model.panelOpener.value.work;
@@ -700,7 +701,7 @@ function PanelActivity({ model }: { model: AppModel }) {
   return <div class="panel-list" data-panel-list="work">
     {activitySections.map(section => {
       const rows = work[section.key];
-      return rows.length || section.key === "running" && runLive ? <section key={section.key}><ListDivider label={t(section.label)} count={rows.length} />{section.key === "running" && runLive ? <div ><p class="caption">{t("action.stopEverythingDescription")}</p><Button variant="stop" data-run-stop-trigger onClick={() => setRunStopConfirm(true)}>{t("action.stopEverything")}</Button></div> : null}{rows.map(row => {
+      return rows.length || section.key === "running" && runLive ? <section key={section.key}>{section.key === "running" && runLive ? <ListDivider label={t(section.label)} count={rows.length} action={<Button variant="stop" buttonRef={runStopOpener} onClick={event => { const runId = model.details.value?.run_id; if (runId) setRunStopConfirm({ runId, opener: event.currentTarget }); }}>{t("action.stopEverything")}</Button>} description={t("action.stopEverythingDescription")} /> : null}{rows.map(row => {
         const elapsed = panelElapsed(now, row.startedAt);
         const state = row.state === "accepted" ? t("work.accepted") : t("work.held");
         const command = section.kind === "step" ? row.command : undefined;
@@ -718,8 +719,8 @@ function PanelActivity({ model }: { model: AppModel }) {
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
     {workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted">{t("work.stale")}</div> : null}
     {!work.running.length && !work.pending.length && !work.partial && !runLive ? <EmptyState compact role="empty.panelActivity" title={t("panel.empty.work")} body={t("panel.empty.workBody")} /> : null}
-    {runStopConfirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("action.stopEverything")} closeLabel={t("thread.deleteCancel")} describedBy="run-stop-description" onClose={() => setRunStopConfirm(false)} getReturnFocusTarget={() => document.querySelector<HTMLButtonElement>("[data-run-stop-trigger]")}>
-      <div class="shell-stop-confirmation"><p id="run-stop-description">{t("action.stopEverythingDescription")}</p><Button variant="stop" onClick={() => { setRunStopConfirm(false); void model.stopRun(); }}>{t("action.stopEverything")}</Button></div>
+    {runStopConfirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("action.stopEverything")} closeLabel={t("thread.deleteCancel")} describedBy="run-stop-description" onClose={() => setRunStopConfirm(undefined)} getReturnFocusTarget={() => runStopConfirm?.opener}>
+      <div class="shell-stop-confirmation"><p id="run-stop-description">{t("action.stopEverythingDescription")}</p><Button variant="stop" onClick={() => { const { runId } = runStopConfirm!; setRunStopConfirm(undefined); void model.stopRun(runId); }}>{t("action.stopEverything")}</Button></div>
     </WorkSheet> : null}
   </div>;
 }
@@ -1091,7 +1092,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             busy={send.kind === "sending"}
             draftScope={handle.threadId}
             onSend={(text,onReserved) => model.send(text,onReserved)}
-            stop={model.canStop.value && details?.turn_id ? { label: t("composer.stop"), run: () => void model.stopModel() } : undefined}
+            stop={model.canStop.value && details?.turn_id ? { label: t("composer.stop"), run: () => void model.stopModel(details.turn_id!) } : undefined}
           />
         </div> : null}
         {handle ? <div class="phone-panel-footer"><ShellFooter side="right"><ShellToggle panel expanded={!!phonePanel} label={t(phonePanel ? "panel.collapse" : "panel.expand")} onClick={() => onTogglePhonePanel?.()} /></ShellFooter></div> : null}

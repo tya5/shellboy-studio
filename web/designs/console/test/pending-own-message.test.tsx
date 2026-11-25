@@ -807,8 +807,20 @@ it.each(["idle", "turn-running", "shell-waiting", "both"] as const)("Studio #158
   expect(dock.querySelector('[aria-label="Send timing"]')).toBeNull();
   expect(dock.querySelector('button[aria-label^="Send EOF"]')).toBeNull();
   expect(dock.querySelector("textarea")?.placeholder).not.toMatch(/shell|stdin|input to/i);
-  expect(!!dock.querySelector('button[aria-label="Stop model"]')).toBe(turnRunning);
+  const stopModel = dock.querySelector<HTMLButtonElement>('button[aria-label="Stop model"]');
+  expect(!!stopModel).toBe(turnRunning);
   expect(dock.querySelector('button[aria-label="Interrupt Turn"]')).toBeNull();
+  if (stopModel) {
+   await act(async()=>{stopModel.click();await flush(8);});
+   const interrupt=f.t.calls("turn.interrupt").at(-1)!;
+   expect(interrupt.args).toEqual({turn_id:"turn-1"});
+   expect(f.t.calls("run.stop")).toHaveLength(0);
+   expect(f.t.calls("shell.stop")).toHaveLength(0);
+   f.t.ownerError(interrupt.id,'turn_not_running','Turn is no longer running');
+   await act(async()=>{await flush(8);});
+   expect(f.model.actionError.value?.kind).toBe('error');
+   expect(dock.querySelector('textarea')).not.toBeNull();
+  }
   const before=f.t.calls("message.send").length;
   const area=dock.querySelector<HTMLTextAreaElement>("textarea")!;
   area.value=`send-${state}`;area.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertText"}));

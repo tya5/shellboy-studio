@@ -113,7 +113,7 @@ A group label is clearly a label, not an item: `type-caption`, `muted`, weight 5
 The composer's control row is always one line, in every state and width:
 
 - Start: the model control as a ghost button showing the connection and model in `type-code` and the effort in `type-label` `muted`, then the hint in `type-caption` `muted`.
-- End, in this order: ContextRing (ghost), Stop (only while running), Send (`primary`, always last).
+- End, in this order: ContextRing (ghost), Stop model (only while the model works), Send (`primary`, always last). Stop everything is a separate confirmed Activity action; shell Stop/Background remain on shell rows.
 - When space runs out: first the hint truncates, then the model name truncates; at phone width the hint is hidden. Nothing wraps.
 - A long running status goes in a status line above the composer (`type-caption` `muted`, truncated), not in the row.
 - Attachments are removable tokens (bordered, `type-code`, a `size-row-action` remove button with the `composer.removeAttachment` icon) in a row above the text area.

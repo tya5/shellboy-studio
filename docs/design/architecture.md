@@ -242,7 +242,7 @@ Views below are data-layer view models; their layout belongs to presentation.
   tool start/finish from `shell.list`, re-read on each `changed` for the open
   Thread. Elapsed time ticks client-side from saved `started_at`; it is a
   display tick, not a data poll.
-- **Composer**: send (`message.send`, `deliver` default) and stop (`run.stop`).
+- **Composer**: Send uses `message.send` with default delivery; Stop model uses `turn.interrupt` for the current Turn and never stops shells. Stop everything (`run.stop`) is in the Activity panel behind confirmation.
   Held/queued input shows the owner's delivery state from `message.get`.
 
 ### 4.2 Vocabulary (no text glyphs)
