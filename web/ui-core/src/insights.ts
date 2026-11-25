@@ -7,6 +7,7 @@ import {
   EMPTY_COVERAGE,
   mergeGroups,
   periodOf,
+  rollingPeriod,
   readCompactionEvent,
   readGroup,
   type CompactionEvent,
@@ -58,8 +59,8 @@ export class UsageWalk {
 
   constructor(
     private readonly ops: Operations,
-    private readonly groupBy: "day" | "thread" | "model",
-    private readonly period: () => Period,
+    private readonly groupBy: "day" | "hour" | "thread" | "model",
+    private readonly period: () => Pick<Period, "since" | "until" | "zone">,
     private readonly threadId?: string,
   ) {}
 
@@ -194,10 +195,103 @@ export interface InsightsOptions {
   offsetMinutes: () => number;
 }
 
+type RollingPeriod = ReturnType<typeof rollingPeriod>;
+
+/** The visible rolling Overview owns one current walk and its last completed cut. */
+export class RollingUsage {
+  readonly enabled = signal(false);
+  readonly interval = signal<RollingPeriod | undefined>(undefined);
+  readonly previous = signal<{ interval: RollingPeriod; walk: WalkState } | undefined>(undefined);
+  readonly selected = signal<string | undefined>(undefined);
+  readonly dirty = signal(false);
+  readonly walk: UsageWalk;
+  private scope: { owner: string; hint: number } | undefined;
+  private scheduled = false;
+
+  constructor(ops: Operations, private readonly options: InsightsOptions) {
+    this.walk = new UsageWalk(ops, "hour", () => this.interval.peek()!);
+  }
+
+  observe(owner: string | undefined, hint: number): void {
+    if (owner !== this.scope?.owner) {
+      this.leave();
+      if (owner === undefined) return;
+      this.scope = { owner, hint };
+      void this.start();
+    } else if (this.scope && hint !== this.scope.hint) {
+      this.scope.hint = hint;
+      this.dirty.value = true;
+      this.schedule();
+    }
+  }
+
+  leave(): void {
+    this.scope = undefined;
+    batch(() => {
+      this.walk.reset();
+      this.interval.value = undefined;
+      this.previous.value = undefined;
+      this.selected.value = undefined;
+      this.dirty.value = false;
+    });
+  }
+
+  retry(): void { if (this.scope) void this.start(); }
+
+  continue(): void {
+    if (!this.scope) return;
+    if (this.dirty.peek()) this.retry();
+    else void this.finish(this.scope, this.walk.continue());
+  }
+
+  select(key: string): void {
+    if (this.displayInterval()?.hours.some(h => h.key === key)) this.selected.value = key;
+  }
+
+  private displayInterval(): RollingPeriod | undefined {
+    const active = this.walk.state.peek();
+    return active.status === "loading" || active.status === "failed" && !active.groups.size
+      ? this.previous.peek()?.interval ?? this.interval.peek() : this.interval.peek();
+  }
+
+  private schedule(): void {
+    if (this.scheduled) return;
+    this.scheduled = true;
+    queueMicrotask(() => {
+      this.scheduled = false;
+      if (this.scope && this.dirty.peek() && this.walk.state.peek().status === "done") void this.start();
+    });
+  }
+
+  private async start(): Promise<void> {
+    const scope = this.scope!;
+    const interval = rollingPeriod(this.options.nowMs(), this.options.offsetMinutes());
+    const read = batch(() => {
+      this.dirty.value = false;
+      this.interval.value = interval;
+      return this.walk.start();
+    });
+    await this.finish(scope, read);
+  }
+
+  private async finish(scope: { owner: string; hint: number }, read: Promise<void>): Promise<void> {
+    const interval = this.interval.peek();
+    await read;
+    if (this.scope !== scope || !interval || this.interval.peek() !== interval) return;
+    const walk = this.walk.state.peek();
+    batch(() => {
+      if (!interval.hours.some(h => h.key === this.selected.peek())) this.selected.value = undefined;
+      if (walk.status === "done") this.previous.value = { interval, walk };
+    });
+    if (this.dirty.peek()) this.schedule();
+  }
+}
+
 export class Insights {
   readonly periodDays: Signal<PeriodDays> = signal(7);
   readonly period: Signal<Period>;
   readonly daily: UsageWalk;
+  readonly rolling: RollingUsage;
   readonly byThread: UsageWalk;
   readonly compaction: Signal<CompactionState> = signal({ threadId: undefined, loading: false, events: [], limited: false, more: false, error: undefined });
 
@@ -223,6 +317,7 @@ export class Insights {
     private readonly options: InsightsOptions,
   ) {
     this.period = signal(this.computePeriod(7));
+    this.rolling = new RollingUsage(ops, options);
     this.daily = new UsageWalk(ops, "day", () => this.period.peek());
     this.byThread = new UsageWalk(ops, "thread", () => this.period.peek());
   }
@@ -312,6 +407,7 @@ export class Insights {
   /** Walked data of the old period is dropped; the open section reads the new one. */
   setPeriod(days: PeriodDays): void {
     batch(() => {
+      this.rolling.enabled.value = false;
       this.periodDays.value = days;
       this.renewPeriod();
     });

@@ -625,7 +625,17 @@ export class AppModel {
           this.setup.leave();
           this.embedding.leave();
         }
-        if (this.connection.value !== "connected") return;
+        const connected = this.connection.value === "connected";
+        const rolling = route.view === "analytics" && analyticsSection(route) === "overview" && this.insights.rolling.enabled.value;
+        if (rolling) {
+          const owner = this.data.owner.value;
+          const hint = this.data.listHint.value;
+          this.insights.showing("rolling-overview");
+          this.insights.rolling.observe(connected && owner.state === "connected" ? owner.info.instance_id ?? "connected" : undefined, hint);
+          return;
+        }
+        this.insights.rolling.observe(undefined, 0);
+        if (!connected) return;
         const threadId = this.selectedId.value;
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
         else if (route.view === "settings") {
@@ -737,6 +747,7 @@ export class AppModel {
     this.senderTitles.close();
     this.branchCompare.leave();
     this.branches.leave();
+    this.insights.rolling.leave();
     this.pending.close?.();
     this.modelListCancel.cancel();
     this.releaseConversationReader();

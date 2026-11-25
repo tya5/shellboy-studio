@@ -12,6 +12,8 @@ export interface ChartSeries {
 
 export interface ChartPoint {
   key: string;
+  /** Exact category label, when the identity key is not the displayed interval. */
+  detail?: string;
   /** Short label for the axis. */
   label: string;
   /** Absent means the owner reported nothing: nothing is drawn, and it is not zero. */
@@ -70,6 +72,7 @@ export function Chart({
   categoryLabel,
   noData,
   extra,
+  selection,
 }: {
   kind: "columns" | "line";
   title: string;
@@ -87,6 +90,7 @@ export function Chart({
   categoryLabel: string;
   noData: string;
   extra?: ComponentChildren;
+  selection?: { key: string; select: (key: string) => void };
 }) {
   const [ref, width] = useWidth(560);
   const [active, setActive] = useState<number | undefined>(undefined);
@@ -123,7 +127,8 @@ export function Chart({
   const every = Math.max(1, Math.ceil(LABEL_MIN / band));
   const lastIndex = points.length - 1;
   const showLabel = (i: number) => (lastIndex - i) % every === 0;
-  const current = active !== undefined ? points[active] : undefined;
+  const current = !selection && active !== undefined ? points[active] : undefined;
+  const selected = selection ? points.findIndex(p => p.key === selection.key) : active;
   // Beside the hovered column, so it never hides the mark it describes.
   const tipLeft = active === undefined ? 0 : x(active) + band + TIP_GAP + TIP_WIDTH <= width ? x(active) + band + TIP_GAP : Math.max(0, x(active) - TIP_GAP - TIP_WIDTH);
 
@@ -155,7 +160,7 @@ export function Chart({
   };
 
   return (
-    <figure class="chart-figure">
+    <figure class={selection ? "chart-figure chart-selectable" : "chart-figure"}>
       <figcaption class="chart-head">
         <h3>{title}</h3>
         {sub ? <div class="muted caption">{sub}</div> : null}
@@ -179,7 +184,7 @@ export function Chart({
             width={width}
             height={HEIGHT}
             viewBox={`0 0 ${width} ${HEIGHT}`}
-            tabIndex={0}
+            tabIndex={selection ? undefined : 0}
             onKeyDown={key}
             onBlur={() => setActive(undefined)}
             onPointerLeave={() => setActive(undefined)}
@@ -191,7 +196,7 @@ export function Chart({
               </g>
             ))}
             {points.map((p, i) => (showLabel(i) ? <text key={p.key} class="tick" x={x(i) + band / 2} y={HEIGHT - 6} text-anchor="middle">{p.label}</text> : null))}
-            {active !== undefined ? <rect class="chart-band" x={x(active)} y={END_ROOM} width={band} height={plotH} /> : null}
+            {selected !== undefined && selected >= 0 ? <rect class="chart-band" x={x(selected)} y={END_ROOM} width={band} height={plotH} /> : null}
             {kind === "columns"
               ? points.map((p, i) => {
                   let cursor = y(0);
@@ -223,7 +228,7 @@ export function Chart({
                   </g>
                 ))}
             {points.map((p, i) => (
-              <rect key={p.key} class="chart-hit" x={x(i)} y={0} width={band} height={HEIGHT} onPointerEnter={() => setActive(i)} onPointerMove={() => setActive(i)} onPointerDown={() => setActive(i)} />
+              <rect key={p.key} class="chart-hit" x={x(i)} y={0} width={band} height={HEIGHT} onPointerEnter={selection ? undefined : () => setActive(i)} onPointerMove={selection ? undefined : () => setActive(i)} onPointerDown={selection ? undefined : () => setActive(i)} onClick={selection ? () => selection.select(p.key) : undefined} />
             ))}
           </svg>
         ) : (
@@ -257,7 +262,7 @@ export function Chart({
             key: p.key,
             cells: [
               <>
-                {p.key}
+                {p.detail ?? p.key}
                 {p.note ? <div class="muted caption">{p.note}</div> : null}
               </>,
               ...series.map((s) => {

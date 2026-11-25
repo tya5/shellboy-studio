@@ -49,3 +49,5 @@
   .chart-table summary{min-height:var(--size-touch)}
   .chart-figure{padding:var(--space-12)}
 }
+
+.chart-selectable .chart-table summary{min-height:var(--size-touch)}

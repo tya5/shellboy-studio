@@ -1,8 +1,8 @@
 import { pendingReply } from "../../../../data/test/harness";
 import { effect, signal } from '@preact/signals-core';
-import { loadPrefs, parseRoute, savePrefs, type Prefs } from '../../../../ui-core/src';
+import { loadPrefs, parseRoute, rollingPeriod, savePrefs, type Prefs } from '../../../../ui-core/src';
 import { summary, details } from '../../../../data/test/harness';
-import { fixtureModel, settle } from '../../../../ui-core/test/fixture';
+import { fixtureModel, NOW, settle, usageItem, usagePage } from '../../../../ui-core/test/fixture';
 import { mount } from '../..';
 import { DESIGNS } from '../../../registry';
 
@@ -15,13 +15,22 @@ const sectionGeometryFixture = params.get('view') === 'section-geometry';
 const fixtureOptions = sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const initialRoute = parseRoute(location.hash);
-const { model, t, db } = await fixtureModel({ ...fixtureOptions, route: initialRoute.view, ...(initialRoute.view === 'conversation' && initialRoute.threadId ? { threadId: initialRoute.threadId } : {}), configure(db) {
+const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get('view') === 'analytics-24h' ? { lang: fixtureLang } : {}), route: initialRoute.view, ...(initialRoute.view === 'conversation' && initialRoute.threadId ? { threadId: initialRoute.threadId } : {}), configure(db) {
   if (params.get('view') === 'sidebar' && params.get('state') === 'running') {
     db.threads.lead = { ...db.threads.lead!, title: 'Running — verify indexes' };
     db.threads.broken = { ...db.threads.broken!, title: 'Error — check endpoint' };
     db.threads.hold = { ...db.threads.hold!, title: 'Waiting — next review window' };
     db.threads.done = { ...db.threads.done!, title: 'Completed — inspect storage' };
     db.replies = [pendingReply('mark-question', 'child', {kind:'name',name:'human'}, 'Review query path?')];
+  }
+  if (params.get('view') === 'analytics-24h') {
+    const answer = db.answer.bind(db);
+    const bars = [6, 8, 4, 2, 4, 5, 18, 26, 44, 68, 49, 72, 34, 22, 37, 65, 85, 69, 51, 44, 24, 15, 11, 9, 4];
+    db.answer = call => call.command === 'usage.get' && (call.args as { group_by?: string }).group_by === 'hour'
+      ? { ok: true, result: { ...usagePage(rollingPeriod(NOW, 540).hours.flatMap((hour, i) => i === 4 ? [] : [usageItem(hour.key, {
+        count: bars[i], input: bars[i]! * 5000, cached: bars[i]! * 3100, output: bars[i]! * 200,
+      })])), group_by: 'hour' } } : answer(call);
+    return;
   }
   if (sectionGeometryFixture) {
     db.threads = {

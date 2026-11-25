@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { flush, settle } from "../../data/test/harness";
 import {
   addSum, ANALYTICS_SECTIONS, analyticsSection, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_GROUPS, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
-  readCompactionEvent, readGroup, readIndex, readStorage, readSum, readThreadSettings, settingsSection, SETTINGS_SECTIONS, splitParts, totalGroups, zoneOf, type Prefs,
+  hourlyTotals, rollingPeriod, readCompactionEvent, readGroup, readIndex, readStorage, readSum, readThreadSettings, settingsSection, SETTINGS_SECTIONS, splitParts, totalGroups, zoneOf, type Prefs,
 } from "../src";
 import { fixtureCompaction, fixtureIndex, fixtureModel, fixtureStorage, NOW, usageItem, usagePage } from "./fixture";
 
@@ -558,3 +558,53 @@ describe("what the charts draw", () => {
 });
 
 
+
+
+describe("rolling Overview", () => {
+  it("generates the owner's fixed-offset hour keys and clips both ends", () => {
+    const exact = rollingPeriod(Date.parse("2026-11-07T10:30:00Z"), 330);
+    expect(exact.hours).toHaveLength(24);
+    expect(exact.hours.every(h => !h.partial)).toBe(true);
+    const partial = rollingPeriod(NOW, 330);
+    expect(partial.hours).toHaveLength(25);
+    expect(Date.parse(partial.until) - Date.parse(partial.since)).toBe(86_400_000);
+    expect(partial.hours[0]).toMatchObject({key: "2026-11-06T15:00:00+05:30", since: "2026-11-06T15:50:00.000+05:30", partial: true});
+    expect(partial.hours.at(-1)).toMatchObject({until: "2026-11-07T15:50:00.000+05:30", partial: true});
+  });
+
+  it("sums reported pairs, not ratios, and refuses missing or inconsistent input", () => {
+    const g = (key: string, input: number | null, cached: number | null) => readGroup(usageItem(key, { input, cached, output: null }))!;
+    expect(hourlyTotals([g("a", 100, 50), g("b", 900, 250)])).toEqual({ requests: 20, uncached: 700, share: 0.3 });
+    expect(hourlyTotals([g("a", 5, 10), g("b", 900, 250)])).toEqual({ requests: 20, uncached: undefined, share: undefined });
+    expect(hourlyTotals([g("a", 10, null)]).uncached).toBeUndefined();
+    expect(hourlyTotals([]).requests).toBeUndefined();
+  });
+
+  it("keeps cursor bounds fixed, coalesces owner-wide hints, and preserves the Today day read", async () => {
+    const hour = rollingPeriod(NOW, 540).hours[0]!;
+    const first = usagePage([usageItem(hour.key, { count: 4, input: 100, cached: 50, output: 2 })], "second");
+    const second = usagePage([usageItem(hour.key, { count: 3, input: 200, cached: 80, output: 4 })]);
+    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview", usage: { first, second } });
+    const answer = db.answer.bind(db);
+    const calls: Record<string, unknown>[] = [];
+    db.answer = call => {
+      if (call.command === "usage.get") calls.push(call.args as Record<string, unknown>);
+      return answer(call);
+    };
+    const r = model.insights.rolling;
+    r.enabled.value = true;
+    for (const id of ["lead", "other"]) t.push({ t: "changed", thread_ids: [id], config_changed: false, list: true });
+    await settle(t, db);
+    expect(calls).toHaveLength(4);
+    expect(calls.map(x => x.cursor)).toEqual([undefined, "second", undefined, "second"]);
+    for (const call of calls) expect(call).toMatchObject({ since: rollingPeriod(NOW, 540).since, until: new Date(NOW).toISOString(), timezone: "+09:00", group_by: "hour" });
+    expect(r.walk.state.peek().groups.get(hour.key)?.requests).toBe(7);
+    r.select(hour.key);
+    expect(r.selected.peek()).toBe(hour.key);
+    model.insights.setPeriod(1);
+    await settle(t, db);
+    expect(calls.at(-2)).toMatchObject({ group_by: "day", since: periodOf(1, NOW, 540).since });
+    expect(r.interval.peek()).toBeUndefined();
+    model.dispose();
+  });
+});

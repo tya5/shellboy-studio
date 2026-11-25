@@ -123,3 +123,5 @@ Sidebar and shared state roles (Orca sidebar and Lucide semantics):
 | `thread.rename` | Edit a Thread title. | `pencil` |
 
 - `panel.threadSettings`: the editable settings for the selected Thread, not application settings.
+
+- `analytics.previousBucket` / `analytics.nextBucket`: choose the earlier / later chart bucket.

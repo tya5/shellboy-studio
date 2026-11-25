@@ -9,6 +9,7 @@ A small chart drawn as inline SVG at the frame's real width, so text stays its t
 
 - Series use `chart-1` to `chart-3`, with a fixed meaning: uncached input, cached input, output. A single series with no such identity uses `neutral`. Text never takes a series colour.
 - Two or more series always get a legend. The table under the chart holds every value; hover, touch and arrow keys show one point's values.
+- For a selectable chart, supply a controlled `selection` and visible, touch-sized controls in `extra` that can select every point without the plot. Pointer clicks select a mark without opening the transient tooltip. `detail` supplies the exact label in the table when the point key is not its display range.
 - A value the owner didn't report is left out of the point: nothing is drawn and the table says so. Never pass 0 for unknown.
 - `source` is required: name the owner read behind the numbers.
 

@@ -429,3 +429,35 @@ export function rankingParts(group: UsageGroup): readonly [number | undefined, n
     group.requests === 0 ? 0 : pair ? cached : undefined,
     group.summaryRequests === 0 ? 0 : add(exact(summary.input), exact(summary.output))];
 }
+
+const HOUR_MS = 3_600_000;
+
+export function rollingPeriod(untilMs: number, offsetMinutes: number) {
+  const sinceMs = untilMs - DAY_MS;
+  const offset = offsetMinutes * 60_000;
+  const zone = zoneOf(offsetMinutes);
+  const local = (ms: number) => new Date(ms + offset).toISOString();
+  const hours = [];
+  for (let start = Math.floor((sinceMs + offset) / HOUR_MS) * HOUR_MS - offset; start < untilMs; start += HOUR_MS) {
+    const since = Math.max(start, sinceMs);
+    const until = Math.min(start + HOUR_MS, untilMs);
+    hours.push({ key: local(start).slice(0, 19) + zone, label: local(start).slice(11, 16),
+      since: local(since).slice(0, -1) + zone, until: local(until).slice(0, -1) + zone, partial: until - since < HOUR_MS });
+  }
+  return { since: new Date(sinceMs).toISOString(), until: new Date(untilMs).toISOString(), zone, hours };
+}
+
+export function hourlyTotals(groups: readonly UsageGroup[]) {
+  const total = totalGroups(groups);
+  const hasPair = (g: UsageGroup) => {
+    const { input, cached } = g.conversation;
+    return input.known !== undefined && cached.known !== undefined && cached.known >= 0 && cached.known <= input.known &&
+      !input.unknown && !cached.unknown && !input.overflow && !cached.overflow && g.unknownPairs === 0;
+  };
+  const input = total?.conversation.input;
+  const cached = total?.conversation.cached;
+  const uncached = total && input?.known !== undefined && cached?.known !== undefined && hasPair(total) &&
+    groups.every(g => !g.requests || hasPair(g)) ? input.known - cached.known : undefined;
+  return { requests: total && Number.isSafeInteger(total.requests) ? total.requests : undefined,
+    uncached, share: total && uncached !== undefined ? cacheRate(total.conversation, total.unknownPairs) : undefined };
+}

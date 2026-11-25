@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, rankingParts, periodTotals, PERIODS, readWeights, shortDay,
@@ -18,6 +19,8 @@ import { SubView } from "../system/components/SubView";
 import { type IconRole } from "../system/components/Icon";
 import { IndexPane, MemoryPane, StoragePane } from "./Resources";
 import { tokenTotal } from "./usage-label";
+
+import { RollingOverview } from "./RollingOverview";
 
 const percent = (v: number): string => `${Math.round(v * 100)}%`;
 /** A share too small to round to 0.1% says so, rather than reading as none. */
@@ -302,18 +305,22 @@ const ICONS: Record<AnalyticsSection, IconRole> = { overview: "analytics.overvie
 function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSection }) {
   const t = model.t.value;
   const i = model.insights;
+  const rolling = section === "overview" && i.rolling.enabled.value;
   const walk = section === "threads" ? i.byThread.state.value : i.daily.state.value;
   return (
-    <PageHeader title={t(`ana.section.${section}`)} description={`${t(`ana.sub.${section}`)} ${t("analytics.subtitle", { zone: i.period.value.zone })}`} toolbar={
-      <div class="choice-row">
+    <PageHeader title={t(`ana.section.${section}`)} description={rolling ? undefined : `${t(`ana.sub.${section}`)} ${t("analytics.subtitle", { zone: i.period.value.zone })}`} toolbar={
+      <div class={section === "overview" ? "choice-row analytics-period" : "choice-row"}>
         <ButtonGroup label={t("analytics.period")}>
           {PERIODS.map((p) => (
-            <Button key={p} aria-pressed={i.periodDays.value === p} onClick={() => i.setPeriod(p)}>
-              {p === 1 ? t("analytics.today") : t("analytics.days", { n: p })}
-            </Button>
+            <Fragment key={p}>
+              <Button aria-pressed={!rolling && i.periodDays.value === p} onClick={() => i.setPeriod(p)}>
+                {p === 1 ? t("analytics.today") : t("analytics.days", { n: p })}
+              </Button>
+              {p === 1 && section === "overview" ? <Button aria-pressed={rolling} onClick={() => { i.rolling.enabled.value = true; }}>{t("analytics.hours24")}</Button> : null}
+            </Fragment>
           ))}
         </ButtonGroup>
-        <IconButton glyph="action.retry" label={t("common.refresh")} disabled={walk.status === "loading"} onClick={() => i.refreshUsage()} />
+        {!rolling ? <IconButton glyph="action.retry" label={t("common.refresh")} disabled={walk.status === "loading"} onClick={() => i.refreshUsage()} /> : null}
       </div>
     } />
   );
@@ -472,7 +479,10 @@ export function Analytics({ context }: { context: DesignContext }) {
       items={ANALYTICS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "analytics", section: s }), role: ICONS[s], label: t(`ana.section.${s}`), current: s === section }))}
     >
       {section === "overview" || section === "tokens" || section === "compaction" ? (
-        <UsagePane context={context} section={section} />
+        section === "overview" && model.insights.rolling.enabled.value ? <>
+          <PeriodHead model={model} section={section} />
+          <RollingOverview model={model} />
+        </> : <UsagePane context={context} section={section} />
       ) : section === "threads" ? (
         <ByThread model={model} weights={context.prefs.value.weights} />
       ) : section === "storage" ? (
