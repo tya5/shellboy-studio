@@ -62,6 +62,7 @@ try {
   };
 
   await call('Page.enable');
+  await call('Emulation.setTouchEmulationEnabled', { enabled: true });
   await call('Runtime.enable');
   await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await call('Page.navigate', { url: `http://127.0.0.1:${appPort}/designs/console/test/browser/integration-fixture.html?view=footer-lifecycle` });
@@ -88,6 +89,41 @@ try {
   assert.equal(columns, 3, 'phone navigation has exactly three tabs');
   await click('button[aria-label="Open thread list"]');
   await until("document.querySelector('#thread-sidebar.side.open')", 'sidebar drawer');
+  await until("!!document.querySelector('#thread-sidebar .children-chip button')", 'child-count chip');
+  await evaluate(`document.querySelector('#thread-sidebar .children-chip button').scrollIntoView({ block: 'center' })`);
+  await until(`(() => {
+    const chip = document.querySelector('#thread-sidebar .children-chip button');
+    const r = chip.getBoundingClientRect();
+    return chip.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+  })()`, 'visible child-count chip');
+  const chip = await evaluate(`(() => {
+    const button = document.querySelector('#thread-sidebar .children-chip button');
+    const row = button.closest('[data-sidebar-row]');
+    const rect = button.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rowRect.top;
+    const hits = Array.from({ length: 44 }, (_, i) => button.contains(document.elementFromPoint(x, y + i)));
+    const ownsCenter = selector => {
+      const control = row.querySelector(selector);
+      const r = control.getBoundingClientRect();
+      return control.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+    };
+    return { viewport: innerWidth, visibleHeight: rect.height, rowHeight: rowRect.height,
+      hitPixels: hits.filter(Boolean).length, titleHit: ownsCenter('.tree-link'),
+      menuHit: ownsCenter('.list-row-action button'), x, y, route: location.hash };
+  })()`);
+  assert.equal(chip.viewport, 390);
+  assert.equal(chip.visibleHeight, 20, 'child-count chip stays visually compact');
+  assert.equal(chip.rowHeight, 44, 'child-count chip does not enlarge the row');
+  assert.equal(chip.hitPixels, 44, `child-count chip covers 44 contiguous CSS pixels: ${JSON.stringify(chip)}`);
+  assert(chip.titleHit && chip.menuHit, 'the title and menu keep independent hit targets');
+  await call('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: chip.x, y: chip.y + 3 }] });
+  await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await until(`document.querySelector('#thread-sidebar .children-chip button').getAttribute('aria-expanded') === 'true'`, 'child disclosure from outside the visible chip');
+  assert.equal(await evaluate('location.hash'), chip.route, 'child disclosure does not navigate');
+  await click('#thread-sidebar .children-chip button');
+  console.log(JSON.stringify({ childCountChip: chip }));
   const textButton = async text => {
     const found = await evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!b)return false;b.click();return true})()`);
     assert(found, `Found button ${text}`);

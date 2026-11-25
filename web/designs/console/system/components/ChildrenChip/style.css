@@ -5,3 +5,7 @@
 .children-chip-count{display:inline-flex;align-items:center;gap:var(--space-4);height:var(--size-chip-height);padding-inline:var(--space-chip-inline)}
 .children-chip .i{width:var(--size-chip-icon);height:var(--size-chip-icon)}
 .children-chip button{font-size:var(--size-chip-text);font-variant-numeric:tabular-nums}
+@container app (max-width:899px){
+  .children-chip:has(> .btn){position:relative}
+  .children-chip>.btn::after{content:"";position:absolute;inset-inline:0;inset-block:calc((var(--size-chip-height) - var(--size-touch)) / 2)}
+}

@@ -18,3 +18,7 @@ When no child can be revealed inside the current group, the badge is a static su
 
 
 Compact chips use the shared sizing tokens: 20px height, 10px status/meaning icons, 11px tabular numbers and symmetric 7px horizontal padding. Use the highest-priority represented state for the surface: waiting-for-you amber first, running blue next, otherwise neutral. References: Orca sidebar child count/urgency treatment; approved Studio sidebar mock v8, section 1a B1.
+
+At phone widths the disclosure button extends its hit area vertically to the
+shared touch size, without changing the chip or row size. The static summary
+has no hit area, and the title and menu keep their own targets.
