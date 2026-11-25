@@ -590,6 +590,7 @@ describe("rolling Overview", () => {
       usage: { first: usagePage([item(firstHour.key, 4)]) } });
     const hourCalls = () => t.calls("usage.get").filter(c => (c.args as { group_by?: string }).group_by === "hour");
     const rolling = model.insights.rolling;
+    rolling.toggleComparison();
     rolling.enabled.value = true;
     await settle(t, db);
     rolling.select(firstHour.key);
@@ -645,6 +646,44 @@ describe("rolling Overview", () => {
     await settle(t, db);
     expect(t.calls("usage.get").at(-1)?.args).toMatchObject({ group_by: "day", since: periodOf(1, now, 540).since });
     expect(rolling.displayed.peek()).toBeUndefined();
+    model.dispose();
+  });
+
+  it("walks the previous period independently with its own cursor and matching clipped hours", async () => {
+    const { model, t, db } = await fixtureModel({ route: "analytics", section: "overview" });
+    const current = rollingPeriod(NOW, 540);
+    const previous = rollingPeriod(Date.parse(current.since), 540);
+    const calls: Record<string, unknown>[] = [];
+    const answer = db.answer.bind(db);
+    db.answer = call => {
+      const args = call.args as Record<string, unknown>;
+      if (call.command !== "usage.get" || args.group_by !== "hour") return answer(call);
+      calls.push(args);
+      const isPrevious = args.until === previous.until;
+      const interval = isPrevious ? previous : current;
+      const cursor = isPrevious ? "previous-page" : "current-page";
+      if (args.cursor !== undefined && args.cursor !== cursor) throw Error("crossed cursors");
+      return { ok: true, result: usagePage([usageItem(interval.hours[0]!.key, { count: 2, input: 10, cached: 4, output: 1 })], args.cursor ? undefined : cursor) };
+    };
+    const rolling = model.insights.rolling;
+    rolling.enabled.value = true;
+    await settle(t, db);
+    for (const [period, page] of [[current, "current-page"], [previous, "previous-page"]] as const) {
+      const own = calls.filter(c => c.until === period.until);
+      expect(own.map(c => c.cursor)).toEqual([undefined, page]);
+      for (const args of own) expect(args).toMatchObject({ since: period.since, until: period.until, timezone: "+09:00" });
+    }
+    expect(rolling.comparison.interval.peek()?.hours.map(h => h.label)).toEqual(current.hours.map(h => h.label));
+    expect(rolling.comparison.walk.state.peek().groups.get(previous.hours[0]!.key)?.requests).toBe(4);
+    const currentCut = rolling.walk.state.peek();
+    rolling.toggleComparison();
+    expect(rolling.comparison.walk.state.peek().status).toBe("idle");
+    rolling.toggleComparison();
+    await settle(t, db);
+    expect(calls).toHaveLength(6);
+    expect(rolling.walk.state.peek()).toBe(currentCut);
+    model.insights.setPeriod(1);
+    expect(rolling.comparison.interval.peek()).toBeUndefined();
     model.dispose();
   });
 });

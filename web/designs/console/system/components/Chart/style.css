@@ -49,3 +49,6 @@
   .chart-table summary{min-height:var(--size-touch)}
   .chart-figure{padding:var(--space-12)}
 }
+
+.swatch.chart-reference-key{box-sizing:border-box;border:1px solid var(--muted)}
+.chart-svg .chart-reference{fill:none;stroke:var(--muted);stroke-width:1}

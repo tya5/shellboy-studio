@@ -26,10 +26,20 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get(
   if (params.get('view') === 'analytics-24h') {
     const answer = db.answer.bind(db);
     const bars = [6, 8, 4, 2, 4, 5, 18, 26, 44, 68, 49, 72, 34, 22, 37, 65, 85, 69, 51, 44, 24, 15, 11, 9, 4];
-    db.answer = call => call.command === 'usage.get' && (call.args as { group_by?: string }).group_by === 'hour'
-      ? { ok: true, result: { ...usagePage(rollingPeriod(NOW, 540).hours.flatMap((hour, i) => i === 4 ? [] : [usageItem(hour.key, {
-        count: bars[i], input: bars[i]! * 5000, cached: bars[i]! * 3100, output: bars[i]! * 200,
-      })])), group_by: 'hour' } } : answer(call);
+    db.answer = call => {
+      const args = call.args as { group_by?: string; until?: string };
+      if (call.command !== 'usage.get' || args.group_by !== 'hour') return answer(call);
+      const until = Date.parse(args.until!);
+      const prior = until !== NOW;
+      const state = params.get('state');
+      const hours = rollingPeriod(until, 540).hours;
+      const items = state === 'empty' ? [] : hours.flatMap((hour, i) => {
+        if (i === 4) return [];
+        const count = prior ? Math.round(bars[(i + 2) % bars.length]! * 0.8) : bars[i]!;
+        return [usageItem(hour.key, { count, input: count * 5000, cached: count * (prior ? 2900 : 3100), output: count * 200 })];
+      });
+      return { ok: true, result: { ...usagePage(items), group_by: 'hour', scope_complete: !(prior && state === 'partial') } };
+    };
     return;
   }
   if (sectionGeometryFixture) {

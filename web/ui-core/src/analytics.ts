@@ -444,7 +444,7 @@ export function rollingPeriod(untilMs: number, offsetMinutes: number) {
     hours.push({ key: local(start).slice(0, 19) + zone, label: local(start).slice(11, 16),
       since: local(since).slice(0, -1) + zone, until: local(until).slice(0, -1) + zone, partial: until - since < HOUR_MS });
   }
-  return { since: new Date(sinceMs).toISOString(), until: new Date(untilMs).toISOString(), zone, hours };
+  return { since: new Date(sinceMs).toISOString(), until: new Date(untilMs).toISOString(), zone, offsetMinutes, hours };
 }
 
 export function hourlyTotals(groups: readonly UsageGroup[]) {

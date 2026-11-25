@@ -73,6 +73,7 @@ export function Chart({
   noData,
   extra,
   selection,
+  reference,
 }: {
   kind: "columns" | "line";
   title: string;
@@ -91,13 +92,16 @@ export function Chart({
   noData: string;
   extra?: ComponentChildren;
   selection?: { key: string | undefined; select: (key: string) => void };
+  /** A comparable reference on the same column scale, aligned by the current point keys. */
+  reference?: { label: string; currentLabel: string; values: ReadonlyMap<string, number>; details: ReadonlyMap<string, string> };
 }) {
   const [ref, width] = useWidth(560);
   const [active, setActive] = useState<number | undefined>(undefined);
   const [measured, setMeasured] = useState<{ key: string; width: number } | undefined>();
   const total = (p: ChartPoint): number => series.reduce((sum, s) => sum + (p.values[s.id] ?? 0), 0);
-  const hasData = points.some((p) => series.some((s) => p.values[s.id] !== undefined));
-  const peak = Math.max(0, ...points.map(total));
+  const comparison = kind === "columns" ? reference : undefined;
+  const hasData = points.some((p) => comparison?.values.has(p.key) || series.some((s) => p.values[s.id] !== undefined));
+  const peak = Math.max(0, ...points.map(p => Math.max(total(p), comparison?.values.get(p.key) ?? 0)));
   const max = Math.max(niceMax(peak), floorMax ?? 0);
   const ticks = [0, max / 2, max].filter((v) => !whole || Number.isInteger(v));
   const tickLabels = ticks.map(format);
@@ -123,7 +127,8 @@ export function Chart({
   const band = plotW / Math.max(points.length, 1);
   const y = (v: number) => END_ROOM + plotH - (v / max) * plotH;
   const x = (i: number) => axisLeft + band * i;
-  const barW = Math.min(MAX_BAR, Math.max(2, band - GAP));
+  const outerW = Math.min(MAX_BAR, Math.max(2, band - GAP));
+  const barW = comparison ? outerW * 0.65 : outerW;
   const every = Math.max(1, Math.ceil(LABEL_MIN / band));
   const lastIndex = points.length - 1;
   const showLabel = (i: number) => (lastIndex - i) % every === 0;
@@ -165,14 +170,15 @@ export function Chart({
         <h3>{title}</h3>
         {sub ? <div class="muted caption">{sub}</div> : null}
       </figcaption>
-      {series.length > 1 ? (
+      {series.length > 1 || comparison ? (
         <ul class="chart-legend">
           {series.map((s) => (
             <li key={s.id}>
               <span class={`swatch t${s.tone}`} aria-hidden="true" />
-              {s.label}
+              {comparison && series.length === 1 ? comparison.currentLabel : s.label}
             </li>
           ))}
+          {comparison ? <li><span class="swatch chart-reference-key" aria-hidden="true" />{comparison.label}</li> : null}
         </ul>
       ) : null}
       <div class="chart-plot" ref={ref}>
@@ -197,6 +203,11 @@ export function Chart({
             ))}
             {points.map((p, i) => (showLabel(i) ? <text key={p.key} class="tick" x={x(i) + band / 2} y={HEIGHT - 6} text-anchor="middle">{p.label}</text> : null))}
             {selected !== undefined && selected >= 0 ? <rect class="chart-band" x={x(selected)} y={END_ROOM} width={band} height={plotH} /> : null}
+            {comparison ? points.map((p, i) => {
+              const value = comparison.values.get(p.key);
+              return value !== undefined && value > 0 ? <path key={p.key} class="chart-reference"
+                d={column(x(i) + (band - outerW) / 2, y(value), outerW, y(0) - y(value), true)} /> : null;
+            }) : null}
             {kind === "columns"
               ? points.map((p, i) => {
                   let cursor = y(0);
@@ -257,7 +268,8 @@ export function Chart({
         <DataTable
           flat
           caption={title}
-          columns={[{ label: categoryLabel }, ...series.map((s) => ({ label: s.label, numeric: true }))]}
+          columns={[{ label: categoryLabel }, ...series.map((s) => ({ label: comparison && series.length === 1 ? comparison.currentLabel : s.label, numeric: true })),
+            ...(comparison ? [{ label: comparison.label, numeric: true }] : [])]}
           rows={points.map((p) => ({
             key: p.key,
             cells: [
@@ -269,6 +281,10 @@ export function Chart({
                 const v = p.values[s.id];
                 return v === undefined ? <span class="muted">{noData}</span> : format(v);
               }),
+              ...(comparison ? [<>
+                {comparison.values.has(p.key) ? format(comparison.values.get(p.key)!) : <span class="muted">{noData}</span>}
+                <div class="muted caption">{comparison.details.get(p.key)}</div>
+              </>] : []),
             ],
           }))}
         />

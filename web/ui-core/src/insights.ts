@@ -197,11 +197,35 @@ export interface InsightsOptions {
 
 type RollingPeriod = ReturnType<typeof rollingPeriod>;
 
+/** Independent previous-window cursor and cancellation, aligned to one captured current cut. */
+export class RollingComparison {
+  readonly enabled = signal(true);
+  readonly interval = signal<RollingPeriod | undefined>(undefined);
+  readonly walk: UsageWalk;
+
+  constructor(ops: Operations) {
+    this.walk = new UsageWalk(ops, "hour", () => this.interval.peek()!);
+  }
+
+  align(current: RollingPeriod | undefined): void {
+    batch(() => {
+      if (this.enabled.peek() && current) {
+        this.interval.value = rollingPeriod(Date.parse(current.since), current.offsetMinutes);
+        void this.walk.start();
+      } else {
+        this.walk.reset();
+        this.interval.value = undefined;
+      }
+    });
+  }
+}
+
 /** The visible rolling Overview owns one current walk and its last settled cut. */
 export class RollingUsage {
   readonly enabled = signal(false);
   readonly interval = signal<RollingPeriod | undefined>(undefined);
   readonly walk: UsageWalk;
+  readonly comparison: RollingComparison;
   private readonly accepted = signal<{ interval: RollingPeriod; walk: WalkState } | undefined>(undefined);
   private readonly selected = signal<string | undefined>(undefined);
   private scope: { owner: string; hint: number; scheduled: boolean } | undefined;
@@ -220,6 +244,7 @@ export class RollingUsage {
 
   constructor(ops: Operations, private readonly options: InsightsOptions) {
     this.walk = new UsageWalk(ops, "hour", () => this.interval.peek()!);
+    this.comparison = new RollingComparison(ops);
   }
 
   observe(owner: string | undefined, hint: number): void {
@@ -237,6 +262,7 @@ export class RollingUsage {
       batch(() => {
         this.retainSettled();
         this.walk.reset();
+        this.comparison.align(undefined);
       });
       queueMicrotask(() => {
         if (this.scope !== scope) return;
@@ -252,8 +278,20 @@ export class RollingUsage {
       this.walk.reset();
       this.interval.value = undefined;
       this.accepted.value = undefined;
+      this.comparison.align(undefined);
       this.selected.value = undefined;
     });
+  }
+
+  toggleComparison(): void {
+    batch(() => {
+      this.comparison.enabled.value = !this.comparison.enabled.peek();
+      this.comparison.align(this.scope?.scheduled ? undefined : this.interval.peek());
+    });
+  }
+
+  retryComparison(): void {
+    if (this.scope && !this.scope.scheduled) this.comparison.align(this.interval.peek());
   }
 
   retry(): void { if (this.scope && !this.scope.scheduled) void this.start(); }
@@ -287,7 +325,9 @@ export class RollingUsage {
     const read = batch(() => {
       this.retainSettled();
       this.interval.value = interval;
-      return this.walk.start();
+      const read = this.walk.start();
+      this.comparison.align(interval);
+      return read;
     });
     await this.finish(scope, read);
   }
