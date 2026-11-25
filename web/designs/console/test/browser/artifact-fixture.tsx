@@ -82,30 +82,32 @@ Object.assign(window, { measureArtifactReveal: async () => {
  const button = row.querySelector<HTMLButtonElement>('.tooltip-anchor button')!;
  const title = row.querySelector('.panel-list-title')!;
  const region = row.querySelector('[data-artifact-reveal-status]')!;
+ const panel = row.closest('[data-panel-root]')!;
  const measure = () => {
-  const { x, y } = button.getBoundingClientRect();
-  return { x, y, titleWidth: title.getBoundingClientRect().width };
+  const buttonRect = button.getBoundingClientRect();
+  const panelRect = panel.getBoundingClientRect();
+  return { x: buttonRect.x - panelRect.x, y: buttonRect.y - panelRect.y, titleWidth: title.getBoundingClientRect().width };
  };
- async function waitForToast(visible:boolean) {
+ async function waitForStatus(visible:boolean) {
   const deadline = performance.now() + 5000;
   while (region.classList.contains('artifact-reveal-message') !== visible && performance.now() < deadline) {
    await new Promise(requestAnimationFrame);
   }
-  if (region.classList.contains('artifact-reveal-message') !== visible) throw new Error('Unexpected reveal toast state');
+  if (region.classList.contains('artifact-reveal-message') !== visible) throw new Error('Unexpected reveal status state');
   if (row.querySelector('[data-artifact-reveal-status]') !== region) throw new Error('Reveal status node replaced');
  }
  const before = measure();
  button.click();
- await waitForToast(true);
+ await waitForStatus(true);
  const belowTitle = (el: Element) => {
   const status = el.getBoundingClientRect();
   const heading = title.getBoundingClientRect();
-  const panel = row.closest('[data-panel-root]')!.getBoundingClientRect();
-  return status.height > 0 && status.top >= heading.bottom && status.left >= panel.left && status.right <= panel.right;
+  const bounds = panel.getBoundingClientRect();
+  return status.height > 0 && status.top >= heading.bottom && status.left >= bounds.left && status.right <= bounds.right;
  };
  const during = measure();
  const successBelowTitle = belowTitle(region);
- await waitForToast(false);
+ await waitForStatus(false);
  const after = measure();
  revealFails = true;
  button.click();

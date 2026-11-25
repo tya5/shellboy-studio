@@ -48,7 +48,7 @@ try{
   const reveal = await evaluate('window.measureArtifactReveal()');
   console.log(JSON.stringify({width,reveal}));
   assert(reveal.before.titleWidth > 0);
-  assert.deepEqual(reveal.during,reveal.before,'Reveal toast must not move the button or resize the title');
+  assert.deepEqual(reveal.during,reveal.before,'Success status must not move the button within the panel or resize the title');
   assert.deepEqual(reveal.after,reveal.before,'Status expiry must not move the button or resize the title');
   assert(reveal.successBelowTitle && reveal.errorBelowTitle, 'Both reveal messages must fit below the title');
   assert.deepEqual(reveal.failed,reveal.before,'Failure status must not move the button or resize the title');
