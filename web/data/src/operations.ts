@@ -535,12 +535,6 @@ export class Operations {
   shellStop(executionId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
     return this.run("shell.stop", { execution_id: executionId }, outcomeDecoder(decodeRecord), { operationId });
   }
-  shellWrite(executionId: string, text: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("shell.write", { execution_id: executionId, text, encoding: "UTF-8" }, outcomeDecoder(decodeRecord), { operationId });
-  }
-  shellEof(executionId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("shell.eof", { execution_id: executionId }, outcomeDecoder(decodeRecord), { operationId });
-  }
   turnInterrupt(turnId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
     return this.run("turn.interrupt", { turn_id: turnId }, outcomeDecoder(decodeRecord), { operationId });
   }

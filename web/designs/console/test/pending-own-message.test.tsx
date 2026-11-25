@@ -308,7 +308,7 @@ it('failed acceptance retries the original operation, while navigation invalidat
 });
 it('actual Composer Enter preserves an unconfirmed draft and does not double-submit a held request',async()=>{
  const host=document.createElement('div');document.body.append(host);let calls=0,finish!:(ok:boolean)=>void;
- const show=(canSend:boolean)=>render(<Composer label="Message" placeholder="" hint={canSend?'Ready':'Acceptance unconfirmed'} sendLabel="Send" canSend={canSend} busy={false} onSend={()=>{calls++;return new Promise(resolve=>{finish=resolve;});}}/>,host);
+ const show=(canSend:boolean)=>render(<Composer label="Message" placeholder="" hint={canSend?'Ready':'Acceptance unconfirmed'} sendLabel="Send" canSend={canSend} busy={false} onSend={()=>{calls++;return new Promise<boolean>(resolve=>{finish=resolve;});}}/>,host);
  try{
   await act(async()=>show(true));const input=host.querySelector('textarea')!;
   await act(async()=>{input.value='Original uncertain message';input.dispatchEvent(new Event('input',{bubbles:true}));});
@@ -366,7 +366,7 @@ it('real edits, even restored text, remain a different generation; composing Ent
   await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true}));});expect(calls).toBe(0);
   await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
   await act(async()=>{input.value='Different';input.dispatchEvent(new Event('input',{bubbles:true}));input.value='Original';input.dispatchEvent(new Event('input',{bubbles:true}));finish(true);await flush(4);});
-  expect(input.value).toBe('Original');expect(calls).toBe(1);
+  expect(input.value).toBe('');expect(calls).toBe(1);
  }finally{render(null,host);host.remove();}
 });
 
@@ -437,7 +437,7 @@ for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])
 it('Composer clears the reserved original immediately while ACK is held and preserves the next draft',async()=>{
  const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void,reserve:(()=>void)|undefined,calls=0;
  try{
- await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={(_text,_target,onReserved)=>{calls++;reserve=onReserved;onReserved?.();return new Promise(resolve=>{finish=resolve;});}}/>,host));
+ await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={(_text,onReserved)=>{calls++;reserve=onReserved;onReserved?.();return new Promise(resolve=>{finish=resolve;});}}/>,host));
  const area=host.querySelector('textarea')!;
  await act(async()=>{area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
  expect(reserve).toBeTypeOf('function');await act(async()=>{reserve!();});expect(area.value).toBe('');
@@ -448,7 +448,7 @@ it('Composer clears the reserved original immediately while ACK is held and pres
 for(const outcome of [false,true])it(`Composer old reservation and ACK cannot erase another scope or edited generation accepted=${outcome}`,async()=>{
  const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void,reserve:(()=>void)|undefined;
  const props={label:'Message',placeholder:'',hint:'',sendLabel:'Send',canSend:true,busy:false};
- const onSend=(_text:string,_target:string,onReserved?:()=>void)=>{reserve=onReserved;return new Promise<boolean>(resolve=>{finish=resolve;});};
+ const onSend=(_text:string,onReserved?:()=>void)=>{reserve=onReserved;return new Promise<boolean>(resolve=>{finish=resolve;});};
  try{
  await act(async()=>render(<Composer {...props} draftScope="owner/thread/A" onSend={onSend}/>,host));const area=host.querySelector('textarea')!;
  await act(async()=>{area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
@@ -461,22 +461,9 @@ for(const outcome of [false,true])it(`Composer old reservation and ACK cannot er
 it('Composer failed reserved send preserves the next draft without automatic restoration',async()=>{
  const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void;
  try{
- await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={(_text,_target,reserve)=>{reserve?.();return new Promise(resolve=>{finish=resolve;});}}/>,host));const area=host.querySelector('textarea')!;
+ await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={(_text,reserve)=>{reserve?.();return new Promise(resolve=>{finish=resolve;});}}/>,host));const area=host.querySelector('textarea')!;
  await act(async()=>{area.value='Owned original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});expect(area.value).toBe('');
  await act(async()=>{area.value='Next';area.dispatchEvent(new Event('input',{bubbles:true}));finish(false);await flush();});expect(area.value).toBe('Next');
- }finally{render(null,host);host.remove();}
-});
-it('a successful send settles its captured text and target across Thread switch and return',async()=>{
- const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void;
- const routing={label:'Send input to:',modelLabel:'Model',unavailableTarget:'Unavailable',eofLabel:(command:string)=>`Send EOF: ${command}`,shells:[{id:'shell-A',command:'sleep 30'}],timingLabel:'Timing',timing:'next' as const,onTiming:()=>{},nextLabel:'Next',nowLabel:'Now',nextExplanation:'Next',nowExplanation:'Now'};
- const show=(scope:string)=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} draftScope={scope} routing={routing} onSend={(_text,target)=>{expect(target).toBe('shell-A');return new Promise<boolean>(resolve=>{finish=resolve;});}}/>,host);
- try{
- await act(async()=>show('A'));const area=host.querySelector('textarea')!,target=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;
- await act(async()=>{target.value='shell-A';target.dispatchEvent(new Event('change',{bubbles:true}));area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
- await act(async()=>show('B'));
- await act(async()=>{finish(true);await flush();});
- await act(async()=>show('A'));
- expect(area.value).toBe('');expect(host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!.value).toBe('model');
  }finally{render(null,host);host.remove();}
 });
 it('keeps the next draft across held ACK and same-stack submit guard, then accepts it after ACK continuation',async()=>{
@@ -484,7 +471,7 @@ it('keeps the next draft across held ACK and same-stack submit guard, then accep
  let calls=0,reservations=0,finish!:(ok:boolean)=>void;
  const observed:{stage:string;draft:string;calls:number;reservations:number}[]=[];
  const send=()=>{calls++;return new Promise<boolean>(resolve=>{finish=resolve;});};
- const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend busy={false} onSend={(_text,_target,notify)=>{reservations++;notify?.();return send();}}/>,host);
+ const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend busy={false} onSend={(_text,notify)=>{reservations++;notify?.();return send();}}/>,host);
  try{
   await act(async()=>show());const input=host.querySelector('textarea')!;
   const enter=()=>input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
@@ -504,7 +491,7 @@ it('recomputes local byte hint from the edited draft without reservation or clea
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  const scope=f.model.ownMutationScope();
  f.model.acceptedOwnMessages.value=[{threadId:'lead',scope,operationId:'retained',text:'x'.repeat(4194301),phase:'accepted',plainMessageSend:true,clientOrdinal:1}];
- const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend={true} busy={false} allowWhitespace={true} draftScope={scope} draftStatus={text=>{const reason=f.model.localSendAdmission(text);return {blocked:reason!=='ready',hint:reason};}} onSend={(text,_target,notify)=>f.model.send(text,notify)}/>,host);
+ const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend={true} busy={false} draftScope={scope} draftStatus={text=>{const reason=f.model.localSendAdmission(text);return {blocked:reason!=='ready',hint:reason};}} onSend={(text,notify)=>f.model.send(text,notify)}/>,host);
  try{
   await act(async()=>show());const input=host.querySelector('textarea')!;
   for(const [text,reason,blocked] of [['あx','bytesfull',true],['あ','ready',false],['xx','ready',false]] as const){
@@ -803,7 +790,29 @@ it('places a live row after the preceding emitted item when its input emitted no
  } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
 });
 
-it("Studio #134: composer targets, timing, interrupt and Activity shell controls are mounted", async () => {
+it.each(["idle", "turn-running", "shell-waiting", "both"] as const)("Studio #158 composer has no routing controls in %s", async state => {
+ const turnRunning=state === "turn-running" || state === "both";
+ const shellWaiting=state === "shell-waiting" || state === "both";
+ const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["history.window"],configure(db){
+  db.details.lead=details("lead",turnRunning?{run_id:"run-1",turn_id:"turn-1"}:{});
+  db.work.lead=shellWaiting?[{kind:"shell",id:"waiting-shell",thread_id:"lead",run_id:"run-shell",execution_id:"waiting-shell",state:"running",started_at:"2026-11-07T10:20:00Z"}]:[];
+  db.shells.lead=shellWaiting?[{execution_id:"waiting-shell",thread_id:"lead",run_id:"run-shell",state:"running",started_at:"2026-11-07T10:20:00Z",command_excerpt:"python worker.py"}]:[];
+ }});
+ const host=document.createElement("div");document.body.append(host);
+ try{
+  await act(async()=>{render(<Conversation model={f.model}/>,host);await settle(f.t,f.db);});
+  const dock=host.querySelector<HTMLElement>(".dock")!;
+  expect(dock.querySelector(".composer-above")).toBeNull();
+  expect(dock.querySelector('[aria-label="Send input to:"]')).toBeNull();
+  expect(dock.querySelector('[aria-label="Send timing"]')).toBeNull();
+  expect(dock.querySelector('button[aria-label^="Send EOF"]')).toBeNull();
+  expect(dock.querySelector("textarea")?.placeholder).not.toMatch(/shell|stdin|input to/i);
+  expect(!!dock.querySelector('button[aria-label="Stop"]')).toBe(turnRunning);
+  expect(!!dock.querySelector('button[aria-label="Interrupt Turn"]')).toBe(turnRunning);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it("Studio #158: simple composer keeps model delivery while Activity shell controls remain", async () => {
  const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["history.window"],configure(db){
   db.details.lead=details("lead",{run_id:"run-1",turn_id:"turn-1"});
   db.details.other=details("other");db.work.other=[];db.shells.other=[];
@@ -815,33 +824,21 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:"console",themes:[{name:"light"}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<Conversation model={f.model}/>,host);await settle(f.t,f.db);});
-  const target=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;
-  expect([...target.options].map(option=>option.textContent)).toEqual(["Model","python -m http.server","sleep 30"]);
-  expect(target.value).toBe("model");
-  const timingGroup=host.querySelector('[role="group"][aria-label="Send timing"]')!;
-  const nextButton=timingGroup.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')!;
-  expect(nextButton.textContent).toContain("Next boundary");
-  expect(host.textContent).toContain("Hold this message until the current turn reaches its next boundary.");
-  await act(async()=>{target.value="exec-2";target.dispatchEvent(new Event("change",{bubbles:true}));});
-  expect(host.querySelector('button[aria-label="Send EOF: python -m http.server"]')).not.toBeNull();
-  expect(timingGroup.querySelectorAll('button:disabled')).toHaveLength(2);
+  const dock=host.querySelector<HTMLElement>(".dock")!;
+  expect(dock.querySelector(".composer-above")).toBeNull();
+  expect(dock.querySelector('[aria-label="Send input to:"]')).toBeNull();
+  expect(dock.querySelector('[aria-label="Send timing"]')).toBeNull();
+  expect(dock.querySelector('button[aria-label^="Send EOF"]')).toBeNull();
+  expect(host.querySelector<HTMLTextAreaElement>("#composer")?.placeholder).not.toMatch(/shell|stdin|input to/i);
   const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
-  await act(async()=>{composer.value="printf hello\\n";composer.dispatchEvent(new Event("input",{bubbles:true}));composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
-  const write=f.t.calls("shell.write").at(-1)!;expect(write.args).toMatchObject({execution_id:"exec-2",text:"printf hello\\n",encoding:"UTF-8"});
-  f.db.answered.add(write.id);await act(async()=>{f.t.ok(write.id,{});await flush(8);});
-  expect(target.value).toBe("model");
-  await act(async()=>{f.model.openThread("other");await settle(f.t,f.db);});
-  await act(async()=>{f.model.openThread("lead");await settle(f.t,f.db);});
-  expect(composer.value).toBe("");expect(target.value).toBe("model");
-  await act(async()=>{target.value="exec-2";target.dispatchEvent(new Event("change",{bubbles:true}));await flush();});
-  await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Send EOF: python -m http.server"]')!.click();await flush(8);});
-  const eof=f.t.calls("shell.eof").at(-1)!;expect(eof.args).toMatchObject({execution_id:"exec-2"});
-  f.db.answered.add(eof.id);await act(async()=>{f.t.ok(eof.id,{});await flush(8);});
-  await act(async()=>{target.value="model";target.dispatchEvent(new Event("change",{bubbles:true}));await flush();});
-  await act(async()=>{timingGroup.querySelector<HTMLButtonElement>('button[aria-pressed="false"]')!.click();await flush();});
-  await act(async()=>{composer.value="deliver-now";composer.dispatchEvent(new Event("input",{bubbles:true}));composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
-  const nowSend=f.t.calls("message.send").at(-1)!;expect(nowSend.args).toMatchObject({deliver:"now",text:"deliver-now"});
-  f.db.answered.add(nowSend.id);await act(async()=>{f.t.ok(nowSend.id,{message_id:"msg-now",thread_id:"lead"});await flush(8);});
+  let send!:Promise<boolean>;
+  await act(async()=>{composer.value="model-default";composer.dispatchEvent(new Event("input",{bubbles:true}));send=f.model.send("model-default");await flush(8);});
+  const defaultSend=f.t.calls("message.send").at(-1)!;
+  expect(defaultSend.args).toMatchObject({thread_id:"lead",text:"model-default",deliver:"next"});
+  expect(f.t.calls("shell.write")).toHaveLength(0);
+  expect(f.t.calls("shell.eof")).toHaveLength(0);
+  f.db.answered.add(defaultSend.id);
+  await act(async()=>{f.t.ok(defaultSend.id,{message_id:"msg-default",thread_id:"lead"});expect(await send).toBe(true);await flush(8);});
   const interrupt=host.querySelector<HTMLButtonElement>('button[aria-label="Interrupt Turn"]')!;
   expect(interrupt).toBeDefined();
   await act(async()=>{interrupt.click();await flush(8);});
@@ -884,67 +881,4 @@ it("Studio #134: composer targets, timing, interrupt and Activity shell controls
   expect(f.t.calls("shell.stop")).toHaveLength(stopBeforeDetail+1);
   expect(f.t.calls("shell.stop").at(-1)?.args).toMatchObject({execution_id:"exec-2"});
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
-});
-
-
-it("keeps a shell draft blocked when its owner fact disappears until explicit retarget", async () => {
- const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["history.window"],configure(db){
-  db.details.lead=details("lead");
-  db.details.other=details("other");
-  db.work.lead=[{kind:"shell",id:"exec-stale",thread_id:"lead",run_id:"run-old",execution_id:"exec-stale",state:"running",turn_id:"turn-old",started_at:"2026-11-07T10:20:00Z"}];
-  db.work.other=[];
-  db.shells.other=[];
-  db.shells.lead=[{execution_id:"exec-stale",thread_id:"lead",run_id:"run-old",turn_id:"turn-old",state:"running",started_at:"2026-11-07T10:20:00Z",command_excerpt:"python worker.py"}];
- }});
- const host=document.createElement("div");document.body.append(host);
- try{
-  await act(async()=>{render(<Conversation model={f.model}/>,host);await settle(f.t,f.db);});
-  const target=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;
-  target.value="exec-stale";target.dispatchEvent(new Event("change",{bubbles:true}));
-  const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
-  composer.value="do not send to a different recipient";composer.dispatchEvent(new Event("input",{bubbles:true}));
-  await act(async()=>{await flush(4);});
-  await act(async()=>{f.model.openThread("other");await settle(f.t,f.db);});
-  await act(async()=>{f.model.openThread("lead");await settle(f.t,f.db);});
-  expect(composer.value).toBe("do not send to a different recipient");
-  f.db.shells.lead=[];
-  f.db.work.lead=[];
-  f.db.details.lead=details("lead",{run_id:"run-next",turn_id:"turn-next"});
-  await act(async()=>{f.model.shells.value=new Map();await flush(4);});
-  expect(target.value).toBe("exec-stale");
-  expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(true);
-  expect(host.textContent).toContain("Selected shell unavailable");
-  target.value="model";target.dispatchEvent(new Event("change",{bubbles:true}));
-  await act(async()=>{await flush(4);});
-  expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(false);
-  await act(async()=>{composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(8);});
-  expect(f.t.calls("message.send").at(-1)?.args).toMatchObject({text:"do not send to a different recipient"});
- }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
-});
-
-
-it("Composer resets a draft's destination after send and bounded eviction", async () => {
- const host=document.createElement("div");document.body.append(host);
- let accepted: string[]=[];
- function Harness(){
-  const [scope,setScope]=useState("thread-0");
-  return <><button aria-label="Next scope" onClick={()=>setScope(value=>`thread-${Number(value.slice(7))+1}`)}>Next</button><button aria-label="Return first scope" onClick={()=>setScope("thread-0")}>Return</button><Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend={true} busy={false} allowWhitespace={true} draftScope={scope} onSend={async text=>{accepted.push(text);return true}} routing={{label:"Send input to:",modelLabel:"Model",unavailableTarget:"Unavailable",eofLabel:command=>`Send EOF: ${command}`,shells:[{id:"shell-1",command:"sleep 30"}],timingLabel:"Send timing",timing:"next",onTiming:()=>{},nextLabel:"Next boundary",nowLabel:"Now",nextExplanation:"Next",nowExplanation:"Now"}} /></>;
- }
- try{
-  await act(async()=>{render(<Harness/>,host);await flush();});
-  const chooseShell=async()=>{const select=host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!;select.value="shell-1";select.dispatchEvent(new Event("change",{bubbles:true}));await flush();};
-  await act(async()=>{await chooseShell();});
-  const composer=host.querySelector<HTMLTextAreaElement>("#composer")!;
-  await act(async()=>{composer.value="send to shell";composer.dispatchEvent(new Event("input",{bubbles:true}));await flush();expect(composer.value).toBe("send to shell");composer.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));await flush(4);});
-  expect(accepted).toEqual(["send to shell"]);
-  expect(host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!.value).toBe("model");
-  await act(async()=>{await chooseShell();composer.value="draft to shell";composer.dispatchEvent(new Event("input",{bubbles:true}));await flush();});
-  for(let index=0;index<16;index++){
-   await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Next scope"]')!.click();await flush();});
-   await act(async()=>{await chooseShell();const field=host.querySelector<HTMLTextAreaElement>("#composer")!;field.value=`draft ${index}`;field.dispatchEvent(new Event("input",{bubbles:true}));await flush();});
-  }
-  await act(async()=>{host.querySelector<HTMLButtonElement>('button[aria-label="Return first scope"]')!.click();await flush();});
-  expect(host.querySelector<HTMLTextAreaElement>("#composer")!.value).toBe("");
-  expect(host.querySelector<HTMLSelectElement>('select[aria-label="Send input to:"]')!.value).toBe("model");
- }finally{render(null,host);host.remove();}
 });

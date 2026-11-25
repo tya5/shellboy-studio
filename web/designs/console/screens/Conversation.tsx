@@ -996,12 +996,6 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
   const context = model.context.value;
   const root = useRef<HTMLDivElement>(null);
   const hasComposer = !!handle;
-  const activeShells = [...model.shells.value.values()].filter(shell => shell.thread_id === handle?.threadId && shell.state === "running").sort((a,b) => {
-    const aForeground = details?.turn_id !== undefined && a.turn_id === details.turn_id;
-    const bForeground = details?.turn_id !== undefined && b.turn_id === details.turn_id;
-    return Number(bForeground) - Number(aForeground) || (b.started_at ?? "").localeCompare(a.started_at ?? "");
-  });
-  const [delivery, setDelivery] = useState<"next" | "now">("next");
   const [shellStopTarget, setShellStopTarget] = useState<{ executionId: string; command: string }>();
   const shellStopReturnFocus = useRef<HTMLElement | null>(null);
   const requestShellStop = (target: { executionId: string; command: string }) => {
@@ -1079,20 +1073,14 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
             hint={pendingOwn ? t(`composer.pending.${pendingOwn.phase}`) : t("composer.hint")}
-            draftStatus={(text,target)=>{if(activeShells.some(shell=>shell.execution_id===target))return {blocked:false,hint:t("composer.hint")};if(target!=="model")return {blocked:true,hint:t("composer.shellUnavailable")};const admission=model.localSendAdmission(text);return {blocked:admission!=="ready",hint:admission==="slotsfull"?t("composer.pending.slotsfull"):admission==="bytesfull"?t("composer.pending.bytesfull"):pendingOwn?t(`composer.pending.${pendingOwn.phase}`):t("composer.hint")};}}
+            draftStatus={text=>{const admission=model.localSendAdmission(text);return {blocked:admission!=="ready",hint:admission==="slotsfull"?t("composer.pending.slotsfull"):admission==="bytesfull"?t("composer.pending.bytesfull"):pendingOwn?t(`composer.pending.${pendingOwn.phase}`):t("composer.hint")};}}
             start={details ? <ModelPicker model={model} details={details} onThreadSettings={() => openThreadPanel("settings")} /> : undefined}
             context={context ? <ContextRing fill={context.fill} state={context.state} label={t("context.title")} stateLabel={t(`context.state.${context.state}`)} onOpen={() => openThreadPanel("info")} /> : undefined}
             sendLabel={t("composer.send")}
-            canSend={target=>{const shell=activeShells.some(item=>item.execution_id===target);return conn === "connected" && (shell || (target === "model" && !sendBlocked));}}
+            canSend={conn === "connected" && !sendBlocked}
             busy={send.kind === "sending"}
-            allowWhitespace={target=>activeShells.some(shell=>shell.execution_id===target)}
             draftScope={handle.threadId}
-            routing={{ label: t("composer.sendInputTo"), modelLabel: t("composer.modelTarget"),
-              shells: activeShells.map(shell => ({ id: shell.execution_id, command: shell.command_excerpt || t("composer.shellTarget") })),
-              unavailableTarget: t("composer.shellUnavailable"), eofLabel: command => `${t("composer.sendEof")}: ${command}`, onEof: executionId => void model.sendShellEof(executionId),
-              timingLabel: t("composer.sendTiming"), timing: delivery,
-              onTiming: setDelivery, nextLabel: t("composer.nextBoundary"), nowLabel: t("composer.now"), nextExplanation: t("composer.nextBoundaryHelp"), nowExplanation: t("composer.nowHelp") }}
-            onSend={(text,target,onReserved) => activeShells.some(shell=>shell.execution_id===target) ? model.sendShellInput(target,text) : target === "model" ? model.send(text,onReserved,delivery) : Promise.resolve(false)}
+            onSend={(text,onReserved) => model.send(text,onReserved)}
             interrupt={model.details.value?.turn_id ? { label: t("composer.interruptTurn"), run: () => void model.interruptTurn() } : undefined}
             stop={model.canStop.value ? { label: t("composer.stop"), run: () => void model.stop() } : undefined}
           />

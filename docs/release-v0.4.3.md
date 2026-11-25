@@ -16,5 +16,5 @@ The macOS and Windows desktop bundle versions come from the Studio package versi
 
 ## Known gaps
 
-- Sending input or EOF to a running shell has not been verified on Windows ([Core #415](https://github.com/tya5/shellboy/issues/415)).
+- For now, Studio does not offer sending input to a shell or choosing **Deliver now**; messages go to the model with the default next-safe-boundary delivery. The model can still write to shells. Use the right panel to move a shell to background or stop it.
 - **Branches** may briefly miss a change inside a path whose tip and length stay the same; it refreshes on the next owner change notification ([Core #418](https://github.com/tya5/shellboy/issues/418)).

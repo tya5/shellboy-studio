@@ -14,8 +14,6 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.stop` | Stop the active Run or shell; Conversation and Activity actions. | `square` |
 | `action.interruptTurn` | Request interruption of the active Turn. | `cross` |
 | `action.shellBackground` | Move a running shell to background execution. | `arrow` |
-| `action.shellWrite` | Send text to a selected running shell. | `send` |
-| `action.shellEof` | Close stdin on the selected shell. | `term` |
 | `action.retry` | Retry a recoverable Run; recovery, Analytics, and Settings compaction controls. | `retry` |
 | `action.delete` | Delete a Thread after its exact preview is confirmed; destructive last row-menu item. | `trash` |
 | `action.editTags` | Open the tag editor for a Thread from any shared row menu. | Lucide `tag` |

@@ -511,8 +511,6 @@ it("sends Core v0.16 shell and interrupt commands with their typed protocol targ
   const cases=[
     ["shell.background",()=>ops.shellBackground("exec-1"),{execution_id:"exec-1"}],
     ["shell.stop",()=>ops.shellStop("exec-1"),{execution_id:"exec-1"}],
-    ["shell.write",()=>ops.shellWrite("exec-1","hello\n"),{execution_id:"exec-1",text:"hello\n",encoding:"UTF-8"}],
-    ["shell.eof",()=>ops.shellEof("exec-1"),{execution_id:"exec-1"}],
     ["turn.interrupt",()=>ops.turnInterrupt("turn-1"),{turn_id:"turn-1"}],
   ] as const;
   for (const [command,invoke,args] of cases) {

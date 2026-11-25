@@ -10,10 +10,11 @@ const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
 const analyticsDrilldownFixture = params.get('view') === 'analytics-drilldown';
 const ownSendFixture = params.get('view') === 'own-send';
+const simpleComposerFixture = params.get('view') === 'simple-composer';
 const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
 const sectionGeometryFixture = params.get('view') === 'section-geometry';
-const fixtureOptions = analyticsDrilldownFixture ? { route: 'analytics' as const, section: 'overview' as const, lang: fixtureLang } : sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
+const fixtureOptions = analyticsDrilldownFixture ? { route: 'analytics' as const, section: 'overview' as const, lang: fixtureLang } : simpleComposerFixture ? { route: 'conversation' as const, threadId: 'lead' } : sectionGeometryFixture ? { route: 'inbox' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'thread.reparent', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const initialRoute = parseRoute(location.hash);
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get('view') === 'analytics-24h' ? { lang: fixtureLang } : {}), route: initialRoute.view, ...(initialRoute.view === 'conversation' && initialRoute.threadId ? { threadId: initialRoute.threadId } : {}), configure(db) {
@@ -58,6 +59,15 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, ...(params.get(
       });
       return { ok: true, result: { ...usagePage(items), group_by: 'hour', scope_complete: !(prior && state === 'partial') } };
     };
+    return;
+  }
+  if (simpleComposerFixture) {
+    const state = params.get('state');
+    const turnRunning = state === 'turn-running' || state === 'both';
+    const shellWaiting = state === 'shell-waiting' || state === 'both';
+    db.details.lead = details('lead', turnRunning ? { run_id: 'run-1', turn_id: 'turn-1' } : {});
+    db.work.lead = shellWaiting ? [{ kind: 'shell', id: 'waiting-shell', thread_id: 'lead', run_id: 'run-shell', execution_id: 'waiting-shell', state: 'running', started_at: '2026-11-07T10:20:00Z' }] : [];
+    db.shells.lead = shellWaiting ? [{ execution_id: 'waiting-shell', thread_id: 'lead', run_id: 'run-shell', state: 'running', started_at: '2026-11-07T10:20:00Z', command_excerpt: 'python worker.py' }] : [];
     return;
   }
   if (sectionGeometryFixture) {
