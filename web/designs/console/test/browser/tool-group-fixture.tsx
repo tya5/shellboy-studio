@@ -1,5 +1,6 @@
 import { render } from 'preact';
-import { StepRow, StatusMark } from '../../system/components';
+import { StepRow } from '../../system/components/StepRow';
+import { StatusMark } from '../../system/components/StatusMark';
 import '../../system/tokens/console.css';
 import '../../system/tokens/light.css';
 import '../../system/components.css';
