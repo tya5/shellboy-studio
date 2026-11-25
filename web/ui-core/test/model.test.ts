@@ -498,10 +498,21 @@ describe("AppModel over the fake transport", () => {
     expect(model.sendState.value).toEqual({ kind: "failed", message: "the thread is busy", diagnostic: { code: "busy_thread", hint: undefined, operationId: "x" } });
   });
 
+  it("Stop model interrupts the current Turn without stopping the Run", async () => {
+    const { model, t } = await fixtureModel({ configure(db) { db.details.lead = { ...db.details.lead!, turn_id: "turn-1" }; } });
+    const pending = model.stopModel();
+    await flush();
+    const call = t.calls("turn.interrupt")[0]!;
+    t.ok(call.id, {});
+    await pending;
+    expect(call.args).toEqual({ turn_id: "turn-1" });
+    expect(t.calls("run.stop")).toHaveLength(0);
+  });
+
   it("stop uses the open Run; retry reads the Thread's Run first", async () => {
     const { model, t, db } = await fixtureModel();
     expect(model.canStop.value).toBe(true);
-    const stopped = model.stop();
+    const stopped = model.stopRun();
     await flush();
     const stop = t.calls("run.stop")[0]!;
     expect(stop.args).toEqual({ run_id: "run-1" });

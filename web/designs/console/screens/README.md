@@ -41,3 +41,7 @@ The visible conversation status keeps its live elapsed-time display, but is not 
 ## Shell output actions (#161)
 
 The inline shell step and Activity detail share one output-actions toolbar for Copy, Wrap lines, and Formatted. Keep the inline output title and Open execution details action at the inline placement only; do not add a second text-button toolbar. Use these controls only alongside retained shell output, not as a generic log toolbar.
+
+## Conversation stop controls (#160)
+
+The Composer's single Stop model action appears only with the existing model-working signal and a current Turn ID; it calls `turn.interrupt` and never stops shells. Stop everything belongs to the Activity Running section, is shown when `thread.get` exposes a Run ID, captures that ID and its opener at press time, and uses the existing WorkSheet alertdialog before calling `run.stop`. Owner refusals appear in the existing status notice; the next owner hint updates the controls. Do not move Run stop back into the Composer or replace shell-row Stop/Background actions.

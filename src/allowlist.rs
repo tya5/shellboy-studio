@@ -43,6 +43,7 @@ pub fn access(command: &Command) -> Access {
         Command::ThreadCreate(..)
         | Command::MessageSend(..)
         | Command::RunStop(..)
+        | Command::TurnInterrupt(..)
         | Command::MessageCancel(..)
         | Command::RunRetry(..)
         | Command::ThreadArchive(..)
@@ -94,7 +95,6 @@ pub fn access(command: &Command) -> Access {
         Command::OwnerShutdown(args) if !args.instance_id.is_empty() => Access::Mutation,
         Command::ShellWrite(..)
         | Command::ShellEof(..)
-        | Command::TurnInterrupt(..)
         | Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)

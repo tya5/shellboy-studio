@@ -807,7 +807,7 @@ it.each(["idle", "turn-running", "shell-waiting", "both"] as const)("Studio #158
   expect(dock.querySelector('[aria-label="Send timing"]')).toBeNull();
   expect(dock.querySelector('button[aria-label^="Send EOF"]')).toBeNull();
   expect(dock.querySelector("textarea")?.placeholder).not.toMatch(/shell|stdin|input to/i);
-  expect(!!dock.querySelector('button[aria-label="Stop"]')).toBe(turnRunning);
+  expect(!!dock.querySelector('button[aria-label="Stop model"]')).toBe(turnRunning);
   expect(dock.querySelector('button[aria-label="Interrupt Turn"]')).toBeNull();
   const before=f.t.calls("message.send").length;
   const area=dock.querySelector<HTMLTextAreaElement>("textarea")!;
