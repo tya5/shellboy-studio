@@ -1,7 +1,7 @@
 //! The bridge against a real `shellboy serve` from the pinned revision, with a temporary
 //! data directory and temporary HOME/XDG (so no user config or data is read). No model is
 //! called outside local mock providers. Selected explicitly with `real-owner-tests`;
-//! requires `SHELLBOY_BIN` pointing at the binary from the published pinned tag.
+//! requires `SHELLBOY_BIN` pointing at the binary built from the exact pinned revision.
 mod common;
 use common::*;
 use futures_util::{SinkExt, StreamExt};
@@ -497,11 +497,7 @@ async fn hints_and_restart_against_a_real_owner() {
     assert_eq!(attachments["response"]["ok"], true, "{attachments}");
     assert_eq!(attachments["response"]["result"]["items"], json!([]));
     assert!(attachments["response"]["result"]["next_cursor"].is_null());
-    assert_eq!(
-        attachments["response"]["result"]["filters"]["thread_id"],
-        thread_id
-    );
-    assert!(attachments["response"]["result"]["limit"].is_u64());
+    // At this pin the public Core attachment inspection path still returns the bare page.
 
     // The Analytics and Settings reads pass the allowlist and the owner decodes them: strict
     // decoding on both sides, so a wrong argument name here would fail.
@@ -547,6 +543,9 @@ async fn hints_and_restart_against_a_real_owner() {
     assert_eq!(ranking["more"], false);
     assert!(ranking["next_cursor"].is_null());
     assert!(replies[2]["items"].is_array());
+    assert_eq!(replies[2]["limit"], 50);
+    assert_eq!(replies[2]["filters"]["thread_id"], thread_id);
+    assert!(replies[2].get("next_cursor").is_none());
     assert!(replies[3]["logical_live_bytes"].is_u64());
     assert!(replies[3]["warning"].is_boolean());
     assert!(replies[4]["spaces"].is_array());
@@ -1114,7 +1113,7 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
         .await;
     assert!(!end["text"].as_str().unwrap().is_empty(), "{end}");
     let retired = c.call("history.get", json!({"node_id":point}), None).await;
-    assert_eq!(retired["response"]["ok"], false, "{retired}");
+    assert_eq!(retired["error"]["code"], "invalid_call", "{retired}");
 
     // A Thread alone: the root, no divergence, sized by the owner.
     let alone = c
@@ -1176,6 +1175,17 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     assert_eq!(child["divergence"]["node_id"], point.as_str(), "{family}");
     assert_eq!(child["divergence"]["parent_continues"], true);
     assert_eq!(child["parent_thread_id"], thread.as_str());
+    let parent = family["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["thread_id"] == thread)
+        .unwrap();
+    assert!(child["selection_revision"].is_u64(), "{child}");
+    assert_eq!(
+        child["divergence"]["parent_selection_revision"],
+        parent["selection_revision"]
+    );
     assert!(child["divergence"]["ordinal"].is_u64());
     assert!(child["size"]["nodes_after_divergence"].is_u64());
 
@@ -1209,6 +1219,7 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     );
     let head = c.ok("history.window", head, None).await;
     assert_eq!(head["thread_id"], fork.as_str(), "{head}");
+    assert_eq!(head["revision"], child["selection_revision"], "{head}");
     assert_eq!(head["items"][0]["node_id"], point.as_str(), "{head}");
     let origin = window(
         json!({"thread_id":thread,"ordinal":0,"before":0,"after":0,"excerpt_chars":160}),
@@ -2020,7 +2031,10 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
     let status = status.result.unwrap();
     assert_eq!(status["instance_id"], serve.instance);
     assert_eq!(status["items"], json!([]));
-    assert_eq!(status["filters"]["limit"], 200);
+    assert_eq!(status["limit"], 200);
+    for removed in ["limit", "cursor", "memory"] {
+        assert!(status["filters"].get(removed).is_none(), "{status}");
+    }
     let wrong = owner
         .call(
             Command::OwnerShutdown(OwnerShutdownArgs {

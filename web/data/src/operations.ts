@@ -614,9 +614,15 @@ export class Operations {
   threadBranches(args: ThreadBranchesArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("thread.branches", args, outcomeDecoder(raw => {
       const decoded = decodeRecord(raw);
-      return decoded.ok && (Object.hasOwn(decoded.value, "limit") || Object.hasOwn(decoded.value, "filters"))
-        && !validPageFacts(decoded.value, recordFilters.thread(args.thread_id))
-        ? { ok: false, reason: "invalid branch page metadata" } : decoded;
+      if (!decoded.ok) return decoded;
+      const page = decoded.value;
+      const validRevision = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
+      if ((Object.hasOwn(page, "limit") || Object.hasOwn(page, "filters")) && (
+        !validPageFacts(page, recordFilters.thread(args.thread_id)) || !Array.isArray(page.items)
+        || page.items.some(row => !isObject(row) || !validRevision(row.selection_revision)
+          || (row.divergence != null && (!isObject(row.divergence) || !validRevision(row.divergence.parent_selection_revision))))
+      )) return { ok: false, reason: "invalid branch page metadata or selection revision" };
+      return decoded;
     }), undefined, read);
   }
   /** `dry_run`: runs in a rolled-back savepoint and writes nothing, so it carries no operation id. */
