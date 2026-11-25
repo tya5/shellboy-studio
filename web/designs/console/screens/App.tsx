@@ -270,7 +270,7 @@ export function App({ context }: { context: DesignContext }) {
             </nav>
             <div class="sidehead">
             <h2 id="sidebar-thread-list-heading" class="group-label" tabIndex={-1}>{t("threads.title")}</h2>
-            {threadSelection.start}
+            {threadSelection.start()}
           </div>
           <div class="side-search">
             <div class="side-controls">
@@ -284,7 +284,7 @@ export function App({ context }: { context: DesignContext }) {
               <Button icon label={t("threads.new")} title={t("threads.new")} onClick={() => { setDrawer(false); void model.createThread(); }}><Icon role="thread.create" size="small" /></Button>
             </div>
             <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} />
-            {threadSelection.bar}
+            {threadSelection.bar()}
           </div>
           <div class="side-list" ref={sidebarListRef} onFocusIn={(event) => {
             const target = event.target as HTMLElement;

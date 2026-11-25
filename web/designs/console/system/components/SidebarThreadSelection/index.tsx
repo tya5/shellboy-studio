@@ -49,8 +49,9 @@ export function useSidebarThreadSelection(model: AppModel, getHeading: () => HTM
     } finally { setArchiveRunning(false); }
   };
   return {
-    start: !selecting ? <Button variant="ghost" onClick={() => setSelecting(true)}>{t("thread.deleteSetSelect")}</Button> : null,
-    bar: selecting ? <>
+    // App callbacks share a render scope with this object. Keep mounted VNodes out of it.
+    start: () => !selecting ? <Button variant="ghost" onClick={() => setSelecting(true)}>{t("thread.deleteSetSelect")}</Button> : null,
+    bar: () => selecting ? <>
       <SelectionBar text={t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: includeDescendants, onChange: value => { setIncludeDescendants(value); setArmed(undefined); } }}>
       {activeIds.length ? <Button variant={armed === "archive" ? "warn" : "outline"} disabled={archiveRunning} onClick={() => void archive("archive", activeIds)}>{t(armed === "archive" ? "org.archiveConfirm" : "action.archive")}</Button> : null}
       {archivedIds.length ? <Button variant="outline" disabled={archiveRunning} onClick={() => void archive("unarchive", archivedIds)}>{t("org.unarchive")}</Button> : null}
