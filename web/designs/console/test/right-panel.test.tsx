@@ -637,7 +637,7 @@ describe('right panel purpose',()=>{
 
  it.each([390, 1179])('opens Activity details and shares the panel toggle with Alt+9 at %ipx', async width => {
   const f=await setup();
-  const shortcut=()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',altKey:true,bubbles:true,cancelable:true}));
+  const shortcut=()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',code:'Digit9',altKey:true,bubbles:true,cancelable:true}));
   const sheet=()=>f.host.querySelector<HTMLDialogElement>('dialog.work-sheet[open]');
   const toggle=()=>f.host.querySelector<HTMLButtonElement>('.phone-panel-footer .shell-toggle-panel')!;
   try {
@@ -766,7 +766,7 @@ describe('right panel purpose',()=>{
  it('Alt+9 collapses to a counted icon rail and restores the stored state after remount',async()=>{
   const f=await setup();
   try{
-   await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',altKey:true,bubbles:true,cancelable:true}));});
+   await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',code:'Digit9',altKey:true,bubbles:true,cancelable:true}));});
    expect(f.prefs.value.panelCollapsed).toBe(true);
    expect(f.host.querySelector('[data-panel-rail]')).not.toBeNull();
    expect(f.host.querySelectorAll('[data-panel-rail] [role=tab]')).toHaveLength(5);
@@ -795,7 +795,7 @@ describe('right panel purpose',()=>{
 it('does not route global shortcuts from Japanese IME, editors, or handled events', async () => {
  const f = await setup();
  const key = (target: EventTarget, options: KeyboardEventInit = {}) => {
-  const event = new KeyboardEvent('keydown', { key: '5', altKey: true, bubbles: true, cancelable: true, ...options });
+  const event = new KeyboardEvent('keydown', { key: '5', code: 'Digit5', altKey: true, bubbles: true, cancelable: true, ...options });
   target.dispatchEvent(event);
   return event;
  };
@@ -807,7 +807,7 @@ it('does not route global shortcuts from Japanese IME, editors, or handled event
   expect(key(editor).defaultPrevented).toBe(false);
   expect(f.model.route.peek().view).toBe('conversation');
   editor.blur();
-  const handled = new KeyboardEvent('keydown', { key: '5', altKey: true, cancelable: true });
+  const handled = new KeyboardEvent('keydown', { key: '5', code: 'Digit5', altKey: true, cancelable: true });
   handled.preventDefault();
   window.dispatchEvent(handled);
   expect(f.model.route.peek().view).toBe('conversation');
