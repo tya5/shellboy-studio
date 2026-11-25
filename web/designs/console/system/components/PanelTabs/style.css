@@ -18,15 +18,14 @@
 .panel-tabs-row .panel-tab { display:flex; align-items:center; justify-content:center; flex:none; gap:var(--space-8); min-block-size:var(--size-control); padding:var(--space-4); border:0; border-block-end:var(--space-2) solid transparent; font:var(--type-label); white-space:nowrap; box-sizing:border-box; }
 .panel-tabs-row .panel-tab[aria-selected="true"],.panel-tabs-measure [data-selected="true"] { font-weight:700; }
 .panel-tabs-row button:hover { background:var(--hover); }
-/* Count occupies its own grid row, so it participates in the fit measurement. */
-.panel-tabs-row:is([data-labels="active"],[data-labels="icons"]) .panel-tab { display:grid; grid-template-columns:auto auto; grid-template-rows:var(--size-icon-small) auto; align-content:center; justify-items:center; padding-inline:var(--space-2); gap:0 var(--space-4); min-block-size:var(--size-touch); }
-.panel-tabs-row:is([data-labels="active"],[data-labels="icons"]) .panel-tab > :first-child { grid-area:2 / 1; }
-.panel-tabs-row:is([data-labels="active"],[data-labels="icons"]) .panel-tab-label { grid-area:2 / 2; }
-.panel-tabs-row:is([data-labels="active"],[data-labels="icons"]) .panel-tab-count { grid-area:1 / 1 / 2 / 3; }
+/* The corner badge shares the icon cell; its width still participates in fit. */
+.panel-tabs-row:is([data-labels="active"],[data-labels="icons"]) .panel-tab { display:grid; grid-template-columns:auto auto; grid-template-rows:1fr; justify-items:center; padding-inline:var(--space-8); gap:0 var(--space-4); min-block-size:var(--size-touch); }
+.panel-tabs-row:is([data-labels="active"],[data-labels="icons"]) .panel-tab > :first-child { grid-area:1 / 1; }
+.panel-tabs-row:is([data-labels="active"],[data-labels="icons"]) .panel-tab:has(.panel-tab-count) > :first-child { align-self:end; }
+.panel-tabs-row:is([data-labels="active"],[data-labels="icons"]) .panel-tab-count { grid-area:1 / 1; align-self:start; justify-self:end; }
 .panel-tabs-row[data-labels="active"] :is([aria-selected="false"],[data-selected="false"]),.panel-tabs-row[data-labels="icons"] .panel-tab { grid-template-columns:auto; column-gap:0; }
 .panel-tabs-row[data-labels="active"] :is([aria-selected="false"],[data-selected="false"]) .panel-tab-label,.panel-tabs-row[data-labels="icons"] .panel-tab-label { display:none; }
-.panel-tabs-row[data-labels="icons"] .panel-tab-count,.panel-tabs-row[data-labels="active"] :is([aria-selected="false"],[data-selected="false"]) .panel-tab-count { grid-column:1; }
 .panel-tabs-heading { margin:0 0 var(--space-4); font:var(--type-label); }
-[data-tab-placement="sheet"] .panel-tabs-row .panel-tab { min-block-size:var(--size-touch); }
+[data-tab-placement="sheet"] .panel-tabs-row .panel-tab { min-inline-size:var(--size-touch); min-block-size:var(--size-touch); }
 
 .panel-tabs-rail .panel-tab-count { position:absolute; inset-block-start:var(--space-2); inset-inline-end:var(--space-2); }

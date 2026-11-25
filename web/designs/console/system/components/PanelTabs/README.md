@@ -21,4 +21,4 @@ When the owning right panel is collapsed, the icon rail and counts remain intera
 
 Use an owner-provided count for each reply direction. A `+` suffix marks a lower bound in the existing badge.
 
-Phone variant: at the app's narrow container width, use the visibly labeled native section picker; do not use it for route navigation or on wide layouts. The horizontal tabs and collapsed icon rail remain the desktop variants.
+The Conversation sheet uses the horizontal tabs, with a minimum touch target on both axes in every mode.
