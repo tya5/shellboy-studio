@@ -192,6 +192,65 @@ fn core_schedule_and_service_reads_require_a_thread() {
 }
 
 #[test]
+fn message_acceptance_and_reply_match_the_pinned_result_schemas() {
+    use shellboy::protocol::{MessageAccepted, MessageReplied};
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 36);
+    let schema: serde_json::Value =
+        serde_json::from_str(&shellboy::protocol::schema_json()).unwrap();
+    let results = &schema["operation_results"];
+    assert_eq!(results["message.ask"], results["message.send"]);
+    assert_eq!(results["message.ask"]["title"], "MessageAccepted");
+    assert_eq!(results["message.reply"]["title"], "MessageReplied");
+    assert!(
+        results["message.reply"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "message_id")
+    );
+    assert!(
+        results["message.reply"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "reply_to")
+    );
+    assert!(
+        !results["message.reply"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "delivery")
+    );
+
+    let accepted: MessageAccepted = serde_json::from_value(json!({
+        "message_id":"accepted","thread_id":"asking","delivery_status":"held",
+        "assignment":"pending","expect_reply":true
+    }))
+    .unwrap();
+    assert_eq!(accepted.message_id, "accepted");
+    let standalone: MessageReplied = serde_json::from_value(json!({
+        "message_id":"answer","reply_to":"request"
+    }))
+    .unwrap();
+    assert!(standalone.delivery.is_none());
+    let routed: MessageReplied = serde_json::from_value(json!({
+        "message_id":"answer","reply_to":"request","delivery":{
+            "message_id":"answer","thread_id":"asking","delivery_status":"held",
+            "assignment":"pending","expect_reply":false
+        }
+    }))
+    .unwrap();
+    assert_eq!(routed.delivery.unwrap().message_id, "answer");
+    assert!(
+        serde_json::from_value::<MessageReplied>(
+            json!({"message_id":"answer","reply_to":"request","delivery":null})
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn history_read_and_message_ask_use_the_pinned_wire_contract() {
     for args in [
         json!({"node_id":"n","limit_bytes":64,"cursor":"next"}),
