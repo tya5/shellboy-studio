@@ -140,6 +140,32 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
  });
 
+ it('captures the Run ID and opener through Activity confirmation when thread details change', async () => {
+  const f=await setup();
+  const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
+  const text=f.model.t.value;
+  try {
+   f.db.threads.lead=summary('lead',{state:'running'});
+   await act(async()=>{hint();await settle(f.t,f.db);});
+   const trigger=[...f.host.querySelectorAll<HTMLButtonElement>('[data-panel-list="work"] button')].find(button=>button.textContent===text('action.stopEverything'));
+   expect(trigger).toBeDefined();
+   await act(async()=>trigger!.click());
+   expect(f.host.querySelector('[role="alertdialog"]')?.textContent).toContain(text('action.stopEverythingDescription'));
+   f.db.details.lead={...f.db.details.lead!,run_id:'replacement-run'};
+   await act(async()=>{hint();await settle(f.t,f.db);});
+   const confirm=f.host.querySelector<HTMLButtonElement>('[role="alertdialog"] button.btn-stop')!;
+   await act(async()=>confirm.click());
+   const stop=f.t.calls('run.stop').at(-1)!;
+   expect(stop.args).toEqual({run_id:'run-1'});
+   expect(f.t.calls('shell.stop')).toHaveLength(0);
+   f.t.ownerError(stop.id,'run_not_running','Run is no longer live');
+   await act(async()=>{await flush(8);});
+   expect(f.host.querySelector('[role="alert"]')?.textContent).toContain('Run is no longer live');
+   expect(trigger?.isConnected).toBe(true);
+   expect(document.activeElement).toBe(trigger);
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('retains pending Activity rows and the tab count while status refreshes', async () => {
   const f=await setup();
   const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});

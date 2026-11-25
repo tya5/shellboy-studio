@@ -1466,15 +1466,11 @@ export class AppModel {
     if (failure !== undefined) return { disposition: "failed", error: failure };
   }
 
-  async stopModel(): Promise<void> {
-    const turnId = this.details.value?.turn_id;
-    if (turnId === undefined) return;
+  async stopModel(turnId: string): Promise<void> {
     this.report("action.interrupt", await this.ops.turnInterrupt(turnId));
   }
 
-  async stopRun(): Promise<void> {
-    const runId = this.details.value?.run_id;
-    if (runId === undefined) return;
+  async stopRun(runId: string): Promise<void> {
     this.report("action.stop", await this.ops.runStop(runId));
   }
 
