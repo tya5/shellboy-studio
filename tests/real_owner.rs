@@ -177,8 +177,12 @@ async fn thread_ask_and_standalone_reply_shapes_against_the_pinned_owner() {
     let created = owner
         .call(
             CoreCommand::ThreadCreate(ThreadCreateArgs {
+                agents: None,
+                connection: None,
                 cwd: Some(root.to_string_lossy().into_owned()),
-                ..Default::default()
+                model: None,
+                effort: None,
+                parent_thread_id: None,
             }),
             None,
             None,
