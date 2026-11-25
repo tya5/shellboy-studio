@@ -1382,6 +1382,65 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     );
     c.settled(&thread).await;
 
+    // Create a real Summary through the owner, rather than writing fixtures into its DB.
+    let sources = c
+        .ok(
+            "history.list",
+            json!({"thread_id":thread,"limit":200}),
+            None,
+        )
+        .await;
+    let first_user = sources["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["kind"] == "user")
+        .unwrap()["node_id"]
+        .as_str()
+        .unwrap();
+    let compact = isolated_command(&bin, &root.join("home"))
+        .args([
+            "compact",
+            "--summary",
+            "--thread",
+            &thread,
+            "--from",
+            first_user,
+            "--to",
+            &point,
+        ])
+        .arg("--data-dir")
+        .arg(&data)
+        .output()
+        .unwrap();
+    assert!(
+        compact.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&compact.stdout),
+        String::from_utf8_lossy(&compact.stderr)
+    );
+    let compact: Value = serde_json::from_slice(&compact.stdout).unwrap();
+    let summary_id = compact["result"]["compact"]["summary_node_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("missing adopted Summary: {compact}"));
+    let parts = c
+        .ok(
+            "history.read",
+            json!({"node_id":summary_id,"parts":true}),
+            None,
+        )
+        .await;
+    assert_eq!(parts["node_id"], summary_id);
+    assert_eq!(parts["kind"], "summary");
+    assert!(
+        parts["parts"]["items"].is_array() && parts["parts"]["reduce_keys_recorded"].is_boolean(),
+        "{parts}"
+    );
+    let ordinary = c
+        .ok("history.read", json!({"node_id":summary_id}), None)
+        .await;
+    assert!(ordinary.get("parts").is_none(), "{ordinary}");
+
     drop(c);
     cancel.cancel();
     drop(serve);
