@@ -513,15 +513,15 @@ it("retires adopted attempts skipped by the bounded tail without dropping unconf
 it("handles a detached burst beyond handoff capacity and retires only from the accepted tail", async () => {
   const f = await rig(150);
   const burst = Array.from({ length: 10 }, (_, i) => canonicalAttemptId(i + 1));
-  const active = canonicalAttemptId(11);
+  const first = canonicalAttemptId(1), active = canonicalAttemptId(11);
   const live = () => f.w.acceptedView.peek().displayPlan?.localRegion.tailRows.flatMap(row => row.kind === "live" ? [row.item.source.attemptId] : []);
   try {
     await f.settle();
-    f.producer.advance(burst[0]);
+    f.producer.advance(first);
     await flush();
     f.w.changed();
     await f.settle();
-    expect(live()).toEqual([burst[0]]);
+    expect(live()).toEqual([first]);
     f.w.following.value = false;
     for (const [index, attempt] of burst.entries()) {
       f.owner.append(2);
@@ -537,7 +537,7 @@ it("handles a detached burst beyond handoff capacity and retires only from the a
     f.w.jumpToEnd();
     // No owner replies yet: even on reattach, capacity must not erase the visible preview.
     await flush();
-    expect(live()).toContain(burst[0]);
+    expect(live()).toContain(first);
     expect(f.handle.handoff.peek().map(row => row.attemptId)).toEqual(admitted);
     await f.settle();
     expect(f.w.acceptedView.peek().range?.first).toBeGreaterThan(169);
