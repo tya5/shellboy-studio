@@ -4,7 +4,7 @@
 
 ## Install and open Studio
 
-Download Studio from the [releases page](https://github.com/tya5/shellboy-studio/releases) and verify it against `SHA256SUMS`. Studio v0.4.2 and v0.4.3 pair with Core v0.16.0 / protocol 26; see the [v0.4.3 pairing notes](../release-v0.4.3.md). Do not run the old v0.4.1 binary with Core v0.16.0. Before upgrading an existing installation, quit both programs and back up the entire Core data directory and any config outside it. Core applies migrations on startup; there is no automatic downgrade.
+Studio v0.4.2 is the published download. Get it from the [releases page](https://github.com/tya5/shellboy-studio/releases) and verify it against `SHA256SUMS`. Studio v0.4.3 is being prepared and is not yet published. Both versions pair with Core v0.16.0 / protocol 26; see the [v0.4.3 pairing notes](../release-v0.4.3.md). Do not run the old v0.4.1 binary with Core v0.16.0. Before upgrading an existing installation, quit both programs and back up the entire Core data directory and any config outside it. Core applies migrations on startup; there is no automatic downgrade.
 
 - **macOS 14 or later, Apple silicon:** Extract the desktop ZIP and open **Shellboy Studio.app**. It is unsigned and not notarized. If Gatekeeper blocks it, review the warning and use **Open Anyway** in System Settings > Privacy & Security only if you trust the download.
 - **Windows x64:** Extract the entire desktop ZIP, keep `Shellboy Studio.exe` and `shellboy.exe` together, and open `Shellboy Studio.exe`. See the [Windows desktop guide](windows-desktop.txt) for security warnings and shortcut arguments. The executable is unsigned; follow your organization's policy.
@@ -145,7 +145,7 @@ If Studio cannot reach Core, check that Core is running under the same OS accoun
 
 ### インストールと起動
 
-Studio は[リリースページ](https://github.com/tya5/shellboy-studio/releases)からダウンロードし、`SHA256SUMS` で照合してください。Studio v0.4.2 と v0.4.3 は Core v0.16.0 / プロトコル 26 と組み合わせます。[v0.4.3 のペアリングノート](../release-v0.4.3.md)を参照してください。旧版の v0.4.1 バイナリを Core v0.16.0 と組み合わせないでください。更新前に両方を終了し、Core のデータディレクトリ全体と、その外にある設定ファイルをバックアップしてください。Core は起動時にデータを移行し、自動では元に戻せません。
+公開中のダウンロード版は Studio v0.4.2 です。[リリースページ](https://github.com/tya5/shellboy-studio/releases)からダウンロードし、`SHA256SUMS` で照合してください。Studio v0.4.3 は準備中で、まだ公開されていません。どちらも Core v0.16.0 / プロトコル 26 と組み合わせます。[v0.4.3 のペアリングノート](../release-v0.4.3.md)を参照してください。旧版の v0.4.1 バイナリを Core v0.16.0 と組み合わせないでください。更新前に両方を終了し、Core のデータディレクトリ全体と、その外にある設定ファイルをバックアップしてください。Core は起動時にデータを移行し、自動では元に戻せません。
 
 - **Apple シリコン搭載 Mac（macOS 14 以降）：** デスクトップ ZIP を展開し、**Shellboy Studio.app** を開きます。署名・公証はありません。Gatekeeper に止められた場合は警告を確認し、入手元を信頼できる場合だけ「システム設定」>「プライバシーとセキュリティ」から開いてください。
 - **Windows x64：** デスクトップ ZIP をすべて展開し、`Shellboy Studio.exe` と `shellboy.exe` を同じフォルダに置いて `Shellboy Studio.exe` を開きます。署名はありません。警告やショートカットの設定は [Windows デスクトップガイド](windows-desktop.txt)を参照し、所属組織の方針に従ってください。

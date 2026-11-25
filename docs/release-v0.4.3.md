@@ -6,7 +6,7 @@ The macOS and Windows desktop bundle versions come from the Studio package versi
 
 ## Changes since v0.4.2
 
-- Running indicators and the conversation animation do less browser painting work without changing what they signal. Live conversation updates also avoid rereading the shell list when nothing about the Thread's shells has changed (#144).
+- Running indicators and the conversation animation do less browser painting work without changing what they signal (#144).
 - On a Mac, **Option + number** now works with the physical number row even when Option changes the character typed. The [keyboard shortcuts section](guides/user-guide.md#keyboard-shortcuts) lists the supported keys and where they work.
 - If you send a message and scroll back, returning to the latest messages now replaces the pending row with the saved message, even if you scroll away again while the update is loading (#154).
 - In **Possessions > Artifacts** on Windows, **Show in Explorer** no longer reports failure just because Explorer exits with code 1. Success and error messages appear below the artifact row instead of covering the title (#156).
