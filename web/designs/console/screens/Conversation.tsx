@@ -713,12 +713,17 @@ function PanelActivity({ model }: { model: AppModel }) {
         const command = section.kind === "step" ? row.command : undefined;
         // The Work projection already uses toolLabel for the owner description.
         const label = toolLabel(row.label, command, t("work.textUnavailable"));
-        const shellRunning = section.kind === "step" && model.shells.value.get(row.id)?.state === "running";
+        const shell = section.kind === "step" ? model.shells.value.get(row.id) : undefined;
+        const shellRunning = shell?.state === "running";
+        // Only Core's typed foreground fact on a running shell; absent or null shows no word.
+        const placement = shellRunning && typeof shell?.foreground === "boolean" ? shell.foreground ? "foreground" : "background" : undefined;
         return <ListRow key={row.id} id={row.id} title={label} command={command?.trim() !== label ? command : undefined}
-          subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
+          subtitle={(section.kind === "step" ? [placement ? t(`work.${placement}`) : undefined, elapsed] : [state, elapsed]).filter(Boolean).join(" · ") || undefined} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
           onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener), true)} menuLabel={t("panel.rowActions")}
-          actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, command ?? row.label, requestStop) : undefined} error={panelOperationError(model, row.id)} />;
+          // The Turn waits on a foreground shell: its exact-execution Background action moves out of the menu onto the row.
+          afterActions={placement === "foreground" ? <Button variant="primary" onClick={() => void model.backgroundShell(row.id)}>{t("action.shellBackground")}</Button> : undefined}
+          actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, command ?? row.label, requestStop, placement !== "foreground") : undefined} error={panelOperationError(model, row.id)} />;
       })}</section> : null;
     })}
     {model.handle.value ? (["schedule", "service"] as const).map(kind => <SchedulePanel key={`${model.handle.value!.threadId}:${kind}`} model={model} kind={kind} open={(id, opener) => model.openInPanel({ kind, id }, panelFocusReturn(opener), true)} />) : null}
@@ -809,10 +814,10 @@ function deliveryStateLabel(t: AppModel["t"]["value"], state: string): string {
     : state === "applied" ? t("work.applied") : state === "cancelled" ? t("work.cancelled") : state;
 }
 
-function shellActionEntries(model: AppModel, executionId: string, command: string, requestStop: (target: { executionId: string; command: string }) => void) {
+function shellActionEntries(model: AppModel, executionId: string, command: string, requestStop: (target: { executionId: string; command: string }) => void, background = true) {
   const t=model.t.value;
   return [
-    {key:"background",label:t("action.shellBackground"),icon:"action.shellBackground" as const,run:()=>void model.backgroundShell(executionId)},
+    ...(background ? [{key:"background",label:t("action.shellBackground"),icon:"action.shellBackground" as const,run:()=>void model.backgroundShell(executionId)}] : []),
     {key:"stop",label:t("action.shellStop"),icon:"action.stop" as const,destructive:true,run:()=>requestStop({executionId,command})},
   ];
 }
