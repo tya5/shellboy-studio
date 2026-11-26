@@ -526,37 +526,6 @@ it.each(['work','handoff'] as const)('scoped %s decoder keeps missing public thr
  expect(await pending).toMatchObject({ok:false,error:{kind:'invalid_response'}});
 });
 
-it("binds TurnGet observations to exact requested identities", async () => {
-  const { t, ops } = setup();
-  const turn = ops.turnGet("turn-a", { runId: "run-a", threadId: "thread-a" });
-  expect(t.calls().map((call) => [call.command, call.args])).toEqual([["turn.get", { turn_id: "turn-a" }]]);
-  t.ok(t.calls()[0]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "thread-a", state: "recovery_wait", recovery_hint: "retry" });
-  await expect(turn).resolves.toMatchObject({ ok: true, value: { turn_id: "turn-a", run_id: "run-a", thread_id: "thread-a", state: "recovery_wait", recovery_hint: "retry" } });
-});
-
-it("rejects foreign TurnGet observations", async () => {
-  const { t, ops } = setup();
-  const turn = ops.turnGet("turn-a", { runId: "run-a", threadId: "thread-a" });
-  t.ok(t.calls()[0]!.id, { turn_id: "turn-b", run_id: "run-a", thread_id: "thread-a", state: "recovery_wait" });
-  await expect(turn).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
-});
-
-
-it("rejects TurnGet with a wrong correlated run", async () => {
-  const { t, ops } = setup();
-  const turn = ops.turnGet("turn-a", { runId: "run-a", threadId: "thread-a" });
-  t.ok(t.calls()[0]!.id, { turn_id: "turn-a", run_id: "run-other", thread_id: "thread-a", state: "recovery_wait" });
-  await expect(turn).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
-});
-
-
-it("rejects missing required Turn identity fields without correlation", async () => {
-  const { t, ops } = setup();
-  const turn = ops.turnGet("turn-a");
-  t.ok(t.calls()[0]!.id, { turn_id: "turn-a", state: "recovery_wait", recovery_hint: "retry" });
-  await expect(turn).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
-});
-
 it("sends Core v0.16 shell and interrupt commands with their typed protocol targets", async () => {
   const {t,ops}=setup();
   const cases=[

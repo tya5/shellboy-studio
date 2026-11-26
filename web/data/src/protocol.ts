@@ -277,20 +277,8 @@ export interface PendingReply {
   excerpt: string;
 }
 
-export type TurnState = "preparing" | "running" | "waiting" | "recovery_wait" | "completed" | "stopped" | "failed";
-
 /** A stop settlement failed and the Run is still `stopping`; cleared on successful settlement. */
 export type RunStopSettlementFailure = "storage" | "invariant";
-
-/** Exact owner observation returned by turn.get for a management-target Turn. */
-export interface TurnDetails {
-  turn_id: string;
-  run_id: string;
-  thread_id: string;
-  state: TurnState;
-  recovery_hint?: string;
-  [extra: string]: unknown;
-}
 
 export interface EndMessageMarker { node_id: string | null }
 
