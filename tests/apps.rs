@@ -866,82 +866,173 @@ async fn run_has_limits_and_its_source_stays_private() {
     );
 }
 
-/// A helper the script started, by the pid it wrote to `data/`.
+/// A failure bound for the process tests, not a pass condition.
+const WATCHDOG: Duration = Duration::from_secs(30);
+
+/// Watches a helper an action starts. The action opens the FIFO, starts the helper (which inherits it),
+/// writes `started` and closes its own copy; so `started` arrives once the helper exists, and the read
+/// ends only when every holder, the helper included, has exited. Plain threads: a stuck open must not
+/// hold up the runtime's shutdown.
 #[cfg(unix)]
-async fn helper_pid(f: &Fixture, file: &str) -> i32 {
-    let path = f.apps.join("one/data").join(file);
-    for _ in 0..200 {
-        if let Ok(text) = std::fs::read_to_string(&path)
-            && let Ok(pid) = text.trim().parse()
-        {
-            return pid;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("the action never wrote {file}");
+struct Helper {
+    started: tokio::sync::oneshot::Receiver<()>,
+    gone: tokio::sync::oneshot::Receiver<()>,
 }
 
-/// Gone, not merely signalled: the bound is how long the test waits before it fails.
 #[cfg(unix)]
-async fn assert_gone(pid: i32, case: &str) {
-    for _ in 0..200 {
-        if unsafe { libc::kill(pid, 0) } != 0 {
-            return;
+impl Helper {
+    fn watch(path: &Path) -> Self {
+        use std::{io::BufRead, os::unix::ffi::OsStrExt};
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let (gone, gone_rx) = tokio::sync::oneshot::channel();
+        let path = path.to_owned();
+        std::thread::spawn(move || {
+            let mut fifo = std::io::BufReader::new(std::fs::File::open(&path).unwrap());
+            let mut line = String::new();
+            let mut started = Some(started);
+            while fifo.read_line(&mut line).unwrap() > 0 {
+                if line == "started\n"
+                    && let Some(started) = started.take()
+                {
+                    let _ = started.send(());
+                }
+                line.clear();
+            }
+            let _ = gone.send(());
+        });
+        Self {
+            started: started_rx,
+            gone: gone_rx,
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    unsafe { libc::kill(pid, libc::SIGKILL) };
-    panic!("{case}: the helper {pid} outlived the action");
+
+    async fn started(&mut self, case: &str) {
+        tokio::time::timeout(WATCHDOG, &mut self.started)
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the helper never started"))
+            .unwrap();
+    }
+
+    async fn gone(self, case: &str) {
+        tokio::time::timeout(WATCHDOG, self.gone)
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the helper outlived the action"))
+            .unwrap();
+    }
 }
 
 #[cfg(unix)]
 #[tokio::test]
 async fn run_kills_what_the_script_started() {
     let f = fixture().await;
+    // `sleep` is the helper; it also keeps the script's stdout open after the script exits.
+    let start =
+        |fifo: &str| format!("exec 3>data/{fifo}; sleep 300 & echo started >&3; exec 3>&-;");
     write_app(
         &f.apps,
         "one",
         "{}",
         &[
             PAGE,
-            // The helper keeps the script's stdout open after the script exits.
-            (
-                "actions/leave.sh",
-                "mkdir -p data; sleep 300 & echo $! > data/leave.pid; echo done",
-            ),
-            (
-                "actions/hang.sh",
-                "mkdir -p data; sleep 300 & echo $! > data/hang.pid; wait",
-            ),
-            (
-                "actions/close.sh",
-                "mkdir -p data; sleep 300 & echo $! > data/close.pid; wait",
-            ),
+            ("actions/leave.sh", &format!("{} echo done", start("leave"))),
+            ("actions/hang.sh", &format!("{} wait", start("hang"))),
+            ("actions/close.sh", &format!("{} wait", start("close"))),
         ],
     );
-    let left = call(
-        &f,
-        "one",
-        "run",
-        json!({"action":"leave","timeout_ms":60_000}),
-    )
-    .await;
+    let data = f.apps.join("one/data");
+
+    let mut helper = Helper::watch(&data.join("leave"));
+    let left = call(&f, "one", "run", json!({"action":"leave"})).await;
     assert_eq!(left["result"]["timed_out"], false, "{left}");
     assert_eq!(left["result"]["exit_code"], 0, "{left}");
     assert_eq!(left["result"]["stdout"].as_str().unwrap().trim(), "done");
-    assert_gone(helper_pid(&f, "leave.pid").await, "script exit").await;
+    helper.started("script exit").await;
+    helper.gone("script exit").await;
 
-    let hung = call(&f, "one", "run", json!({"action":"hang","timeout_ms":1000})).await;
+    let mut helper = Helper::watch(&data.join("hang"));
+    let apps = f.state.apps.clone().unwrap();
+    let hung = tokio::spawn(async move {
+        apps.call("one", "run", json!({"action":"hang","timeout_ms":5000}))
+            .await
+    });
+    helper.started("timeout").await;
+    let hung = hung.await.unwrap();
     assert_eq!(hung["result"]["timed_out"], true, "{hung}");
-    assert_gone(helper_pid(&f, "hang.pid").await, "timeout").await;
+    helper.gone("timeout").await;
 
+    let mut helper = Helper::watch(&data.join("close"));
     let apps = f.state.apps.clone().unwrap();
     let page =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
-    let pid = helper_pid(&f, "close.pid").await;
+    helper.started("closed page").await;
     page.abort();
     let _ = page.await;
-    assert_gone(pid, "closed page").await;
+    helper.gone("closed page").await;
+}
+
+/// The Job path: a helper started by a PowerShell action is gone once the call returns, whether the
+/// script exited or hit the time limit. Observed by waiting on the helper's own process handle.
+#[cfg(windows)]
+#[tokio::test]
+async fn run_kills_what_the_script_started() {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, WAIT_OBJECT_0},
+        System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
+    };
+    let f = fixture().await;
+    let start = |pid: &str| {
+        format!(
+            "$p = Start-Process -FilePath powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -WindowStyle Hidden\r\nSet-Content -Path data/{pid} -Value $p.Id\r\n"
+        )
+    };
+    write_app(
+        &f.apps,
+        "one",
+        "{}",
+        &[
+            PAGE,
+            ("data/.keep", ""),
+            (
+                "actions/leave.ps1",
+                &format!("{}'done'\r\n", start("leave.pid")),
+            ),
+            (
+                "actions/hang.ps1",
+                &format!("{}Start-Sleep 300\r\n", start("hang.pid")),
+            ),
+        ],
+    );
+    let gone = |file: &str, case: &str| {
+        let text = std::fs::read_to_string(f.apps.join("one/data").join(file))
+            .unwrap_or_else(|e| panic!("{case}: the action didn't record its helper: {e}"));
+        let pid: u32 = text.trim().parse().unwrap();
+        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+        if handle.is_null() {
+            return; // Already gone.
+        }
+        let waited = unsafe { WaitForSingleObject(handle, WATCHDOG.as_millis() as u32) };
+        unsafe { CloseHandle(handle) };
+        assert_eq!(
+            waited, WAIT_OBJECT_0,
+            "{case}: the helper {pid} outlived the action"
+        );
+    };
+    let left = call(&f, "one", "run", json!({"action":"leave"})).await;
+    assert_eq!(left["result"]["timed_out"], false, "{left}");
+    assert_eq!(left["result"]["exit_code"], 0, "{left}");
+    gone("leave.pid", "script exit");
+    let hung = call(
+        &f,
+        "one",
+        "run",
+        json!({"action":"hang","timeout_ms":15000}),
+    )
+    .await;
+    assert_eq!(hung["result"]["timed_out"], true, "{hung}");
+    gone("hang.pid", "timeout");
 }
 
 #[tokio::test]
@@ -960,8 +1051,9 @@ async fn a_removed_app_gives_up_its_slot() {
         call(&f, "late", "app.info", json!({})).await["error"]["code"],
         "too_many_apps"
     );
-    // Removed with no call after it: the slot is found free when one is needed.
+    // Replaced by a file, with no call after it: the slot is found free when one is needed.
     std::fs::remove_dir_all(f.apps.join("app0")).unwrap();
+    std::fs::write(f.apps.join("app0"), "not a folder").unwrap();
     assert_eq!(call(&f, "late", "app.info", json!({})).await["ok"], true);
     write_app(&f.apps, "later", "{}", &[PAGE]);
     std::fs::remove_dir_all(f.apps.join("app1")).unwrap();

@@ -8,6 +8,7 @@ use super::{
 };
 use crate::{
     auth::{Auth, random_hex},
+    diagnostics::LogWriter,
     owner::{IpcOwner, Owner},
 };
 use serde::{Deserialize, Serialize};
@@ -20,7 +21,7 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     time::Duration,
@@ -35,8 +36,6 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 pub(super) const OWNER_START_TIMEOUT: Duration = Duration::from_secs(15);
-/// `owner.log` and `studio.log` each keep at most this many bytes, plus one older copy (`<name>.1`).
-pub(super) const LOG_CAP: u64 = 8 * 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -399,10 +398,10 @@ impl Launch {
                 self.diagnostic.send_replace(warning);
             }
             Err(reason) => {
-                eprintln!(
+                crate::diagnostics::line(&format!(
                     "shellboy-studio: bundled owner start refused or failed: {}",
                     reason.reason
-                );
+                ));
                 self.state.send_modify(|state| {
                     state.phase = super::Phase::Failed;
                     state.failure = Some(reason.message().into());
@@ -492,8 +491,10 @@ impl ManagedOwner {
             command
         };
         // The one writer of owner.log: Core's stdout and stderr, from `config init` and `serve`.
-        let mut log =
-            LogWriter::open(self.log.clone(), self.start_log_offset.clone()).map_err(io)?;
+        let log = Arc::new(Mutex::new(
+            LogWriter::open(self.log.clone(), self.start_log_offset.clone(), open_log)
+                .map_err(io)?,
+        ));
         match fs::symlink_metadata(&self.config) {
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -505,7 +506,7 @@ impl ManagedOwner {
                     .map_err(io)?;
                 let (stdout, stderr) = (init.stdout.take(), init.stderr.take());
                 let result = timeout(Duration::from_secs(10), async {
-                    copy_output(&mut log, stdout, stderr, |_| {}).await;
+                    copy_output(&log, stdout, stderr, |_| {}).await;
                     init.wait().await
                 })
                 .await
@@ -524,7 +525,8 @@ impl ManagedOwner {
             .arg(&self.data)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        self.start_log_offset.store(log.len, Ordering::SeqCst);
+        let written = log.lock().unwrap_or_else(|p| p.into_inner()).len();
+        self.start_log_offset.store(written, Ordering::SeqCst);
         let mut child = spawn(command)?;
         let (ready_tx, ready_rx) = watch::channel(None);
         self.ready = ready_rx;
@@ -532,7 +534,7 @@ impl ManagedOwner {
         let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
         self.output = (stdout.is_some() || stderr.is_some()).then(|| {
             tokio::spawn(async move {
-                copy_output(&mut log, stdout, stderr, |line| {
+                copy_output(&log, stdout, stderr, |line| {
                     if let Some(instance_id) = super::supervisor::ready_instance_line(line) {
                         ready_tx.send_replace(Some(instance_id));
                     }
@@ -545,78 +547,16 @@ impl ManagedOwner {
     }
 }
 
-/// An append-only log that keeps at most `LOG_CAP` bytes: a write that would pass the cap first moves the
-/// file to `<name>.1`, replacing the older copy, and starts a new one. Only its owner writes the file.
-struct LogWriter {
-    path: PathBuf,
-    file: Option<tokio::fs::File>,
-    len: u64,
-    /// A start offset into this file, reset when the file is replaced.
-    start: Arc<AtomicU64>,
-}
-
-impl LogWriter {
-    fn open(path: PathBuf, start: Arc<AtomicU64>) -> std::io::Result<Self> {
-        let file = open_log(&path)?;
-        let len = file.metadata()?.len();
-        Ok(Self {
-            path,
-            file: Some(tokio::fs::File::from_std(file)),
-            len,
-            start,
-        })
-    }
-
-    async fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        if self.len > 0 && self.len + bytes.len() as u64 > LOG_CAP {
-            // Closed first: Windows doesn't rename an open file.
-            if let Some(mut file) = self.file.take() {
-                file.flush().await?;
-            }
-            let path = self.path.clone();
-            let file = tokio::task::spawn_blocking(move || {
-                rotate_log(&path)?;
-                open_log(&path)
-            })
-            .await
-            .map_err(std::io::Error::other)??;
-            self.file = Some(tokio::fs::File::from_std(file));
-            self.len = 0;
-            self.start.store(0, Ordering::SeqCst);
-        }
-        // A single write over the cap is cut, not kept whole.
-        let kept = &bytes[..bytes.len().min(LOG_CAP as usize)];
-        let file = self
-            .file
-            .as_mut()
-            .ok_or_else(|| std::io::Error::other("log closed"))?;
-        file.write_all(kept).await?;
-        self.len += kept.len() as u64;
-        Ok(())
-    }
-
-    async fn flush(&mut self) {
-        if let Some(file) = &mut self.file {
-            let _ = file.flush().await;
-        }
-    }
-}
-
-/// `<name>` becomes `<name>.1`, replacing the older copy.
-fn rotate_log(path: &Path) -> std::io::Result<()> {
-    let mut older = path.as_os_str().to_owned();
-    older.push(".1");
-    fs::rename(path, older)
-}
-
 /// Up to this much of an unfinished line is held back, so the two streams don't mix within a line.
 const LOG_LINE: usize = 8192;
 
 /// Copies a child's stdout and stderr into `log` until both close, a whole line at a time per stream, so a
-/// line from one never splits a line of the other. `on_line` sees each stdout line up to `LOG_LINE`; a
-/// longer one is written as it comes and skipped. A failed write ends the copy, and the pipes close with it.
+/// line from one never splits a line of the other. A line over `LOG_LINE` is cut into records of that
+/// size, each ending in a newline. `on_line` sees each stdout line up to `LOG_LINE`; a longer one is
+/// skipped. Writes go to the blocking pool. A failed write ends the
+/// copy, and the pipes close with it.
 async fn copy_output(
-    log: &mut LogWriter,
+    log: &Arc<Mutex<LogWriter>>,
     stdout: Option<tokio::process::ChildStdout>,
     stderr: Option<tokio::process::ChildStderr>,
     mut on_line: impl FnMut(&[u8]),
@@ -642,6 +582,7 @@ async fn copy_output(
             }
         };
         let closed = read.is_empty();
+        let mut ready = Vec::new();
         for piece in read.split_inclusive(|byte| *byte == b'\n') {
             line.extend_from_slice(piece);
             let complete = line.ends_with(b"\n");
@@ -652,20 +593,29 @@ async fn copy_output(
                 if is_stdout {
                     oversized = !complete;
                 }
-                if log.write(line).await.is_err() {
-                    return;
+                if !complete {
+                    // A cut line still ends its record, so the next line starts on its own.
+                    line.push(b'\n');
                 }
-                line.clear();
+                ready.append(line);
             }
         }
         if closed && !line.is_empty() {
-            if log.write(line).await.is_err() {
-                return;
-            }
-            line.clear();
+            line.push(b'\n');
+            ready.append(line);
+        }
+        if ready.is_empty() {
+            continue;
+        }
+        let log = log.clone();
+        let written = tokio::task::spawn_blocking(move || {
+            log.lock().unwrap_or_else(|p| p.into_inner()).write(&ready)
+        })
+        .await;
+        if !matches!(written, Ok(Ok(()))) {
+            return;
         }
     }
-    log.flush().await;
 }
 
 pub(super) fn io(error: impl std::fmt::Display) -> String {
@@ -705,6 +655,13 @@ fn open_file(path: &Path, options: &mut OpenOptions, private: bool) -> std::io::
     Ok(file)
 }
 
+/// A desktop server's own diagnostics and panics go to `<dir>/studio.log`, capped like owner.log. The
+/// launcher starts the server with no stdout or stderr, so this server is the file's one writer.
+pub fn studio_log(dir: &Path) -> Result<(), String> {
+    let log = LogWriter::open(dir.join("studio.log"), Arc::default(), open_log).map_err(io)?;
+    crate::diagnostics::write_to(log)
+}
+
 fn open_log(path: &Path) -> std::io::Result<File> {
     open_file(path, OpenOptions::new().append(true).create(true), true)
 }
@@ -728,14 +685,14 @@ pub async fn open_or_start(dir: &Path, args: PathArgs) -> Result<(), String> {
     open_or_start_with(
         dir,
         &paths.data_dir,
-        |log, stderr| {
+        || {
             let mut command = std::process::Command::new(std::env::current_exe().map_err(io)?);
             platform::detach(&mut command);
             command
                 .args(paths.server_args())
                 .stdin(Stdio::null())
-                .stdout(log)
-                .stderr(stderr);
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
             command.spawn().map(Some).map_err(io)
         },
         |url| async move { platform::open_browser(&url).await },
@@ -746,7 +703,7 @@ pub async fn open_or_start(dir: &Path, args: PathArgs) -> Result<(), String> {
 async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>(
     dir: &Path,
     data_dir: &Path,
-    spawn: impl FnOnce(File, File) -> Result<Option<std::process::Child>, String>,
+    spawn: impl FnOnce() -> Result<Option<std::process::Child>, String>,
     open: impl FnOnce(String) -> F,
 ) -> Result<(), String> {
     let storage_error = |path: &Path, cause: &dyn std::fmt::Display| {
@@ -781,15 +738,11 @@ async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>
                     }
                 })
                 .map_err(|e| storage_error(&marker, &e))?;
+            // The server owns studio.log (`studio_log`); this only checks it can be written first.
             let path = dir.join("studio.log");
-            // This server holds studio.log for its lifetime, so the cap is applied as it starts.
-            if fs::metadata(&path).is_ok_and(|metadata| metadata.len() >= LOG_CAP) {
-                rotate_log(&path).map_err(|e| storage_error(&path, &e))?;
-            }
-            let log = open_log(&path).map_err(|e| storage_error(&path, &e))?;
-            let stderr = log.try_clone().map_err(|e| storage_error(&path, &e))?;
+            open_log(&path).map_err(|e| storage_error(&path, &e))?;
             drop(running);
-            spawn(log, stderr)?
+            spawn()?
         }
         Err(std::fs::TryLockError::WouldBlock) => None,
         Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
@@ -908,6 +861,15 @@ mod tests {
                 println!();
                 println!(r#"{{"event":"ready","state":"ready","instance_id":"fixture-instance"}}"#);
                 std::io::stdout().flush().unwrap();
+                std::process::exit(1);
+            }
+            Ok("long-then-error") => {
+                // An unfinished stdout line longer than one record, then the error on stderr.
+                print!("{}", "x".repeat(9_000));
+                std::io::stdout().flush().unwrap();
+                eprintln!(
+                    r#"{{"ok":false,"error":{{"message":"bad config","hint":"repair the config"}}}}"#
+                );
                 std::process::exit(1);
             }
             Ok("startup-error") => {
@@ -1141,42 +1103,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_log_keeps_one_older_copy_at_the_cap() {
-        let dir = Temp::new();
-        let path = dir.0.join("owner.log");
-        let older = dir.0.join("owner.log.1");
-        let start = Arc::new(AtomicU64::new(0));
-        let mut log = LogWriter::open(path.clone(), start.clone()).unwrap();
-        let first = vec![b'a'; LOG_CAP as usize - 4];
-        log.write(&first).await.unwrap();
-        start.store(LOG_CAP - 4, Ordering::SeqCst);
-        log.write(b"bbbbbbbb").await.unwrap();
-        log.flush().await;
-        assert_eq!(fs::read(&older).unwrap(), first);
-        assert_eq!(fs::read(&path).unwrap(), b"bbbbbbbb");
-        assert_eq!(
-            start.load(Ordering::SeqCst),
-            0,
-            "the start moves to the new file"
-        );
-        log.write(&vec![b'c'; LOG_CAP as usize]).await.unwrap();
-        log.flush().await;
-        assert_eq!(
-            fs::read(&older).unwrap(),
-            b"bbbbbbbb",
-            "only one older copy"
-        );
-        assert_eq!(fs::metadata(&path).unwrap().len(), LOG_CAP);
-        drop(log);
-        // A reopened log continues the same file and the same cap.
-        let mut log = LogWriter::open(path.clone(), start).unwrap();
-        log.write(b"d").await.unwrap();
-        log.flush().await;
-        assert_eq!(fs::read(&path).unwrap(), b"d");
-        assert_eq!(fs::metadata(&older).unwrap().len(), LOG_CAP);
-    }
-
-    #[tokio::test]
     async fn fake_child_ready_crash_retries_and_pre_ready_error_stops_with_typed_reason() {
         use crate::launcher::supervisor::{Decision, RestartState};
         let dir = Temp::new();
@@ -1230,6 +1156,14 @@ mod tests {
             state.exited(false, failure),
             Decision::ShowFailure("bad config repair the config".into())
         );
+
+        // A cut line on one stream doesn't run into the other stream's record.
+        let mut cut = make_owner();
+        fake_core(&mut cut, "long-then-error").await;
+        assert_eq!(
+            cut.startup_failure().as_deref(),
+            Some("bad config repair the config")
+        );
     }
 
     #[tokio::test]
@@ -1247,7 +1181,7 @@ mod tests {
             let error = open_or_start_with(
                 dir,
                 &temp.0.join("data"),
-                |_, _| panic!("must not spawn with inaccessible storage"),
+                || panic!("must not spawn with inaccessible storage"),
                 |_| std::future::ready(Err("browser was called".into())),
             )
             .await
@@ -1255,27 +1189,6 @@ mod tests {
             assert!(error.contains(&blocked.display().to_string()), "{error}");
             assert!(error.contains("your account can write there"), "{error}");
         }
-    }
-
-    #[tokio::test]
-    async fn a_full_studio_log_is_set_aside_when_a_server_starts() {
-        let dir = Temp::new();
-        let log = dir.0.join("studio.log");
-        fs::write(&log, vec![b'x'; LOG_CAP as usize]).unwrap();
-        let error = open_or_start_with(
-            &dir.0,
-            &dir.0.join("data"),
-            |_, _| Err("spawned".into()),
-            |_| std::future::ready(Err("browser was called".into())),
-        )
-        .await
-        .unwrap_err();
-        assert_eq!(error, "spawned");
-        assert_eq!(
-            fs::metadata(dir.0.join("studio.log.1")).unwrap().len(),
-            LOG_CAP
-        );
-        assert_eq!(fs::metadata(&log).unwrap().len(), 0);
     }
 
     #[tokio::test]
@@ -1290,7 +1203,7 @@ mod tests {
         let token = Auth::load_or_create(path).unwrap();
         let data = path.join("data");
         let task = RefCell::new(None);
-        let spawn = |_: File, _: File| {
+        let spawn = || {
             let listener = listener.borrow_mut().take().expect("start exactly once");
             *task.borrow_mut() = Some(fixture_studio(path, listener, started.clone(), &data));
             Ok(None)
@@ -1361,7 +1274,7 @@ mod tests {
         let error = open_or_start_with(
             path,
             &requested,
-            |_, _| panic!("a running Studio must not be started again"),
+            || panic!("a running Studio must not be started again"),
             |_: String| std::future::ready(Err("opened another data directory".into())),
         )
         .await
@@ -1371,7 +1284,7 @@ mod tests {
         let opened = open_or_start_with(
             path,
             &running,
-            |_, _| panic!("a running Studio must not be started again"),
+            || panic!("a running Studio must not be started again"),
             |url: String| async move {
                 assert!(url.contains("#token="));
                 Ok(())
@@ -1383,7 +1296,7 @@ mod tests {
         let respelled = open_or_start_with(
             path,
             &running.join("sub").join(".."),
-            |_, _| panic!("a running Studio must not be started again"),
+            || panic!("a running Studio must not be started again"),
             |url: String| async move {
                 assert!(url.contains("#token="));
                 Ok(())

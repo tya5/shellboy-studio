@@ -54,14 +54,19 @@ pub fn safe_relative(path: &str) -> Option<PathBuf> {
     (out.components().next().is_some()).then_some(out)
 }
 
+/// Whether `name` is an app at all: a valid name and a folder. Lookup and slot reclamation both use it.
+pub async fn is_app_dir(apps_dir: &Path, name: &str) -> bool {
+    valid_name(name)
+        && tokio::fs::metadata(apps_dir.join(name))
+            .await
+            .is_ok_and(|m| m.is_dir())
+}
+
 pub async fn read_entry(apps_dir: &Path, name: &str) -> Option<AppEntry> {
-    if !valid_name(name) {
+    if !is_app_dir(apps_dir, name).await {
         return None;
     }
     let dir = apps_dir.join(name);
-    if !tokio::fs::metadata(&dir).await.ok()?.is_dir() {
-        return None;
-    }
     let mut entry = AppEntry {
         name: name.to_owned(),
         title: name.to_owned(),

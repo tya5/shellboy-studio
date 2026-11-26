@@ -19,7 +19,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, SystemTime},
 };
 
 const MAX_DATA: usize = 8 * 1024 * 1024;
@@ -57,19 +57,41 @@ pub struct AppHost<O> {
     watch: tokio::sync::watch::Sender<DataSnapshot>,
     instance_watch:
         Mutex<std::collections::HashMap<String, tokio::sync::watch::Sender<DataSnapshot>>>,
+    hint_waits: Mutex<HintWaits>,
+    /// The app's one lifecycle task is running (`ensure_lifecycle`).
     watching: AtomicBool,
 }
 
 /// The hub session `thread.onChange` waits on. Held while pages wait and `WATCH_LINGER` after the last
-/// wait ends, so a hint between two waits isn't lost; then released, so it stops counting against the
-/// hub's sessions. The first wait after a release reports a change at once, since hints were missed.
+/// wait ends or is cancelled, so a hint between two waits isn't lost; then the lifecycle task releases
+/// it, so it stops counting against the hub's sessions. The first wait after a release reports a change
+/// at once, since hints were missed.
 #[derive(Default)]
 struct Hints {
     session: Option<SessionGuard>,
-    last_wait: Option<tokio::time::Instant>,
-    /// A release task is waiting for the linger to pass.
-    releasing: bool,
     released: bool,
+}
+
+#[derive(Default)]
+struct HintWaits {
+    active: usize,
+    ended: Option<tokio::time::Instant>,
+}
+
+/// One `thread.onChange` wait, from entry to return or cancellation (drop).
+struct HintLease<'a>(&'a Mutex<HintWaits>);
+impl<'a> HintLease<'a> {
+    fn new(waits: &'a Mutex<HintWaits>) -> Self {
+        waits.lock().unwrap_or_else(|p| p.into_inner()).active += 1;
+        Self(waits)
+    }
+}
+impl Drop for HintLease<'_> {
+    fn drop(&mut self) {
+        let mut waits = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        waits.active -= 1;
+        waits.ended = Some(tokio::time::Instant::now());
+    }
 }
 
 /// What `data/` held at the last look. `version` moves only when something changed.
@@ -257,15 +279,12 @@ impl<O: Owner> AppHost<O> {
             apps,
             writes: tokio::sync::Mutex::new(()),
             hints: tokio::sync::Mutex::new(Hints::default()),
+            hint_waits: Mutex::new(HintWaits::default()),
             running: Mutex::new(HashSet::new()),
             watch: tokio::sync::watch::channel(DataSnapshot::default()).0,
             instance_watch: Mutex::new(std::collections::HashMap::new()),
             watching: AtomicBool::new(false),
         })
-    }
-
-    pub(super) fn dir(&self) -> &Path {
-        &self.dir
     }
 
     /// Follows no symlink out of the app.
@@ -429,16 +448,13 @@ impl<O: Owner> AppHost<O> {
     async fn events_wait(self: &Arc<Self>, args: &Value) -> Result<Value, ApiFail> {
         let thread = self.bound(args).await.ok();
         let list = args.get("list").and_then(Value::as_bool).unwrap_or(false);
+        let _lease = HintLease::new(&self.hint_waits);
+        self.ensure_lifecycle();
         let mut hints = self.hints.lock().await;
         if hints.session.is_none() {
             hints.session = self.apps.hub.register().map(|(guard, _)| guard);
         }
-        hints.last_wait = Some(tokio::time::Instant::now());
         let resumed = hints.session.is_some() && std::mem::take(&mut hints.released);
-        if !hints.releasing && hints.session.is_some() {
-            hints.releasing = true;
-            self.release_hints_when_idle();
-        }
         let guard = hints
             .session
             .as_ref()
@@ -452,7 +468,6 @@ impl<O: Owner> AppHost<O> {
             let _ = tokio::time::timeout(WAIT, guard.wake.notified()).await;
         }
         let (more, _) = self.apps.hub.take(guard);
-        hints.last_wait = Some(tokio::time::Instant::now());
         let threads: Vec<String> = pending.threads.into_iter().chain(more.threads).collect();
         let changed = resumed
             || !threads.is_empty()
@@ -465,33 +480,34 @@ impl<O: Owner> AppHost<O> {
         )
     }
 
-    /// One task per app while it holds a hint session: it drops the session once no wait has run for
-    /// `WATCH_LINGER`. A wait in progress holds the lock, so it is never released under one.
-    fn release_hints_when_idle(self: &Arc<Self>) {
-        let host = self.clone();
-        let cancel = self.apps.cancel_token();
-        let task = tokio::spawn(async move {
-            let mut idle_for = WATCH_LINGER;
-            loop {
-                tokio::select! {
-                    _ = cancel.cancelled() => return,
-                    _ = tokio::time::sleep(idle_for) => {}
-                }
-                let mut hints = tokio::select! {
-                    _ = cancel.cancelled() => return,
-                    hints = host.hints.lock() => hints,
-                };
-                let since = hints.last_wait.map_or(WATCH_LINGER, |at| at.elapsed());
-                if since >= WATCH_LINGER {
-                    hints.session = None;
-                    hints.releasing = false;
-                    hints.released = true;
-                    return;
-                }
-                idle_for = WATCH_LINGER - since;
-            }
-        });
-        self.apps.keep_task(task);
+    /// Drops the hint session once no wait has run for `WATCH_LINGER`. True while it is still needed.
+    fn release_idle_hints(&self) -> bool {
+        let waits = self.hint_waits.lock().unwrap_or_else(|p| p.into_inner());
+        if waits.active > 0 {
+            return true;
+        }
+        let Ok(mut hints) = self.hints.try_lock() else {
+            return true;
+        };
+        if hints.session.is_none() {
+            return false;
+        }
+        if waits.ended.is_some_and(|at| at.elapsed() < WATCH_LINGER) {
+            return true;
+        }
+        hints.session = None;
+        hints.released = true;
+        false
+    }
+
+    fn data_waiting(&self) -> bool {
+        self.watch.receiver_count() > 0
+            || self
+                .instance_watch
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .values()
+                .any(|watch| watch.receiver_count() > 0)
     }
 
     /// One look at `data/`. Moves the version only if something changed.
@@ -541,33 +557,49 @@ impl<O: Owner> AppHost<O> {
         });
     }
 
-    /// One task per app, whatever the number of pages. It runs while a page waits, then ends.
-    fn ensure_watcher(self: &Arc<Self>) {
+    /// One task per app, whatever the number of pages. It looks at `data/` while a page waits on it and
+    /// `WATCH_LINGER` after, and releases the hint session `WATCH_LINGER` after the last hint wait. An app
+    /// that only waits on hints gets no data walks. It ends when neither is left.
+    fn ensure_lifecycle(self: &Arc<Self>) {
         if self.watching.swap(true, Ordering::SeqCst) {
             return;
         }
         let host = self.clone();
         let cancel = self.apps.cancel_token();
         let task = tokio::spawn(async move {
-            let mut idle_since = None;
+            let mut data_live = false;
+            let mut data_idle_since = None;
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => break,
                     _ = tokio::time::sleep(WATCH_INTERVAL) => {}
                 }
-                host.look().await;
-                if host.watch.receiver_count() > 0
-                    || host
-                        .instance_watch
-                        .lock()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .values()
-                        .any(|watch| watch.receiver_count() > 0)
+                if host.data_waiting() {
+                    data_live = true;
+                    data_idle_since = None;
+                } else if data_live
+                    && data_idle_since
+                        .get_or_insert_with(tokio::time::Instant::now)
+                        .elapsed()
+                        > WATCH_LINGER
                 {
-                    idle_since = None;
-                } else if idle_since.get_or_insert_with(Instant::now).elapsed() > WATCH_LINGER {
-                    break;
+                    data_live = false;
+                    data_idle_since = None;
                 }
+                if data_live {
+                    host.look().await;
+                }
+                if data_live || host.release_idle_hints() {
+                    continue;
+                }
+                host.watching.store(false, Ordering::SeqCst);
+                // A wait that started while this decided to stop has seen the flag still set: keep going.
+                if (host.data_waiting() || host.release_idle_hints())
+                    && !host.watching.swap(true, Ordering::SeqCst)
+                {
+                    continue;
+                }
+                return;
             }
             host.watching.store(false, Ordering::SeqCst);
         });
@@ -598,7 +630,7 @@ impl<O: Owner> AppHost<O> {
         } else {
             self.watch.subscribe()
         };
-        self.ensure_watcher();
+        self.ensure_lifecycle();
         let Some(known) = args.get("version").and_then(Value::as_u64) else {
             self.look().await;
             let now = rx.borrow_and_update().clone();
@@ -845,11 +877,24 @@ mod tests {
         let wait = || apps.call("one", "events.wait", json!({}));
         assert_eq!(wait().await["result"]["changed"], false);
         assert_eq!(hub.session_count(), 1, "held between waits");
-        tokio::time::sleep(WATCH_LINGER / 2).await;
-        assert_eq!(wait().await["result"]["changed"], false);
-        tokio::time::sleep(WATCH_LINGER - Duration::from_secs(1)).await;
+        tokio::time::sleep(WATCH_LINGER - Duration::from_secs(2)).await;
         assert_eq!(hub.session_count(), 1, "a recent wait keeps it");
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // A cancelled wait (a closed page) starts the linger when it is cancelled, not when it began.
+        let waiting = tokio::spawn({
+            let apps = apps.clone();
+            async move { apps.call("one", "events.wait", json!({})).await }
+        });
+        tokio::time::sleep(WAIT - Duration::from_secs(1)).await;
+        assert!(!waiting.is_finished(), "still waiting");
+        waiting.abort();
+        let _ = waiting.await;
+        tokio::time::sleep(WATCH_LINGER - Duration::from_secs(2)).await;
+        assert_eq!(
+            hub.session_count(),
+            1,
+            "the linger runs from the cancellation"
+        );
+        tokio::time::sleep(Duration::from_secs(4)).await;
         assert_eq!(hub.session_count(), 0, "released after the linger");
         let resumed = wait().await;
         assert_eq!(

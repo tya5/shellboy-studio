@@ -12,6 +12,7 @@ pub mod apps;
 mod artifact_content;
 pub mod assets;
 pub mod auth;
+pub mod diagnostics;
 pub mod envelope;
 pub mod events;
 pub mod hub;

@@ -106,20 +106,25 @@ async fn read_capped<R: AsyncRead + Unpin>(reader: Option<R>, kept: &mut (Vec<u8
 }
 
 /// The script and everything it starts: its own process group on Unix, a kill-on-close Job on Windows.
-/// Killed on timeout, on a closed page (drop) and when the script exits, so a helper it left running
-/// can't outlive the call or hold its output pipes open.
+/// Killed once, when the script exits, at the time limit or on a closed page (drop), so a helper it left
+/// running can't outlive the call or hold its output pipes open.
 struct Tree {
     #[cfg(unix)]
     group: Option<i32>,
     #[cfg(windows)]
     job: job::Job,
+    killed: bool,
 }
 
 impl Tree {
-    fn kill(&self) {
+    /// On Unix this runs before the script is reaped: until then its pid, and so the group ID, can't be
+    /// reused, so the signal reaches only this action's processes. It is sent once.
+    fn kill(&mut self) {
+        if std::mem::replace(&mut self.killed, true) {
+            return;
+        }
         #[cfg(unix)]
         if let Some(group) = self.group {
-            // The group outlives the script while a member is alive, so its ID isn't reused until then.
             unsafe { libc::killpg(group, libc::SIGKILL) };
         }
         #[cfg(windows)]
@@ -224,6 +229,38 @@ mod job {
     }
 }
 
+/// Resolves once the script has exited. On Unix it doesn't reap the script (`WNOWAIT`), so the group ID
+/// stays this action's until `Tree::kill` has run; `Child::wait` reaps it afterwards.
+#[cfg(unix)]
+async fn exited(child: &mut tokio::process::Child) {
+    let Some(pid) = child.id() else { return };
+    let _ = tokio::task::spawn_blocking(move || {
+        loop {
+            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            let waited = unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    pid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOWAIT,
+                )
+            };
+            if waited == 0
+                || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
+            {
+                return;
+            }
+        }
+    })
+    .await;
+}
+
+/// The Job, not the process ID, names the tree on Windows, so waiting may reap.
+#[cfg(windows)]
+async fn exited(child: &mut tokio::process::Child) {
+    let _ = child.wait().await;
+}
+
 /// How long output is still read after the script exits and its tree is killed. Only a process that left
 /// the tree (a new session, say) can hold the pipes that long.
 const DRAIN: Duration = Duration::from_secs(1);
@@ -276,40 +313,51 @@ pub async fn run(
         let _ = child.start_kill();
         return Err(failed(e));
     }
-    let tree = Tree {
+    let mut tree = Tree {
         #[cfg(unix)]
         group: child.id().and_then(|id| i32::try_from(id).ok()),
         #[cfg(windows)]
         job,
+        killed: false,
     };
     let stdin = child.stdin.take();
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let mut out = (Vec::new(), false);
     let mut err = (Vec::new(), false);
-    let work = async {
+    let (status, timed_out) = {
         let mut reading = std::pin::pin!(async {
             tokio::join!(read_capped(stdout, &mut out), read_capped(stderr, &mut err));
         });
-        let mut feed = std::pin::pin!(async {
-            if let Some(mut s) = stdin {
-                let _ = s.write_all(&input).await;
-            }
-        });
-        let (mut fed, mut read) = (false, false);
-        // The script's exit ends the call; its pipes may still be held by something it started.
-        let status = loop {
-            tokio::select! {
-                () = &mut feed, if !fed => fed = true,
-                () = &mut reading, if !read => read = true,
-                status = child.wait() => break status.ok(),
-            }
+        let mut read = false;
+        // The time limit covers the script, not the draining after it: an exit seen in time stands.
+        let in_time = {
+            let mut feed = std::pin::pin!(async {
+                if let Some(mut s) = stdin {
+                    let _ = s.write_all(&input).await;
+                }
+            });
+            let mut exit = std::pin::pin!(exited(&mut child));
+            let mut fed = false;
+            tokio::time::timeout(limit, async {
+                loop {
+                    tokio::select! {
+                        () = &mut feed, if !fed => fed = true,
+                        () = &mut reading, if !read => read = true,
+                        () = &mut exit => break,
+                    }
+                }
+            })
+            .await
+            .is_ok()
         };
+        // One kill while the script is unreaped, then reap, then read what the pipes still hold.
         tree.kill();
-        if !read {
+        let status = child.wait().await.ok();
+        if in_time && !read {
             let _ = tokio::time::timeout(DRAIN, &mut reading).await;
         }
-        status
+        (status, !in_time)
     };
     let finish = |status: Option<std::process::ExitStatus>,
                   out: (Vec<u8>, bool),
@@ -323,11 +371,8 @@ pub async fn run(
         timed_out,
         duration_ms: started.elapsed().as_millis() as u64,
     };
-    match tokio::time::timeout(limit, work).await {
-        Ok(status) => Ok(finish(status, out, err, false)),
-        Err(_) => {
-            tree.kill();
-            Ok(finish(None, (Vec::new(), false), (Vec::new(), false), true))
-        }
+    if timed_out {
+        return Ok(finish(None, (Vec::new(), false), (Vec::new(), false), true));
     }
+    Ok(finish(status, out, err, false))
 }
