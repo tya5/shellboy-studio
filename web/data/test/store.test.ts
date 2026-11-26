@@ -655,6 +655,29 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     await more(x);
     expect(x.t.calls("thread.list").length).toBe(before);
   });
+  it("a hint that changed nothing keeps the rows, the active list and the list as they were (#171)", async () => {
+    const x = await listed(1);
+    x.all[3] = summary("t3", { activity: "tools" });
+    x.t.push({ t: "changed", config_changed: false, thread_ids: ["t3"], list: true });
+    await settle(x.t, x.db);
+    expect(x.data.activeThreadIds.value).toContain("t3");
+    const rows = x.data.threadRows.value;
+    const active = x.data.activeThreadIds.value;
+    const list = x.data.threadList.value;
+    for (const id of ["t3", "t5"]) {
+      x.t.push({ t: "changed", config_changed: false, thread_ids: [id], list: true });
+      await settle(x.t, x.db);
+    }
+    expect(x.data.threadRows.value).toBe(rows);
+    expect(x.data.activeThreadIds.value).toBe(active);
+    expect(x.data.threadList.value).toBe(list);
+    // A changed field is still seen, with the same updated_at.
+    x.all[3] = summary("t3", { activity: "idle" });
+    x.t.push({ t: "changed", config_changed: false, thread_ids: ["t3"], list: true });
+    await settle(x.t, x.db);
+    expect(x.data.threadRows.value.get("t3")?.activity).toBe("idle");
+    expect(x.data.activeThreadIds.value).not.toContain("t3");
+  });
   it("keeps an open Thread's row past the bound and re-reads it on its own hints (#103)", async () => {
     const x = await listed(30);
     x.all.push(summary("old", { activity: "recovery" }));
