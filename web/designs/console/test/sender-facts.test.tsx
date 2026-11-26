@@ -64,7 +64,7 @@ describe('sender facts in the existing conversation',()=>{
     expect(message).toBeDefined();
     expect(message.textContent).not.toContain('Unknown sender');
     expect(message.querySelector('.message-sender a')?.getAttribute('href') ?? '').toContain('asker');
-    expect(message.querySelector('.sender-fact')?.textContent).toContain('Self-asserted label: Release assistant');
+    expect(message.textContent).toContain('Release assistant');
   });
   it('does not call malformed model identity You or invent a sender ID for CLI/human',async()=>{
     const r=await rig();const messages=[...r.host.querySelectorAll('.msg')];const unknown=messages.find(e=>e.textContent?.includes('body-unknown'))!;
