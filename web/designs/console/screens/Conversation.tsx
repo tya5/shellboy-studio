@@ -656,9 +656,16 @@ function PanelPossessions({ model, platform }: { model: AppModel; platform: Retu
   </div>;
 }
 
-function panelElapsed(now: number, startedAt?: string): string | undefined {
+/** The one reader of the 1 s clock in a panel list: each second re-renders this text, not the list. */
+function PanelElapsed({ model, started }: { model: AppModel; started: number }) {
+  return <>{formatDuration(Math.max(0, model.now.value - started))}</>;
+}
+
+/** `before` and the time since `startedAt`, joined; the clock is read only inside `PanelElapsed`. */
+function panelSubtitle(model: AppModel, before: readonly (string | undefined)[], startedAt?: string, after: readonly (string | undefined)[] = []): ComponentChildren {
   const started = parseTime(startedAt);
-  return started === undefined ? undefined : formatDuration(Math.max(0, now - started));
+  const parts: ComponentChildren[] = [...before.filter(Boolean), ...(started === undefined ? [] : [<PanelElapsed key="elapsed" model={model} started={started} />]), ...after.filter(Boolean)];
+  return parts.length ? parts.flatMap((part, index) => index ? [" · ", part] : [part]) : undefined;
 }
 
 function panelFocusReturn(opener?: HTMLElement): (() => boolean) | undefined {
@@ -698,7 +705,6 @@ function PanelActivity({ model }: { model: AppModel }) {
   const requestStop = useContext(RequestShellStop);
   const work = model.work.value;
   const selected = model.panelOpener.value.work;
-  const now = model.now.value;
   const runId = model.details.value?.run_id;
   const runStopAvailable = !!runId;
   return <div class="panel-list" data-panel-list="work">
@@ -708,7 +714,6 @@ function PanelActivity({ model }: { model: AppModel }) {
       return rows.length || showRunStop ? <section key={section.key}>{showRunStop
         ? <ListDivider label={t(section.label)} count={rows.length} action={<Button variant="stop" onClick={event => { const targetRunId = model.details.value?.run_id; if (targetRunId) setRunStopConfirm({ runId: targetRunId, opener: event.currentTarget }); }}>{t("action.stopEverything")}</Button>} description={t("action.stopEverythingDescription")} />
         : <ListDivider label={t(section.label)} count={rows.length} />}{rows.map(row => {
-        const elapsed = panelElapsed(now, row.startedAt);
         const state = row.state === "accepted" ? t("work.accepted") : t("work.held");
         const command = section.kind === "step" ? row.command : undefined;
         // The Work projection already uses toolLabel for the owner description.
@@ -718,7 +723,7 @@ function PanelActivity({ model }: { model: AppModel }) {
         // Only Core's typed foreground fact on a running shell; absent or null shows no word.
         const placement = shellRunning && typeof shell?.foreground === "boolean" ? shell.foreground ? "foreground" : "background" : undefined;
         return <ListRow key={row.id} id={row.id} title={label} command={command?.trim() !== label ? command : undefined}
-          subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
+          subtitle={panelSubtitle(model, section.kind === "step" ? [] : [state], row.startedAt)} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
           onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener), true)} menuLabel={t("panel.rowActions")}
           // The Turn waits on a foreground shell: its exact-execution Background action moves out of the menu onto the row.
@@ -760,7 +765,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
       const actions = [...(target ? [{ key: "open", label: t("panel.openThread"), href: target }] : []),
         ...(side === "asked_by" ? [panelCancel(model, reply.message_id, "reply")] : [])];
       return <ListRow key={reply.message_id} id={reply.message_id} title={[party, reply.excerpt || t("work.textUnavailable")].filter(Boolean).join(" · ")}
-        subtitle={[panelElapsed(model.now.value, reply.created_at), askedBack?.some(duty => duty.message_id === reply.message_id) ? t("convo.relation.awaiting_own_ask") : undefined].filter(Boolean).join(" · ") || undefined} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
+        subtitle={panelSubtitle(model, [], reply.created_at, [askedBack?.some(duty => duty.message_id === reply.message_id) ? t("convo.relation.awaiting_own_ask") : undefined])} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
         menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener), true)} />;
     })}
     {page.loading && !page.loaded || page.loadingMore ? <p role="status">{t("common.loading")}</p> : null}
