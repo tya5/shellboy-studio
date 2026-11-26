@@ -56,8 +56,17 @@ fn isolated_command(bin: &Path, home: &Path) -> Command {
         .env("LOCALAPPDATA", home.join("localappdata"));
     #[cfg(windows)]
     {
-        // Winsock needs SystemRoot; pass only the OS paths the child may need, never proxies.
-        for name in ["SystemRoot", "WINDIR", "TEMP", "TMP"] {
+        // Winsock needs SystemRoot; PowerShell needs PATHEXT to resolve `shellboy` to
+        // shellboy.exe and PSModulePath to load its modules. Pass only these OS values, never
+        // proxies.
+        for name in [
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+            "PATHEXT",
+            "PSModulePath",
+        ] {
             if let Some(value) = std::env::var_os(name) {
                 command.env(name, value);
             }
@@ -170,10 +179,6 @@ fn temp_root() -> PathBuf {
 }
 
 #[tokio::test]
-#[cfg_attr(
-    windows,
-    ignore = "Core v0.17.0 model shell on Windows returns no stdout for shellboy CLI commands; tya5/shellboy#440"
-)]
 async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
     use shellboy::protocol::{Command as CoreCommand, ThreadCreateArgs};
     let bin = PathBuf::from(
@@ -257,10 +262,6 @@ async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
 }
 
 #[tokio::test]
-#[cfg_attr(
-    windows,
-    ignore = "Core v0.17.0 model shell on Windows returns no stdout for shellboy CLI commands; tya5/shellboy#440"
-)]
 async fn routed_reply_delivery_is_returned_by_the_pinned_owner() {
     use shellboy::protocol::{Command as CoreCommand, MessageSendArgs, ThreadCreateArgs};
     let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("explicit owner binary"));
