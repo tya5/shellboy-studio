@@ -357,8 +357,8 @@ export interface WorkItem {
   created_at?: string | null;
   /** Bounded history.read preview, absent when it could not be read. */
   excerpt?: string;
-  /** For a stopping Run only: the run.get fact, absent when none is saved or it could not be read. */
-  stop_settlement_failure?: RunStopSettlementFailure;
+  /** Run items (protocol 44): the same saved fact run.get returns; Core includes it only while that Run is stopping. */
+  stop_settlement_failure?: RunStopSettlementFailure | null;
 }
 
 /** A shell execution linked from a history node (`history.window`, observed at the pinned revision). */

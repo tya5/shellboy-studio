@@ -25,7 +25,7 @@ export function workRegions(page: Page<WorkItem> | undefined, runId: string | un
   const pending: WorkRow[] = [];
   let stopSettlementFailure: WorkRegions["stopSettlementFailure"];
   for (const item of page?.items ?? []) {
-    if (item.kind === "run" && item.state === "stopping" && item.stop_settlement_failure) {
+    if (item.kind === "run" && item.stop_settlement_failure) {
       stopSettlementFailure = { runId: item.id, failure: item.stop_settlement_failure };
     } else if (item.kind === "shell" && runId && item.run_id === runId && item.execution_id && ["starting", "running", "stopping"].includes(item.state)) {
       const shell = shells.get(item.execution_id);

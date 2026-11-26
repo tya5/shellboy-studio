@@ -996,14 +996,7 @@ export class ShellboyData {
       }));
       if (!valid()) return;
       entry.workBodies = new Map(bodies.filter((pair): pair is readonly [string, string] => pair[1] !== undefined));
-      // A Thread has at most one current Run. Only a stopping one can carry a saved
-      // stop settlement failure, which run.get reports and status does not.
-      const stopping = value.items.find((i) => i.kind === "run" && i.state === "stopping");
-      const run = stopping ? await this.operations.runGet(stopping.id, { threadId: entry.id }, { cancel }) : undefined;
-      if (!valid()) return;
-      const failure = run?.ok && run.value.state === "stopping" ? run.value.stop_settlement_failure ?? undefined : undefined;
       value = { ...value, items: value.items.map((item) => {
-        if (item === stopping) return failure ? { ...item, stop_settlement_failure: failure } : item;
         const text = item.message_id ? entry.workBodies.get(item.message_id) : undefined;
         return text !== undefined ? { ...item, excerpt: text } : item;
       }) };
