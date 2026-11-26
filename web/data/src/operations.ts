@@ -237,8 +237,9 @@ const decodeTurnDetails = (turnId: string, runId?: string, threadId?: string): D
     : { ok: false, reason: "turn.get result does not match the requested identity or lacks state" };
 const decodeShellPage = pageOf<ShellEntry, ShellListFilters>((v) =>
   isObject(v) && typeof v.execution_id === "string" && typeof v.state === "string"
+    && (v.foreground === undefined || v.foreground === null || typeof v.foreground === "boolean")
     ? undefined
-    : "shell entry lacks execution_id or state", recordFilters.shells,
+    : "shell entry lacks execution_id or state, or has a non-Boolean foreground", recordFilters.shells,
 );
 export const ACTIVE_STATUS_PAGE_LIMIT = 200;
 

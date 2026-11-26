@@ -26,8 +26,8 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_41_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 41);
+fn exact_protocol_42_has_directional_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 42);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_thread_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
@@ -167,13 +167,13 @@ fn mismatched_protocol_fails_closed_without_downgrade() {
         serde_json::from_value(json!({"command":"thread.get","args":{"thread_id":"t"}})).unwrap();
     let mut request = shellboy::protocol::Request::new("synthetic", command);
     assert!(request.validate().is_ok());
-    request.protocol_version = 40;
+    request.protocol_version = 41;
     assert_eq!(
         request.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
     );
     let mut response = shellboy::protocol::Response::success("synthetic", json!({}));
-    response.protocol_version = 40;
+    response.protocol_version = 41;
     assert_eq!(
         response.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
@@ -237,7 +237,7 @@ fn core_schedule_and_service_reads_require_a_thread() {
 #[test]
 fn message_acceptance_and_reply_match_the_pinned_result_schemas() {
     use shellboy::protocol::{MessageAccepted, MessageReplied};
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 41);
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 42);
     let schema: serde_json::Value =
         serde_json::from_str(&shellboy::protocol::schema_json()).unwrap();
     let results = &schema["operation_results"];
