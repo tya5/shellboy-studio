@@ -453,6 +453,7 @@ async fn run_shell_report(owner: &IpcOwner, thread_id: &str, run_id: &str) -> St
         let read = owner
             .call(
                 CoreCommand::ShellRead(ShellReadArgs {
+                    tail: false,
                     execution_id: shell["execution_id"].as_str().unwrap_or_default().into(),
                     segments: true,
                     cursor: None,
