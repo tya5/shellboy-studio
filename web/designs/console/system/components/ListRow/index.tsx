@@ -1,9 +1,7 @@
-import type { ComponentChildren, JSX } from "preact";
-import { useLayoutEffect, useRef } from "preact/hooks";
+import { Component, type ComponentChildren, type JSX } from "preact";
 import { useRowMenu } from "../useRowMenu";
 import type { MenuEntry } from "../Menu";
 import { Icon, type IconRole } from "../Icon";
-import { Button } from "../Button";
 
 type PanelRow = {
   readonly id: string;
@@ -36,19 +34,23 @@ export function ListRow(props: (PanelRow | ThreadRow) & { readonly selected?: bo
   return <><div {...root} class={root?.class ? `list-row ${root.class}` : "list-row"} data-row-menu-owner="" data-thread-row={thread ? true : undefined} data-sidebar-row={thread?.sidebar || undefined} data-panel-row-id={panel?.id} data-waiting={panel?.waiting || undefined} data-row-selected={props.selected || undefined} data-menu-open={menu.open || undefined} aria-current={panel && props.selected ? "true" : undefined} {...menu.rowHandlers}>
     {panel ? <button class="panel-list-main" type="button" onClick={event => panel.onSelect(event.currentTarget)}>{panel.icon ? <Icon role={panel.icon} size="small" /> : null}{panel.command ? <span class="panel-list-copy"><span class="panel-list-title">{panel.title}</span><span class="panel-list-title mono muted caption">{panel.command}</span></span> : <span class="panel-list-title">{panel.title}</span>}{panel.subtitle ? <span class="panel-list-subtitle">{panel.subtitle}</span> : null}{props.children}</button> : props.children}
     {options ? <span class="list-row-action" data-row-action="">{menu.trigger}</span> : null}
-    {props.afterActions}{menu.menu}
+    {panel && props.afterActions ? <ActionSlot>{props.afterActions}</ActionSlot> : props.afterActions}{menu.menu}
   </div>{panel?.error ? <div role="alert">{panel.error}</div> : null}{panel?.feedback ? <div class="list-row-feedback">{panel.feedback}</div> : null}</>;
 }
 
+
 /**
- * A visible panel-row action that an owner update can remove. If it is removed while it holds
- * focus, focus moves to its row's selection button at that moment; otherwise nothing moves.
+ * The panel row's visible action slot. When an owner update removes the action while that action
+ * is the active element, focus moves to the row's selection button; otherwise nothing moves.
+ * Unmount runs before Preact removes the DOM, so the check sees the action still in place.
  */
-export function RowActionButton(props: Omit<Parameters<typeof Button>[0], "buttonRef">) {
-  const ref = useRef<HTMLButtonElement>(null);
-  useLayoutEffect(() => () => {
-    const button = ref.current;
-    if (button && document.activeElement === button) button.closest(".list-row")?.querySelector<HTMLButtonElement>(".panel-list-main")?.focus();
-  }, []);
-  return <Button {...props} buttonRef={ref} />;
+class ActionSlot extends Component<{ children: ComponentChildren }> {
+  override componentWillUnmount() {
+    const action = this.base as Element | null | undefined;
+    const active = document.activeElement;
+    if (action && active && (action === active || action.contains(active))) action.closest(".list-row")?.querySelector<HTMLButtonElement>(".panel-list-main")?.focus();
+  }
+  render() {
+    return this.props.children;
+  }
 }

@@ -44,7 +44,7 @@ import { Icon } from "../system/components/Icon";
 import { KeyValue } from "../system/components/KeyValue";
 import { LayoutSeparator } from "../system/components/LayoutSeparator";
 import { ListDivider } from "../system/components/ListDivider";
-import { ListRow, RowActionButton } from "../system/components/ListRow";
+import { ListRow } from "../system/components/ListRow";
 import { LogBlock } from "../system/components/LogBlock";
 import { Message } from "../system/components/Message";
 import { Notice } from "../system/components/Notice";
@@ -722,7 +722,7 @@ function PanelActivity({ model }: { model: AppModel }) {
           selected={selected?.kind === section.kind && selected.id === row.id}
           onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener), true)} menuLabel={t("panel.rowActions")}
           // The Turn waits on a foreground shell: its exact-execution Background action moves out of the menu onto the row.
-          afterActions={placement === "foreground" ? <RowActionButton variant="primary" onClick={() => void model.backgroundShell(row.id)}>{t("action.shellBackground")}</RowActionButton> : undefined}
+          afterActions={placement === "foreground" ? <Button variant="primary" onClick={() => void model.backgroundShell(row.id)}>{t("action.shellBackground")}</Button> : undefined}
           actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, command ?? row.label, requestStop, placement !== "foreground") : undefined} error={panelOperationError(model, row.id)}>
           {placement ? <StatusMark shell status="running" label={t(`work.${placement}`)} /> : null}
         </ListRow>;
