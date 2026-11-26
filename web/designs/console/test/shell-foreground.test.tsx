@@ -86,16 +86,19 @@ it("labels running shells from the typed foreground fact and puts Background on 
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
-it("leaves focus alone when the person had already left the row", async () => {
+it.each([
+  ["another button", () => row("exec-bg").querySelector<HTMLButtonElement>(".panel-list-main")!],
+  ["the page body", () => document.body],
+] as const)("does not move focus that is on %s when the action is removed", async (_name, where) => {
   const f = await open();
   try {
-    const button = visibleButtons("exec-fg")[0]!;
-    button.focus();
-    const elsewhere = row("exec-bg").querySelector<HTMLButtonElement>(".panel-list-main")!;
-    elsewhere.focus();
+    visibleButtons("exec-fg")[0]!.focus();
+    const target = where();
+    if (target === document.body) (document.activeElement as HTMLElement).blur(); else target.focus();
+    expect(document.activeElement).toBe(target);
     await confirmBackground(f);
     expect(visibleButtons("exec-fg")).toEqual([]);
-    expect(document.activeElement).toBe(elsewhere);
+    expect(document.activeElement).toBe(target);
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
