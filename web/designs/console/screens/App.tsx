@@ -68,19 +68,20 @@ export function App({ context }: { context: DesignContext }) {
   const [movePickerOpen, setMovePickerOpen] = useState(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const lastSidebarFocus = useRef<string>();
-  const sidebarPositions = useRef(new Map<string, number>());
+  // Where the last focused link is, so focus can land on whatever takes its place. One entry.
+  const sidebarPosition = useRef<{ id: string; index: number }>();
 
   const sidebarLinks = () => [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
-  const rememberSidebarPositions = (links: HTMLAnchorElement[]) => {
-    links.forEach((link, index) => sidebarPositions.current.set(link.id, index));
+  const rememberSidebarPosition = (id: string, links = sidebarLinks()) => {
+    const index = links.findIndex(link => link.id === id);
+    if (index >= 0) sidebarPosition.current = { id, index };
   };
   const resolveSidebarLink = (linkId: string, threadId?: string) => {
     const links = sidebarLinks();
-    rememberSidebarPositions(links);
     const href = threadId === undefined ? undefined : formatRoute({ view: "conversation", threadId });
     const direct = links.find(link => link.id === linkId) ?? (href && links.find(link => link.getAttribute("href") === href));
     if (direct) return direct;
-    const position = sidebarPositions.current.get(linkId);
+    const position = sidebarPosition.current?.id === linkId ? sidebarPosition.current.index : undefined;
     return (position !== undefined ? links[position] ?? links[Math.min(position - 1, links.length - 1)] : undefined)
       ?? document.getElementById("sidebar-thread-list-heading");
   };
@@ -185,7 +186,7 @@ export function App({ context }: { context: DesignContext }) {
   // The links change only with the rows and the folds; a render for anything else scans nothing.
   useLayoutEffect(() => {
     const links = sidebarLinks();
-    rememberSidebarPositions(links);
+    if (sidebarPosition.current) rememberSidebarPosition(sidebarPosition.current.id, links);
     const claimed = lastSidebarFocus.current;
     if (!claimed || links.some(link => link.id === claimed)) return;
     lastSidebarFocus.current = undefined;
@@ -291,8 +292,7 @@ export function App({ context }: { context: DesignContext }) {
             const target = event.target as HTMLElement;
             const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? target.closest<HTMLElement>("[data-thread-row]")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]');
             if (!link) return;
-            const links = sidebarLinks();
-            rememberSidebarPositions(links);
+            rememberSidebarPosition(link.id);
             lastSidebarFocus.current = link.id;
           }} onFocusOut={(event) => {
             const next = event.relatedTarget;
