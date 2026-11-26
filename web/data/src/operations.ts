@@ -225,8 +225,10 @@ const decodeDetails: Decoder<ThreadDetails> = (v) =>
 const runStates = new Set<RunState>(["live", "stopping", "stopped", "completed", "failed"]);
 const turnStates = new Set<TurnState>(["preparing", "running", "waiting", "recovery_wait", "completed", "stopped", "failed"]);
 const optionalString = (v: Record<string, unknown>, key: string): boolean => v[key] === undefined || typeof v[key] === "string";
+const stopSettlementFailures: readonly unknown[] = ["storage", "invariant"];
 const decodeRunDetails = (runId: string, threadId?: string): Decoder<RunDetails> => (v) =>
   isObject(v) && v.run_id === runId && typeof v.thread_id === "string" && (threadId === undefined || v.thread_id === threadId) && typeof v.state === "string" && runStates.has(v.state as RunState) && optionalString(v, "turn_id") && optionalString(v, "recovery_hint")
+    && (v.stop_settlement_failure === undefined || v.stop_settlement_failure === null || stopSettlementFailures.includes(v.stop_settlement_failure))
     ? { ok: true, value: v as RunDetails }
     : { ok: false, reason: "run.get result lacks the requested identity, state or optional field types" };
 const decodeTurnDetails = (turnId: string, runId?: string, threadId?: string): Decoder<TurnDetails> => (v) =>
@@ -307,14 +309,16 @@ const decodeOperationReceipt = (expectedOperationId: string): Decoder<OperationR
     || !policies.includes(v.replay_policy as OperationReplayPolicy) || !isObject(v.targets)
     || !Object.values(v.targets).every(target => typeof target === "string"))
     return { ok: false, reason: "invalid operation receipt evidence" };
-  if (v.downstream !== undefined) {
+  // The schema allows null wherever Core omits an absent optional fact.
+  const absent = (x: unknown) => x === undefined || x === null;
+  if (!absent(v.downstream)) {
     const downstream = v.downstream;
     const common = isObject(downstream) && typeof downstream.state === "string";
     const validMessage = common && downstream.kind === "message"
-      && (downstream.hold_reason === undefined || typeof downstream.hold_reason === "string");
+      && (absent(downstream.hold_reason) || typeof downstream.hold_reason === "string");
     const validCompact = common && downstream.kind === "compact"
-      && (downstream.ended_at === undefined || typeof downstream.ended_at === "string")
-      && (downstream.result_uncertain === undefined || typeof downstream.result_uncertain === "boolean");
+      && (absent(downstream.ended_at) || typeof downstream.ended_at === "string")
+      && (absent(downstream.result_uncertain) || typeof downstream.result_uncertain === "boolean");
     if (!validMessage && !validCompact) return { ok: false, reason: "invalid operation receipt downstream" };
   }
   return { ok: true, value: v as unknown as OperationReceiptDetails };

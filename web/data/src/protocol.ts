@@ -280,12 +280,16 @@ export interface PendingReply {
 export type RunState = "live" | "stopping" | "stopped" | "completed" | "failed";
 export type TurnState = "preparing" | "running" | "waiting" | "recovery_wait" | "completed" | "stopped" | "failed";
 
+/** A stop settlement failed and the Run is still `stopping`; cleared on successful settlement. */
+export type RunStopSettlementFailure = "storage" | "invariant";
+
 export interface RunDetails {
   run_id: string;
   thread_id: string;
   state: RunState;
   turn_id?: string;
   recovery_hint?: string;
+  stop_settlement_failure?: RunStopSettlementFailure | null;
   [extra: string]: unknown;
 }
 
@@ -351,6 +355,8 @@ export interface WorkItem {
   created_at?: string | null;
   /** Bounded history.read preview, absent when it could not be read. */
   excerpt?: string;
+  /** For a stopping Run only: the run.get fact, absent when none is saved or it could not be read. */
+  stop_settlement_failure?: RunStopSettlementFailure;
 }
 
 /** A shell execution linked from a history node (`history.window`, observed at the pinned revision). */
@@ -530,8 +536,8 @@ export interface ThreadRewindArgs {
 
 export type OperationReplayPolicy = "do_not_reexecute" | "operation_expired" | "return_saved_outcome";
 export type OperationReceiptDownstream =
-  | { kind: "message"; state: string; hold_reason?: string }
-  | { kind: "compact"; state: string; outcome?: unknown; ended_at?: string; result_uncertain?: boolean };
+  | { kind: "message"; state: string; hold_reason?: string | null }
+  | { kind: "compact"; state: string; outcome?: unknown; ended_at?: string | null; result_uncertain?: boolean | null };
 export interface OperationReceiptDetails {
   operation_id: string;
   instance_id: string;
@@ -543,7 +549,7 @@ export interface OperationReceiptDetails {
   result_expired: boolean;
   replay_policy: OperationReplayPolicy;
   targets: Record<string, string>;
-  downstream?: OperationReceiptDownstream;
+  downstream?: OperationReceiptDownstream | null;
 }
 
 export type WaitCondition =

@@ -390,6 +390,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   // Supporting text under the one-line status (Material 3 supporting text): it wraps in full, never ellipsized.
   return <>{line}{recovery && model.canRetry.value ? <div key="conversation-retry-note" id="conversation-retry-note" class="conversation-retry-note muted" data-retry-note>{t("recovery.body")}</div> : null}
     {recovery ? <div key="conversation-recovery-evidence" class="conversation-retry-note muted"><OwnerDiagnostic t={t} {...recovery} /></div> : null}
+    {work.stopSettlementFailure ? <div key="conversation-stop-settlement" class="conversation-retry-note muted" data-stop-settlement-failure={work.stopSettlementFailure.failure}>{t(`run.stopSettlement.${work.stopSettlementFailure.failure}`, { run: work.stopSettlementFailure.runId })}</div> : null}
     <span key="conversation-announcement" class="conversation-announcement" data-conversation-announcement role="status" aria-live="polite" aria-atomic="true">
       {interrupted ? t("core.runInterrupted") : status === "idle" ? statusLabel(t, "idle") : label}
     </span>
