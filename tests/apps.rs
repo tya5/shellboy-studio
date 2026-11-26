@@ -173,11 +173,15 @@ async fn instance_wait_ignores_other_instance_changes() {
             )
             .await
     });
+    let all = apps.call("one", "data.wait", json!({})).await["result"]["version"].clone();
     let dir = f.apps.join("one/data/beta");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("x"), "other").unwrap();
+    // The app-wide wait wakes from the same look that would have woken alpha.
+    let seen = apps.call("one", "data.wait", json!({"version": all})).await;
+    assert_eq!(seen["result"]["changed"], true, "{seen}");
     assert!(
-        tokio::time::timeout(std::time::Duration::from_millis(700), &mut wait)
+        tokio::time::timeout(std::time::Duration::from_millis(300), &mut wait)
             .await
             .is_err()
     );

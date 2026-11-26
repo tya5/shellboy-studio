@@ -26,8 +26,9 @@ const MAX_DATA: usize = 8 * 1024 * 1024;
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 const MAX_LIST: usize = 1000;
 const WAIT: Duration = Duration::from_secs(25);
-/// How often the one watcher of an app looks at `data/`, while a page is waiting.
-const WATCH_INTERVAL: Duration = Duration::from_millis(200);
+/// How often the one watcher of an app looks at `data/`, while a page is waiting. Fixed: a page open
+/// for weeks, hidden or not, costs one bounded walk a second.
+const WATCH_INTERVAL: Duration = Duration::from_secs(1);
 /// It keeps looking this long after the last wait ends, so a change between two waits isn't missed
 /// by a late first look, and then stops.
 const WATCH_LINGER: Duration = Duration::from_secs(30);
