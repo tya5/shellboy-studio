@@ -97,7 +97,9 @@ pub async fn run_with_guide<O: Owner>(
             Ok(ok) => ok,
             Err(reason) => {
                 if !announced_unreachable {
-                    eprintln!("shellboy-studio: owner unreachable: {reason}");
+                    crate::diagnostics::line(&format!(
+                        "shellboy-studio: owner unreachable: {reason}"
+                    ));
                     hub.set_owner(OwnerState::Unreachable, OwnerEvent::Unreachable);
                     announced_unreachable = true;
                 }
@@ -143,8 +145,8 @@ pub async fn run_with_guide<O: Owner>(
                     result = tokio::time::timeout(Duration::from_secs(10), registration) => {
                         match result {
                             Ok(Ok(())) => {},
-                            Ok(Err(error)) => eprintln!("shellboy-studio: guide registration: {error}"),
-                            Err(_) => eprintln!("shellboy-studio: guide registration timed out"),
+                            Ok(Err(error)) => crate::diagnostics::line(&format!("shellboy-studio: guide registration: {error}")),
+                            Err(_) => crate::diagnostics::line("shellboy-studio: guide registration timed out"),
                         }
                     }
                 }

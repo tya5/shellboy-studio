@@ -97,7 +97,7 @@ async fn main() -> ExitCode {
     match entry().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("shellboy-studio: {message}");
+            shellboy_studio::diagnostics::line(&format!("shellboy-studio: {message}"));
             ExitCode::FAILURE
         }
     }
@@ -167,13 +167,15 @@ async fn run_bundle_server(
     paths: shellboy_studio::launcher::desktop::PathArgs,
 ) -> Result<(), String> {
     use shellboy_studio::launcher::desktop::{CorePaths, Launch};
-    let paths = CorePaths::resolved(paths)?;
     let config_dir = default_config_dir()?;
+    // From here this server's own lines and panics go to its capped studio.log.
+    shellboy_studio::launcher::desktop::studio_log(&config_dir)?;
+    let paths = CorePaths::resolved(paths)?;
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let Some(mut launch) = Launch::prepare(&config_dir, &cwd, paths).await? else {
         return Ok(());
     };
-    // The launcher opens the token URL separately; this child writes diagnostics to studio.log.
+    // The launcher opens the token URL separately; this child's diagnostics are in studio.log.
     let listener = launch.listener.take().expect("prepared listener");
     let config = ServerConfig {
         listen: listener.local_addr().map_err(|e| e.to_string())?,

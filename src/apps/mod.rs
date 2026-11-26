@@ -4,8 +4,8 @@
 //!
 //! Bounds (limits, not performance claims): `catalog::MAX_APPS` listed and hosted; `MAX_SESSIONS` file
 //! sessions, oldest dropped; `RUNS` scripts at once and one per action; owner calls share the bridge's
-//! global semaphore; one hub session per app while `thread.onChange` waits and 30 s after; one `data/`
-//! watcher task per app while a page waits. A host whose folder is gone gives up its slot.
+//! global semaphore; one hub session per app while `thread.onChange` waits and 30 s after; one lifecycle
+//! task per app while a page waits (data walks only for `data.onChange`). A host whose folder is gone gives up its slot.
 pub mod catalog;
 mod host;
 pub mod run;
@@ -73,10 +73,10 @@ impl<O: Owner> Apps<O> {
         if let Err(e) =
             std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("README.md"), GUIDE))
         {
-            eprintln!(
+            crate::diagnostics::line(&format!(
                 "shellboy-studio: cannot write the apps guide in {}: {e}",
                 dir.display()
-            );
+            ));
         }
         Arc::new(Self {
             dir,
@@ -113,8 +113,8 @@ impl<O: Owner> Apps<O> {
         if hosts.len() >= catalog::MAX_APPS {
             // Slots of apps whose folders were removed since they were opened.
             let mut gone = Vec::new();
-            for (other, host) in hosts.iter() {
-                if !tokio::fs::try_exists(host.dir()).await.unwrap_or(true) {
+            for other in hosts.keys() {
+                if !catalog::is_app_dir(&self.dir, other).await {
                     gone.push(other.clone());
                 }
             }

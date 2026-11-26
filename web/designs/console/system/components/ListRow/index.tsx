@@ -6,6 +6,11 @@ import { Icon, type IconRole } from "../Icon";
 type PanelRow = {
   readonly id: string;
   readonly title: string;
+  /**
+   * Noninteractive row metadata, shown after the title inside the row's selection button. It may hold a
+   * component that updates on its own, such as an elapsed-time caption, without the row re-rendering;
+   * it must not hold controls or links.
+   */
   readonly subtitle?: ComponentChildren;
   readonly command?: string | undefined;
   readonly icon?: IconRole;

@@ -10,7 +10,9 @@ menu state, placement and keyboard handling through `useRowMenu`. Actions reveal
 on hover, row focus, selection or while open; touch always shows the action.
 
 Panel items provide a title, an optional `command` caption, and `onSelect`, which receives the actual row button
-for focus return. Use `error` for a per-target error, or `feedback` for custom
+for focus return. `subtitle` is noninteractive row metadata inside the selection button: text, or a
+component that updates on its own (an elapsed-time caption reads the clock itself, so a tick re-renders
+only that caption, not the row or its list). Never put controls or links in it. Use `error` for a per-target error, or `feedback` for custom
 status and alert content. ListRow places feedback on its own line after the row,
 not in the trailing action slot. Keep a live region mounted in `feedback` when
 its announcement text changes. Thread rows

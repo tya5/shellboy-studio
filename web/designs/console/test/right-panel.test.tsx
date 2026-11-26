@@ -603,9 +603,16 @@ describe('right panel purpose',()=>{
    act(()=>{f.model.now.value=Date.parse('2026-11-21T00:00:05Z');});
    const first=subtitle();
    expect(first).toBeTruthy();
+   // Witness for the rest of the panel: change the row's saved label behind the signals' back. Only a
+   // render of the whole Activity list would show it, and a tick of the clock must not cause one.
+   const title=()=>f.host.querySelector('[data-panel-list="work"] [data-panel-row-id="shell-running"] .panel-list-title')?.textContent;
+   const shown=title();
+   const row=f.model.work.peek().running.find(item=>item.id==='shell-running')! as {label:string};
+   row.label='Unannounced label';
    act(()=>{f.model.now.value+=60_000;});
    expect(subtitle()).toBeTruthy();
    expect(subtitle()).not.toBe(first);
+   expect(title()).toBe(shown);
   }finally{f.model.dispose();f.data.stop();}
  });
 
