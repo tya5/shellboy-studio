@@ -21,7 +21,7 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicU64, Ordering},
     },
     time::Duration,
@@ -122,7 +122,6 @@ pub struct Launch {
     pub auth: Option<Auth>,
     pub control: Control,
     marker: PathBuf,
-    _lock: File,
     owner: ManagedOwner,
     requests: mpsc::Receiver<super::Request>,
     state: watch::Sender<super::State>,
@@ -137,14 +136,10 @@ impl Drop for Launch {
 }
 
 impl Launch {
-    pub async fn prepare(dir: &Path, cwd: &Path, paths: CorePaths) -> Result<Option<Self>, String> {
-        fs::create_dir_all(dir).map_err(io)?;
-        platform::check_directory(dir).map_err(io)?;
-        let lock = launcher_lock(dir, "running.lock")?;
-        match lock.try_lock() {
-            Ok(()) => {}
-            Err(std::fs::TryLockError::WouldBlock) => return Ok(None),
-            Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
+    /// Only in the process that holds running.lock (`hold_running`).
+    pub async fn prepare(dir: &Path, cwd: &Path, paths: CorePaths) -> Result<Self, String> {
+        if RUNNING.get().is_none() {
+            return Err("This process doesn't hold Studio's running.lock".into());
         }
         let marker_path = dir.join("running.json");
         let bundled = platform::bundled_core(&std::env::current_exe().map_err(io)?)?;
@@ -199,7 +194,7 @@ impl Launch {
             output: None,
             start_log_offset: Arc::default(),
         };
-        Ok(Some(Self {
+        Ok(Self {
             listener: Some(listener),
             data_dir,
             auth: Some(auth),
@@ -210,13 +205,12 @@ impl Launch {
                 marker: identity,
             },
             marker: marker_path,
-            _lock: lock,
             owner,
             requests,
             state,
             diagnostic,
             crashes: std::collections::VecDeque::new(),
-        }))
+        })
     }
 
     pub async fn supervise(&mut self, cancel: CancellationToken) {
@@ -655,9 +649,33 @@ fn open_file(path: &Path, options: &mut OpenOptions, private: bool) -> std::io::
     Ok(file)
 }
 
+/// running.lock of the config dir this process serves, held from before studio.log is opened until the
+/// process exits, past its last diagnostic line. A refused second server never touches the live log.
+static RUNNING: OnceLock<File> = OnceLock::new();
+
+/// Takes `<dir>/running.lock` for the rest of this process. False when another server holds it.
+pub fn hold_running(dir: &Path) -> Result<bool, String> {
+    fs::create_dir_all(dir).map_err(io)?;
+    platform::check_directory(dir).map_err(io)?;
+    let lock = launcher_lock(dir, "running.lock")?;
+    match lock.try_lock() {
+        Ok(()) => {}
+        Err(std::fs::TryLockError::WouldBlock) => return Ok(false),
+        Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
+    }
+    RUNNING
+        .set(lock)
+        .map_err(|_| "This process already holds a running.lock".to_owned())?;
+    Ok(true)
+}
+
 /// A desktop server's own diagnostics and panics go to `<dir>/studio.log`, capped like owner.log. The
-/// launcher starts the server with no stdout or stderr, so this server is the file's one writer.
+/// launcher starts the server with no stdout or stderr, and only the holder of running.lock
+/// (`hold_running`) opens it, so this server is the file's one writer.
 pub fn studio_log(dir: &Path) -> Result<(), String> {
+    if RUNNING.get().is_none() {
+        return Err("This process doesn't hold Studio's running.lock".into());
+    }
     let log = LogWriter::open(dir.join("studio.log"), Arc::default(), open_log).map_err(io)?;
     crate::diagnostics::write_to(log)
 }
@@ -1399,6 +1417,32 @@ mod tests {
         ));
         drop(server);
         running.try_lock().unwrap();
+    }
+
+    #[test]
+    fn a_refused_second_server_leaves_the_live_log_alone() {
+        let dir = std::env::temp_dir().join(format!("studio-refused-{}", random_hex().unwrap()));
+        fs::create_dir(&dir).unwrap();
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(dir.clone());
+        let live = launcher_lock(&dir, "running.lock").unwrap();
+        live.try_lock().unwrap();
+        fs::write(dir.join("studio.log"), "live\n").unwrap();
+        assert_eq!(hold_running(&dir), Ok(false));
+        assert!(
+            studio_log(&dir).is_err(),
+            "only the holder opens studio.log"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("studio.log")).unwrap(),
+            "live\n"
+        );
+        assert!(!dir.join("studio.log.1").exists());
     }
 
     #[tokio::test]

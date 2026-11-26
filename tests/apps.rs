@@ -973,19 +973,106 @@ async fn run_kills_what_the_script_started() {
     helper.gone("closed page").await;
 }
 
+/// Watches a helper a PowerShell action starts. The action starts the helper, sends its process ID over
+/// a named pipe and waits for the reply. The test opens the helper's handle before replying, so the
+/// handle names that same process whatever happens after, and `gone` waits on that handle.
+#[cfg(windows)]
+struct Helper {
+    started: tokio::sync::oneshot::Receiver<Process>,
+    process: Option<Process>,
+}
+
+/// An open process handle (as an integer, so it can cross into the blocking wait), closed on drop.
+#[cfg(windows)]
+struct Process(usize);
+
+#[cfg(windows)]
+impl Drop for Process {
+    fn drop(&mut self) {
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0 as _) };
+    }
+}
+
+#[cfg(windows)]
+impl Helper {
+    fn pipe(case: &str) -> String {
+        format!("shellboy-studio-test-{}-{case}", std::process::id())
+    }
+
+    fn watch(case: &str) -> Self {
+        use tokio::io::AsyncBufReadExt;
+        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE};
+        let server = tokio::net::windows::named_pipe::ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(format!(r"\\.\pipe\{}", Self::pipe(case)))
+            .unwrap();
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let case = case.to_owned();
+        tokio::spawn(async move {
+            server.connect().await.unwrap();
+            let mut pipe = tokio::io::BufReader::new(server);
+            let mut line = String::new();
+            pipe.read_line(&mut line).await.unwrap();
+            let pid: u32 = line.trim().parse().unwrap();
+            let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+            assert!(
+                !handle.is_null(),
+                "{case}: couldn't open the helper {pid}: {}",
+                std::io::Error::last_os_error()
+            );
+            let process = Process(handle as usize);
+            // The action goes on only now, with the helper's handle held here.
+            pipe.get_mut().write_all(b"ok\n").await.unwrap();
+            let _ = started.send(process);
+        });
+        Self {
+            started: started_rx,
+            process: None,
+        }
+    }
+
+    async fn started(&mut self, case: &str) {
+        let process = tokio::time::timeout(WATCHDOG, &mut self.started)
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the helper never started"))
+            .unwrap();
+        self.process = Some(process);
+    }
+
+    async fn gone(self, case: &str) {
+        use windows_sys::Win32::{
+            Foundation::WAIT_OBJECT_0, System::Threading::WaitForSingleObject,
+        };
+        let process = self.process.expect("started first");
+        let waited = tokio::task::spawn_blocking(move || unsafe {
+            WaitForSingleObject(process.0 as _, WATCHDOG.as_millis() as u32)
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            waited, WAIT_OBJECT_0,
+            "{case}: the helper outlived the action"
+        );
+    }
+}
+
 /// The Job path: a helper started by a PowerShell action is gone once the call returns, whether the
-/// script exited or hit the time limit. Observed by waiting on the helper's own process handle.
+/// script exited, hit the time limit or its page went away.
 #[cfg(windows)]
 #[tokio::test]
 async fn run_kills_what_the_script_started() {
-    use windows_sys::Win32::{
-        Foundation::{CloseHandle, WAIT_OBJECT_0},
-        System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
-    };
     let f = fixture().await;
-    let start = |pid: &str| {
+    let start = |case: &str| {
         format!(
-            "$p = Start-Process -FilePath powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -WindowStyle Hidden\r\nSet-Content -Path data/{pid} -Value $p.Id\r\n"
+            "$p = Start-Process -FilePath powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -WindowStyle Hidden\r\n\
+             $c = New-Object System.IO.Pipes.NamedPipeClientStream '.', '{}', ([System.IO.Pipes.PipeDirection]::InOut)\r\n\
+             $c.Connect(30000)\r\n\
+             $w = New-Object System.IO.StreamWriter $c\r\n\
+             $w.AutoFlush = $true\r\n\
+             $w.WriteLine($p.Id)\r\n\
+             $null = (New-Object System.IO.StreamReader $c).ReadLine()\r\n\
+             $c.Dispose()\r\n",
+            Helper::pipe(case)
         )
     };
     write_app(
@@ -994,45 +1081,50 @@ async fn run_kills_what_the_script_started() {
         "{}",
         &[
             PAGE,
-            ("data/.keep", ""),
             (
                 "actions/leave.ps1",
-                &format!("{}'done'\r\n", start("leave.pid")),
+                &format!("{}'done'\r\n", start("leave")),
             ),
             (
                 "actions/hang.ps1",
-                &format!("{}Start-Sleep 300\r\n", start("hang.pid")),
+                &format!("{}Start-Sleep 300\r\n", start("hang")),
+            ),
+            (
+                "actions/close.ps1",
+                &format!("{}Start-Sleep 300\r\n", start("close")),
             ),
         ],
     );
-    let gone = |file: &str, case: &str| {
-        let text = std::fs::read_to_string(f.apps.join("one/data").join(file))
-            .unwrap_or_else(|e| panic!("{case}: the action didn't record its helper: {e}"));
-        let pid: u32 = text.trim().parse().unwrap();
-        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
-        if handle.is_null() {
-            return; // Already gone.
-        }
-        let waited = unsafe { WaitForSingleObject(handle, WATCHDOG.as_millis() as u32) };
-        unsafe { CloseHandle(handle) };
-        assert_eq!(
-            waited, WAIT_OBJECT_0,
-            "{case}: the helper {pid} outlived the action"
-        );
-    };
-    let left = call(&f, "one", "run", json!({"action":"leave"})).await;
+
+    let mut helper = Helper::watch("leave");
+    let apps = f.state.apps.clone().unwrap();
+    let left =
+        tokio::spawn(async move { apps.call("one", "run", json!({"action":"leave"})).await });
+    helper.started("script exit").await;
+    let left = left.await.unwrap();
     assert_eq!(left["result"]["timed_out"], false, "{left}");
     assert_eq!(left["result"]["exit_code"], 0, "{left}");
-    gone("leave.pid", "script exit");
-    let hung = call(
-        &f,
-        "one",
-        "run",
-        json!({"action":"hang","timeout_ms":15000}),
-    )
-    .await;
+    helper.gone("script exit").await;
+
+    let mut helper = Helper::watch("hang");
+    let apps = f.state.apps.clone().unwrap();
+    let hung = tokio::spawn(async move {
+        apps.call("one", "run", json!({"action":"hang","timeout_ms":15000}))
+            .await
+    });
+    helper.started("timeout").await;
+    let hung = hung.await.unwrap();
     assert_eq!(hung["result"]["timed_out"], true, "{hung}");
-    gone("hang.pid", "timeout");
+    helper.gone("timeout").await;
+
+    let mut helper = Helper::watch("close");
+    let apps = f.state.apps.clone().unwrap();
+    let page =
+        tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
+    helper.started("closed page").await;
+    page.abort();
+    let _ = page.await;
+    helper.gone("closed page").await;
 }
 
 #[tokio::test]

@@ -168,13 +168,15 @@ async fn run_bundle_server(
 ) -> Result<(), String> {
     use shellboy_studio::launcher::desktop::{CorePaths, Launch};
     let config_dir = default_config_dir()?;
+    // Another server runs: leave its log alone.
+    if !shellboy_studio::launcher::desktop::hold_running(&config_dir)? {
+        return Ok(());
+    }
     // From here this server's own lines and panics go to its capped studio.log.
     shellboy_studio::launcher::desktop::studio_log(&config_dir)?;
     let paths = CorePaths::resolved(paths)?;
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-    let Some(mut launch) = Launch::prepare(&config_dir, &cwd, paths).await? else {
-        return Ok(());
-    };
+    let mut launch = Launch::prepare(&config_dir, &cwd, paths).await?;
     // The launcher opens the token URL separately; this child's diagnostics are in studio.log.
     let listener = launch.listener.take().expect("prepared listener");
     let config = ServerConfig {
