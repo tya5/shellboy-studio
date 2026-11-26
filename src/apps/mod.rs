@@ -4,8 +4,8 @@
 //!
 //! Bounds (limits, not performance claims): `catalog::MAX_APPS` listed and hosted; `MAX_SESSIONS` file
 //! sessions, oldest dropped; `RUNS` scripts at once and one per action; owner calls share the bridge's
-//! global semaphore; one hub session per app that uses `thread.onChange`; one `data/` watcher task per app
-//! while a page waits.
+//! global semaphore; one hub session per app while `thread.onChange` waits and 30 s after; one `data/`
+//! watcher task per app while a page waits. A host whose folder is gone gives up its slot.
 pub mod catalog;
 mod host;
 pub mod run;
@@ -99,6 +99,8 @@ impl<O: Owner> Apps<O> {
 
     async fn host(self: &Arc<Self>, name: &str) -> Result<Arc<AppHost<O>>, (&'static str, String)> {
         let Some(entry) = catalog::read_entry(&self.dir, name).await else {
+            // Its folder is gone: so is its slot.
+            self.hosts.lock().await.remove(name);
             return Err(("app_not_found", format!("No app named {name}")));
         };
         if let Some(problem) = entry.problem {
@@ -107,6 +109,18 @@ impl<O: Owner> Apps<O> {
         let mut hosts = self.hosts.lock().await;
         if let Some(h) = hosts.get(name) {
             return Ok(h.clone());
+        }
+        if hosts.len() >= catalog::MAX_APPS {
+            // Slots of apps whose folders were removed since they were opened.
+            let mut gone = Vec::new();
+            for (other, host) in hosts.iter() {
+                if !tokio::fs::try_exists(host.dir()).await.unwrap_or(true) {
+                    gone.push(other.clone());
+                }
+            }
+            for other in gone {
+                hosts.remove(&other);
+            }
         }
         if hosts.len() >= catalog::MAX_APPS {
             return Err(("too_many_apps", "Too many apps are open".to_owned()));

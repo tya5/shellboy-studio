@@ -50,13 +50,25 @@ pub struct AppHost<O> {
     dir: PathBuf,
     apps: Arc<Apps<O>>,
     writes: tokio::sync::Mutex<()>,
-    hints: tokio::sync::Mutex<Option<SessionGuard>>,
+    hints: tokio::sync::Mutex<Hints>,
     /// One at a time per action, so a page's timer can't pile up.
     running: Mutex<HashSet<PathBuf>>,
     watch: tokio::sync::watch::Sender<DataSnapshot>,
     instance_watch:
         Mutex<std::collections::HashMap<String, tokio::sync::watch::Sender<DataSnapshot>>>,
     watching: AtomicBool,
+}
+
+/// The hub session `thread.onChange` waits on. Held while pages wait and `WATCH_LINGER` after the last
+/// wait ends, so a hint between two waits isn't lost; then released, so it stops counting against the
+/// hub's sessions. The first wait after a release reports a change at once, since hints were missed.
+#[derive(Default)]
+struct Hints {
+    session: Option<SessionGuard>,
+    last_wait: Option<tokio::time::Instant>,
+    /// A release task is waiting for the linger to pass.
+    releasing: bool,
+    released: bool,
 }
 
 /// What `data/` held at the last look. `version` moves only when something changed.
@@ -243,12 +255,16 @@ impl<O: Owner> AppHost<O> {
             dir,
             apps,
             writes: tokio::sync::Mutex::new(()),
-            hints: tokio::sync::Mutex::new(None),
+            hints: tokio::sync::Mutex::new(Hints::default()),
             running: Mutex::new(HashSet::new()),
             watch: tokio::sync::watch::channel(DataSnapshot::default()).0,
             instance_watch: Mutex::new(std::collections::HashMap::new()),
             watching: AtomicBool::new(false),
         })
+    }
+
+    pub(super) fn dir(&self) -> &Path {
+        &self.dir
     }
 
     /// Follows no symlink out of the app.
@@ -409,14 +425,21 @@ impl<O: Owner> AppHost<O> {
     }
 
     /// Change hints from the one shared `events.wait`, held at the hub. No owner connection is used.
-    async fn events_wait(&self, args: &Value) -> Result<Value, ApiFail> {
+    async fn events_wait(self: &Arc<Self>, args: &Value) -> Result<Value, ApiFail> {
         let thread = self.bound(args).await.ok();
         let list = args.get("list").and_then(Value::as_bool).unwrap_or(false);
-        let mut slot = self.hints.lock().await;
-        if slot.is_none() {
-            *slot = self.apps.hub.register().map(|(guard, _)| guard);
+        let mut hints = self.hints.lock().await;
+        if hints.session.is_none() {
+            hints.session = self.apps.hub.register().map(|(guard, _)| guard);
         }
-        let guard = slot
+        hints.last_wait = Some(tokio::time::Instant::now());
+        let resumed = hints.session.is_some() && std::mem::take(&mut hints.released);
+        if !hints.releasing && hints.session.is_some() {
+            hints.releasing = true;
+            self.release_hints_when_idle();
+        }
+        let guard = hints
+            .session
             .as_ref()
             .ok_or(("busy", "Too many sessions".to_owned()))?;
         self.apps
@@ -424,14 +447,50 @@ impl<O: Owner> AppHost<O> {
             .watch(guard, thread.into_iter().collect(), list)
             .map_err(|e| ("invalid_args", e))?;
         let (pending, _) = self.apps.hub.take(guard);
-        if pending.threads.is_empty() && !pending.list && !pending.resync {
+        if !resumed && pending.threads.is_empty() && !pending.list && !pending.resync {
             let _ = tokio::time::timeout(WAIT, guard.wake.notified()).await;
         }
         let (more, _) = self.apps.hub.take(guard);
+        hints.last_wait = Some(tokio::time::Instant::now());
         let threads: Vec<String> = pending.threads.into_iter().chain(more.threads).collect();
-        let changed =
-            !threads.is_empty() || pending.list || more.list || pending.resync || more.resync;
-        Ok(json!({"changed": changed, "threads": threads, "list": pending.list || more.list}))
+        let changed = resumed
+            || !threads.is_empty()
+            || pending.list
+            || more.list
+            || pending.resync
+            || more.resync;
+        Ok(
+            json!({"changed": changed, "threads": threads, "list": pending.list || more.list || (resumed && list)}),
+        )
+    }
+
+    /// One task per app while it holds a hint session: it drops the session once no wait has run for
+    /// `WATCH_LINGER`. A wait in progress holds the lock, so it is never released under one.
+    fn release_hints_when_idle(self: &Arc<Self>) {
+        let host = self.clone();
+        let cancel = self.apps.cancel_token();
+        let task = tokio::spawn(async move {
+            let mut idle_for = WATCH_LINGER;
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => return,
+                    _ = tokio::time::sleep(idle_for) => {}
+                }
+                let mut hints = tokio::select! {
+                    _ = cancel.cancelled() => return,
+                    hints = host.hints.lock() => hints,
+                };
+                let since = hints.last_wait.map_or(WATCH_LINGER, |at| at.elapsed());
+                if since >= WATCH_LINGER {
+                    hints.session = None;
+                    hints.releasing = false;
+                    hints.released = true;
+                    return;
+                }
+                idle_for = WATCH_LINGER - since;
+            }
+        });
+        self.apps.keep_task(task);
     }
 
     /// One look at `data/`. Moves the version only if something changed.
@@ -749,6 +808,58 @@ fn percent_decode(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::sync::Semaphore;
+    use tokio_util::sync::CancellationToken;
+
+    struct NoOwner;
+    impl Owner for NoOwner {
+        async fn call(
+            &self,
+            _: Command,
+            _: Option<String>,
+            _: Option<shellboy::protocol::Origin>,
+        ) -> Result<shellboy::protocol::Response<Value>, shellboy::protocol::ApiError> {
+            Err(shellboy::protocol::ApiError::new(
+                shellboy::protocol::ErrorCode::AppNotRunning,
+                "no owner in this test",
+            ))
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_hint_session_is_released_once_pages_stop_waiting() {
+        let dir = std::env::temp_dir().join(format!("studio-hints-{}", random()));
+        std::fs::create_dir_all(dir.join("one")).unwrap();
+        std::fs::write(dir.join("one/app.json"), "{}").unwrap();
+        std::fs::write(dir.join("one/index.html"), "x").unwrap();
+        let hub = crate::hub::Hub::new();
+        let cancel = CancellationToken::new();
+        let apps = Apps::new(
+            dir.clone(),
+            Arc::new(NoOwner),
+            hub.clone(),
+            Arc::new(Semaphore::new(4)),
+            cancel.clone(),
+        );
+        let wait = || apps.call("one", "events.wait", json!({}));
+        assert_eq!(wait().await["result"]["changed"], false);
+        assert_eq!(hub.session_count(), 1, "held between waits");
+        tokio::time::sleep(WATCH_LINGER / 2).await;
+        assert_eq!(wait().await["result"]["changed"], false);
+        tokio::time::sleep(WATCH_LINGER - Duration::from_secs(1)).await;
+        assert_eq!(hub.session_count(), 1, "a recent wait keeps it");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert_eq!(hub.session_count(), 0, "released after the linger");
+        let resumed = wait().await;
+        assert_eq!(
+            resumed["result"]["changed"], true,
+            "hints were missed: {resumed}"
+        );
+        assert_eq!(hub.session_count(), 1);
+        cancel.cancel();
+        apps.stopped().await;
+        let _ = std::fs::remove_dir_all(dir);
+    }
     #[test]
     fn api_goes_first_in_the_page() {
         let tag = "<script src=\"/_shellboy/api.js\"></script>";
