@@ -526,48 +526,29 @@ it.each(['work','handoff'] as const)('scoped %s decoder keeps missing public thr
  expect(await pending).toMatchObject({ok:false,error:{kind:'invalid_response'}});
 });
 
-it("binds RunGet and TurnGet observations to exact requested identities", async () => {
+it("binds TurnGet observations to exact requested identities", async () => {
   const { t, ops } = setup();
-  const run = ops.runGet("run-a", { threadId: "thread-a" });
   const turn = ops.turnGet("turn-a", { runId: "run-a", threadId: "thread-a" });
-  expect(t.calls().map((call) => [call.command, call.args])).toEqual([
-    ["run.get", { run_id: "run-a" }],
-    ["turn.get", { turn_id: "turn-a" }],
-  ]);
-  t.ok(t.calls()[0]!.id, { run_id: "run-a", thread_id: "thread-a", state: "live", turn_id: "turn-a" });
-  t.ok(t.calls()[1]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "thread-a", state: "recovery_wait", recovery_hint: "retry" });
-  await expect(run).resolves.toMatchObject({ ok: true, value: { run_id: "run-a", thread_id: "thread-a", state: "live" } });
+  expect(t.calls().map((call) => [call.command, call.args])).toEqual([["turn.get", { turn_id: "turn-a" }]]);
+  t.ok(t.calls()[0]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "thread-a", state: "recovery_wait", recovery_hint: "retry" });
   await expect(turn).resolves.toMatchObject({ ok: true, value: { turn_id: "turn-a", run_id: "run-a", thread_id: "thread-a", state: "recovery_wait", recovery_hint: "retry" } });
 });
 
-it("rejects foreign RunGet and TurnGet observations", async () => {
+it("rejects foreign TurnGet observations", async () => {
   const { t, ops } = setup();
-  const run = ops.runGet("run-a");
   const turn = ops.turnGet("turn-a", { runId: "run-a", threadId: "thread-a" });
-  t.ok(t.calls()[0]!.id, { run_id: "run-b", thread_id: "thread-a", state: "live" });
-  t.ok(t.calls()[1]!.id, { turn_id: "turn-b", run_id: "run-a", thread_id: "thread-a", state: "recovery_wait" });
-  await expect(run).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  t.ok(t.calls()[0]!.id, { turn_id: "turn-b", run_id: "run-a", thread_id: "thread-a", state: "recovery_wait" });
   await expect(turn).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
 });
 
 
-it("rejects RunGet and TurnGet with wrong correlated thread or run", async () => {
+it("rejects TurnGet with a wrong correlated run", async () => {
   const { t, ops } = setup();
-  const run = ops.runGet("run-a", { threadId: "thread-a" });
   const turn = ops.turnGet("turn-a", { runId: "run-a", threadId: "thread-a" });
-  t.ok(t.calls()[0]!.id, { run_id: "run-a", thread_id: "thread-other", state: "live" });
-  t.ok(t.calls()[1]!.id, { turn_id: "turn-a", run_id: "run-other", thread_id: "thread-a", state: "recovery_wait" });
-  await expect(run).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  t.ok(t.calls()[0]!.id, { turn_id: "turn-a", run_id: "run-other", thread_id: "thread-a", state: "recovery_wait" });
   await expect(turn).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
 });
 
-
-it("rejects malformed optional Run fields without correlation", async () => {
-  const { t, ops } = setup();
-  const run = ops.runGet("run-a");
-  t.ok(t.calls()[0]!.id, { run_id: "run-a", thread_id: "thread-a", state: "live", recovery_hint: 7 });
-  await expect(run).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
-});
 
 it("rejects missing required Turn identity fields without correlation", async () => {
   const { t, ops } = setup();
