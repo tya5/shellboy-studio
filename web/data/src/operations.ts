@@ -595,13 +595,6 @@ export class Operations {
   memoryStatus(read?: ReadOptions): Promise<Outcome<MemoryFacts>> {
     return this.run("status", { memory: true }, outcomeDecoder(decodeMemoryStatus), undefined, read);
   }
-  /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
-  handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem, StatusFilters>>> {
-    const decode=decodeThreadWorkPage(threadId);
-    const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');
-      Object.freeze(out.value.items); for(const item of out.value.items){if(item.response_nodes)Object.freeze(item.response_nodes);Object.freeze(item);} Object.freeze(out.value); return out.value;});
-    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, owned, undefined, read);
-  }
   threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem, StatusFilters>>> {
     const decode=decodeThreadWorkPage(threadId);
     const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');

@@ -112,10 +112,10 @@ describe("Operations", () => {
     await expect(pending).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response", message: "invalid-input" } }); expect(reads).toBe(1);
   });
 
-  it.each(["handoffAttempts", "threadWork"] as const)("public Work capture never invokes metadata toJSON: %s", async route => {
+  it("public Work capture never invokes metadata toJSON", async () => {
     const { t, ops } = setup(); let calls = 0; const metadata = { value: "kept" };
     Object.defineProperty(metadata, "toJSON", { enumerable: false, get: () => { calls++; throw new Error("must not run"); } });
-    const pending = route === "handoffAttempts" ? ops.handoffAttempts("selected") : ops.threadWork("selected");
+    const pending = ops.threadWork("selected");
     t.ok(t.calls("status")[0]!.id, { items: [{ kind: "run", id: "r", thread_id: "selected", state: "live", metadata }] });
     const out = await pending; expect(out.ok).toBe(true); expect(calls).toBe(0);
   });
@@ -497,16 +497,16 @@ describe('302 optional notification across public history routes',()=>{
 });
 
 
-it.each(['work','handoff'] as const)('scoped %s decoder rejects the whole foreign batch before model admission',async mode=>{
- const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
+it('scoped work decoder rejects the whole foreign batch before model admission',async()=>{
+ const {t,ops}=setup();const pending=ops.threadWork('selected');
  const call=t.calls('status')[0]!;
  t.ok(call.id,{items:[{kind:'run',id:'current',thread_id:'selected',state:'live'},
   {kind:'attempt',id:'foreign',thread_id:'other',state:'completed',response_nodes:[{node_id:'private-foreign'}]}]});
  const out=await pending;expect(out).toMatchObject({ok:false,error:{kind:'invalid_response'}});
  expect(JSON.stringify(out)).not.toContain('private-foreign');expect(t.calls()).toHaveLength(1);
 });
-it.each(['work','handoff'] as const)('scoped %s decoder preserves valid operation multiplicity without inferring retired fields',async mode=>{
- const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
+it('scoped work decoder preserves valid operation multiplicity without inferring retired fields',async()=>{
+ const {t,ops}=setup();const pending=ops.threadWork('selected');
  const items=[{kind:'shell',id:'operation-a',thread_id:'selected',state:'running',execution_id:'execution-a'},
   {kind:'shell',id:'operation-b',thread_id:'selected',state:'running',execution_id:'execution-b'}];
  t.ok(t.calls('status')[0]!.id,{items});expect(await pending).toMatchObject({ok:true, ownerOperationId: "op",value:{items}});
@@ -520,8 +520,8 @@ it.each([
  t.ok(t.calls('status')[0]!.id,{items});const out=await pending;
  if(ok)expect(out).toMatchObject({ok:true,value:{items}});else expect(out).toMatchObject({ok:false,error:{kind:'invalid_response'}});
 });
-it.each(['work','handoff'] as const)('scoped %s decoder keeps missing public thread identity rejected',async mode=>{
- const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
+it('scoped work decoder keeps missing public thread identity rejected',async()=>{
+ const {t,ops}=setup();const pending=ops.threadWork('selected');
  t.ok(t.calls('status')[0]!.id,{items:[{kind:'run',id:'missing-scope',state:'live'}]});
  expect(await pending).toMatchObject({ok:false,error:{kind:'invalid_response'}});
 });
