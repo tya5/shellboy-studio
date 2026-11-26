@@ -42,8 +42,6 @@ import type {
   ThreadBranchesArgs,
   ThreadCreateArgs,
   ThreadDetails,
-  TurnDetails,
-  TurnState,
   ThreadForkArgs,
   ThreadListArgs,
   ThreadRewindArgs,
@@ -230,13 +228,7 @@ const decodeDetails: Decoder<ThreadDetails> = (v) =>
         ? { ok: false, reason: "thread detail pending_replies.awaiting_own_ask is not a list of message ID pairs" }
         : { ok: true, value: v as ThreadDetails }
     : { ok: false, reason: "thread.get result lacks thread_id or title" };
-const turnStates = new Set<TurnState>(["preparing", "running", "waiting", "recovery_wait", "completed", "stopped", "failed"]);
-const optionalString = (v: Record<string, unknown>, key: string): boolean => v[key] === undefined || typeof v[key] === "string";
 const stopSettlementFailures: readonly unknown[] = ["storage", "invariant"];
-const decodeTurnDetails = (turnId: string, runId?: string, threadId?: string): Decoder<TurnDetails> => (v) =>
-  isObject(v) && v.turn_id === turnId && (runId === undefined || v.run_id === runId) && typeof v.run_id === "string" && typeof v.thread_id === "string" && (threadId === undefined || v.thread_id === threadId) && typeof v.state === "string" && turnStates.has(v.state as TurnState) && optionalString(v, "recovery_hint")
-    ? { ok: true, value: v as TurnDetails }
-    : { ok: false, reason: "turn.get result does not match the requested identity or lacks state" };
 const decodeShellPage = pageOf<ShellEntry, ShellListFilters>((v) =>
   isObject(v) && typeof v.execution_id === "string" && typeof v.state === "string"
     && (v.foreground === undefined || v.foreground === null || typeof v.foreground === "boolean")
@@ -553,9 +545,6 @@ export class Operations {
   }
   threadGet(threadId: string, read?: ReadOptions): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.get", { thread_id: threadId }, outcomeDecoder(decodeDetails), undefined, read);
-  }
-  turnGet(turnId: string, identity?: { runId?: string; threadId?: string }, read?: ReadOptions): Promise<Outcome<TurnDetails>> {
-    return this.run("turn.get", { turn_id: turnId }, outcomeDecoder(decodeTurnDetails(turnId, identity?.runId, identity?.threadId)), undefined, read);
   }
   historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowInput>> {
     if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
