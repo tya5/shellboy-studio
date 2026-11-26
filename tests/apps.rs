@@ -862,6 +862,84 @@ async fn run_has_limits_and_its_source_stays_private() {
     );
 }
 
+/// A helper the script started, by the pid it wrote to `data/`.
+#[cfg(unix)]
+async fn helper_pid(f: &Fixture, file: &str) -> i32 {
+    let path = f.apps.join("one/data").join(file);
+    for _ in 0..200 {
+        if let Ok(text) = std::fs::read_to_string(&path)
+            && let Ok(pid) = text.trim().parse()
+        {
+            return pid;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the action never wrote {file}");
+}
+
+/// Gone, not merely signalled: the bound is how long the test waits before it fails.
+#[cfg(unix)]
+async fn assert_gone(pid: i32, case: &str) {
+    for _ in 0..200 {
+        if unsafe { libc::kill(pid, 0) } != 0 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    unsafe { libc::kill(pid, libc::SIGKILL) };
+    panic!("{case}: the helper {pid} outlived the action");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn run_kills_what_the_script_started() {
+    let f = fixture().await;
+    write_app(
+        &f.apps,
+        "one",
+        "{}",
+        &[
+            PAGE,
+            // The helper keeps the script's stdout open after the script exits.
+            (
+                "actions/leave.sh",
+                "mkdir -p data; sleep 300 & echo $! > data/leave.pid; echo done",
+            ),
+            (
+                "actions/hang.sh",
+                "mkdir -p data; sleep 300 & echo $! > data/hang.pid; wait",
+            ),
+            (
+                "actions/close.sh",
+                "mkdir -p data; sleep 300 & echo $! > data/close.pid; wait",
+            ),
+        ],
+    );
+    let left = call(
+        &f,
+        "one",
+        "run",
+        json!({"action":"leave","timeout_ms":60_000}),
+    )
+    .await;
+    assert_eq!(left["result"]["timed_out"], false, "{left}");
+    assert_eq!(left["result"]["exit_code"], 0, "{left}");
+    assert_eq!(left["result"]["stdout"].as_str().unwrap().trim(), "done");
+    assert_gone(helper_pid(&f, "leave.pid").await, "script exit").await;
+
+    let hung = call(&f, "one", "run", json!({"action":"hang","timeout_ms":1000})).await;
+    assert_eq!(hung["result"]["timed_out"], true, "{hung}");
+    assert_gone(helper_pid(&f, "hang.pid").await, "timeout").await;
+
+    let apps = f.state.apps.clone().unwrap();
+    let page =
+        tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
+    let pid = helper_pid(&f, "close.pid").await;
+    page.abort();
+    let _ = page.await;
+    assert_gone(pid, "closed page").await;
+}
+
 #[tokio::test]
 async fn watchers_stop_with_the_bridge() {
     let f = fixture().await;

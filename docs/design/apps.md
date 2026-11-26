@@ -71,7 +71,7 @@ What an opaque origin costs, and how each is handled:
 
 **`data.onChange`.** One watcher task per app, in the gateway, however many pages are open. It runs while a page waits and 30 s after, then ends with nothing left behind. Native file events would add a dependency and platform differences, so it is a stat walk of `data/` every 200 ms: at most 4096 entries, 8 folders deep, on the blocking pool, not following links. Pages long-poll one call (`data.wait`), so a tab has no polling loop of its own, and a change made between two waits isn't lost, because the version moves. A file changed to the same size within the file system's time resolution would be missed. Measured in Chrome on the temp owner, from `writeFileSync` in another process to the page's callback, 10 samples: 16, 29, 36, 44, 75, 79, 85, 172, 175, 190 ms (macOS, debug build, a nearly empty `data/`). These are observations, and the 200 ms interval is what drives them.
 
-**`run`.** One at a time per action: a call while it's running rejects with `already_running`, so a page's timer can't pile up, and another action isn't held back. Actions inherit the gateway's environment, which is how a tracker's credentials reach them without the page seeing them. By extension: `.py` is `python3` (`py -3` on Windows), `.js`/`.mjs` is `node`, `.sh` is `sh`, `.ps1` is `powershell -NoProfile -File`, `.cmd`/`.bat` is `cmd /C`, anything else runs as the file. No shell parses the name. 60 s by default and 600 s at most, 1 MiB each of stdout and stderr, 4 at once. Args are JSON on stdin; the working folder is the app's. It kills the script on timeout or a closed page, though a child it started in turn can outlive it. Credentials come from the gateway's environment.
+**`run`.** One at a time per action: a call while it's running rejects with `already_running`, so a page's timer can't pile up, and another action isn't held back. Actions inherit the gateway's environment, which is how a tracker's credentials reach them without the page seeing them. By extension: `.py` is `python3` (`py -3` on Windows), `.js`/`.mjs` is `node`, `.sh` is `sh`, `.ps1` is `powershell -NoProfile -File`, `.cmd`/`.bat` is `cmd /C`, anything else runs as the file. No shell parses the name. 60 s by default and 600 s at most, 1 MiB each of stdout and stderr, 4 at once. Args are JSON on stdin; the working folder is the app's. The script runs as its own process tree: a new process group on Unix, a kill-on-close Job on Windows (the script starts suspended and joins the Job before it runs). The whole tree is killed on timeout, on a closed page and when the script exits, so a helper it started can't outlive the call or hold its output open. The call ends when the script exits; output still in the pipes is read for at most 1 s after the tree is killed, which only matters for a process that left the tree (a new session). Credentials come from the gateway's environment.
 
 **Web UI.** Apps is in the left navigation, and under More on a phone. The pane has tabs on top; an open app's iframe stays mounted while other tabs or views show, so moving back to the Web UI loses nothing. `#/apps/<name>` keeps the choice. The Web UI CSP gains `frame-src 'self'`.
 
@@ -90,6 +90,7 @@ What an opaque origin costs, and how each is handled:
 | Error report from the button is recorded as from the person | They pressed it | — |
 | `sha2` added as a direct dependency, `=0.11.1`, same version as Shellboy | The data hash; compiles nothing new | — |
 | `tokio` gains `process`, `fs` and `io-util` | `run` and files. Already in the tree | — |
+| `run` kills its process tree (Unix group, Windows Job) | A helper an action started kept running, and could hold the pipe so every later call timed out (#171). `windows-sys` gains `Win32_Foundation`, `Win32_Security`, `Win32_System_JobObjects` (as in Shellboy) and `Win32_System_Diagnostics_ToolHelp`; no new crate | A need for actions that keep a background process |
 
 ## Limits, and what isn't verified
 
@@ -99,7 +100,8 @@ What an opaque origin costs, and how each is handled:
 - **Sharing.** A handed-over app keeps a `thread` ID that means nothing on the other machine: it opens, with the missing-Thread notice, and the person edits `app.json`. No picker yet.
 - **A real model** hasn't made an app. The flow is `SHELLBOY_DATA_DIR`, which model shells have, plus `apps/README.md`. A model only finds the guide with a pointer in Shellboy's Agent Guide, which is a core change.
 - **The sender label doesn't reach the model.** `thread.send` saves `app:<name>`, and history shows it (real-owner test), but one captured request held only the text, with no label, and the same goes for `web`. The guide says so and has pages say who they are in the text. Core could put the label in the input.
-- **Timer-driven `run`** is tested for no overlap, not for hours of use. A grandchild of an action can outlive a timeout.
+- **Timer-driven `run`** is tested for no overlap, not for hours of use. A helper that leaves the process tree on purpose (`setsid` on Unix, a breakaway Job on Windows) is not killed.
+- **Windows Job.** The kill-on-close Job of `run` is compiled for Windows but its behaviour is tested on Unix only (the process group).
 
 ### Manual app reload
 

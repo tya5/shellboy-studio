@@ -88,22 +88,145 @@ pub fn command_for(path: &Path) -> Command {
     }
 }
 
-async fn read_capped<R: AsyncRead + Unpin>(mut reader: R) -> (Vec<u8>, bool) {
-    let mut kept = Vec::new();
+/// Reads into `kept` up to `MAX_OUTPUT`, then keeps draining so the script doesn't block on a full pipe.
+/// What it read stays in `kept` when the read is cut short.
+async fn read_capped<R: AsyncRead + Unpin>(reader: Option<R>, kept: &mut (Vec<u8>, bool)) {
+    let Some(mut reader) = reader else { return };
     let mut chunk = [0u8; 16 * 1024];
-    let mut cut = false;
     loop {
         match reader.read(&mut chunk).await {
-            Ok(0) | Err(_) => return (kept, cut),
+            Ok(0) | Err(_) => return,
             Ok(n) => {
-                let room = MAX_OUTPUT.saturating_sub(kept.len());
-                kept.extend_from_slice(&chunk[..n.min(room)]);
-                // Keep draining so the script doesn't block on a full pipe.
-                cut |= n > room;
+                let room = MAX_OUTPUT.saturating_sub(kept.0.len());
+                kept.0.extend_from_slice(&chunk[..n.min(room)]);
+                kept.1 |= n > room;
             }
         }
     }
 }
+
+/// The script and everything it starts: its own process group on Unix, a kill-on-close Job on Windows.
+/// Killed on timeout, on a closed page (drop) and when the script exits, so a helper it left running
+/// can't outlive the call or hold its output pipes open.
+struct Tree {
+    #[cfg(unix)]
+    group: Option<i32>,
+    #[cfg(windows)]
+    job: job::Job,
+}
+
+impl Tree {
+    fn kill(&self) {
+        #[cfg(unix)]
+        if let Some(group) = self.group {
+            // The group outlives the script while a member is alive, so its ID isn't reused until then.
+            unsafe { libc::killpg(group, libc::SIGKILL) };
+        }
+        #[cfg(windows)]
+        self.job.terminate();
+    }
+}
+
+impl Drop for Tree {
+    fn drop(&mut self) {
+        self.kill();
+    }
+}
+
+#[cfg(windows)]
+mod job {
+    //! A kill-on-close Job. The script starts suspended, joins the Job and only then runs, so nothing it
+    //! starts escapes the Job.
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use std::ptr::null;
+    use windows_sys::Win32::{
+        Foundation::{HANDLE, INVALID_HANDLE_VALUE},
+        System::{
+            Diagnostics::ToolHelp::{
+                CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First,
+                Thread32Next,
+            },
+            JobObjects::{
+                AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+                SetInformationJobObject, TerminateJobObject,
+            },
+            Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME},
+        },
+    };
+
+    pub use windows_sys::Win32::System::Threading::CREATE_SUSPENDED;
+
+    fn owned(handle: HANDLE) -> std::io::Result<OwnedHandle> {
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(unsafe { OwnedHandle::from_raw_handle(handle) })
+    }
+
+    /// Closing the handle (drop) kills every process still in the Job.
+    pub struct Job(OwnedHandle);
+
+    impl Job {
+        pub fn new() -> std::io::Result<Self> {
+            let job = owned(unsafe { CreateJobObjectW(null(), null()) })?;
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            if unsafe {
+                SetInformationJobObject(
+                    job.as_raw_handle(),
+                    JobObjectExtendedLimitInformation,
+                    (&raw const limits).cast(),
+                    size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                )
+            } == 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(Self(job))
+        }
+
+        /// A process started with `CREATE_SUSPENDED` joins the Job, then its one thread resumes.
+        pub fn start(&self, process: HANDLE, pid: u32) -> std::io::Result<()> {
+            if unsafe { AssignProcessToJobObject(self.0.as_raw_handle(), process) } == 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let snapshot = owned(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) })?;
+            let mut entry = THREADENTRY32 {
+                dwSize: size_of::<THREADENTRY32>() as u32,
+                ..Default::default()
+            };
+            let mut more = unsafe { Thread32First(snapshot.as_raw_handle(), &mut entry) } != 0;
+            let mut resumed = false;
+            while more {
+                if entry.th32OwnerProcessID == pid {
+                    let thread =
+                        owned(unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) })?;
+                    if unsafe { ResumeThread(thread.as_raw_handle()) } == u32::MAX {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    resumed = true;
+                }
+                more = unsafe { Thread32Next(snapshot.as_raw_handle(), &mut entry) } != 0;
+            }
+            if resumed {
+                Ok(())
+            } else {
+                Err(std::io::Error::other(
+                    "the suspended script has no thread to resume",
+                ))
+            }
+        }
+
+        pub fn terminate(&self) {
+            unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) };
+        }
+    }
+}
+
+/// How long output is still read after the script exits and its tree is killed. Only a process that left
+/// the tree (a new session, say) can hold the pipes that long.
+const DRAIN: Duration = Duration::from_secs(1);
 
 pub async fn run(
     app_name: &str,
@@ -122,46 +245,71 @@ pub async fn run(
             .clamp(1, MAX_TIMEOUT_MS),
     );
     let started = Instant::now();
-    let mut child = command_for(script)
+    let failed = |e: std::io::Error| {
+        (
+            "run_failed",
+            format!("Couldn't start {}: {e}", script.display()),
+        )
+    };
+    let mut command = command_for(script);
+    command
         .current_dir(app_dir)
         .env("SHELLBOY_APP_NAME", app_name)
         .env("SHELLBOY_APP_DATA", app_dir.join("data"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        // Dropping the future (time limit, closed page) kills it.
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| {
-            (
-                "run_failed",
-                format!("Couldn't start {}: {e}", script.display()),
-            )
-        })?;
-    let mut stdin = child.stdin.take();
+        // Dropping the future (time limit, closed page) kills the script; `Tree` kills the rest.
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    #[cfg(windows)]
+    let job = job::Job::new().map_err(failed)?;
+    #[cfg(windows)]
+    command.creation_flags(job::CREATE_SUSPENDED);
+    let mut child = command.spawn().map_err(failed)?;
+    #[cfg(windows)]
+    if let Err(e) = job.start(
+        child.raw_handle().unwrap_or(std::ptr::null_mut()),
+        child.id().unwrap_or(0),
+    ) {
+        let _ = child.start_kill();
+        return Err(failed(e));
+    }
+    let tree = Tree {
+        #[cfg(unix)]
+        group: child.id().and_then(|id| i32::try_from(id).ok()),
+        #[cfg(windows)]
+        job,
+    };
+    let stdin = child.stdin.take();
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
+    let mut out = (Vec::new(), false);
+    let mut err = (Vec::new(), false);
     let work = async {
-        let feed = async {
-            if let Some(mut s) = stdin.take() {
+        let mut reading = std::pin::pin!(async {
+            tokio::join!(read_capped(stdout, &mut out), read_capped(stderr, &mut err));
+        });
+        let mut feed = std::pin::pin!(async {
+            if let Some(mut s) = stdin {
                 let _ = s.write_all(&input).await;
             }
-        };
-        let out = async {
-            match stdout {
-                Some(s) => read_capped(s).await,
-                None => (Vec::new(), false),
+        });
+        let (mut fed, mut read) = (false, false);
+        // The script's exit ends the call; its pipes may still be held by something it started.
+        let status = loop {
+            tokio::select! {
+                () = &mut feed, if !fed => fed = true,
+                () = &mut reading, if !read => read = true,
+                status = child.wait() => break status.ok(),
             }
         };
-        let err = async {
-            match stderr {
-                Some(s) => read_capped(s).await,
-                None => (Vec::new(), false),
-            }
-        };
-        let (_, out, err) = tokio::join!(feed, out, err);
-        let status = child.wait().await.ok();
-        (status, out, err)
+        tree.kill();
+        if !read {
+            let _ = tokio::time::timeout(DRAIN, &mut reading).await;
+        }
+        status
     };
     let finish = |status: Option<std::process::ExitStatus>,
                   out: (Vec<u8>, bool),
@@ -176,7 +324,10 @@ pub async fn run(
         duration_ms: started.elapsed().as_millis() as u64,
     };
     match tokio::time::timeout(limit, work).await {
-        Ok((status, out, err)) => Ok(finish(status, out, err, false)),
-        Err(_) => Ok(finish(None, (Vec::new(), false), (Vec::new(), false), true)),
+        Ok(status) => Ok(finish(status, out, err, false)),
+        Err(_) => {
+            tree.kill();
+            Ok(finish(None, (Vec::new(), false), (Vec::new(), false), true))
+        }
     }
 }
