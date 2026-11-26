@@ -20,7 +20,7 @@ position. Panel rows can use this slot for an always-visible, independently
 labelled action after the selection button, such as revealing an artifact.
 Do not use for conversation message bodies.
 
-Use `RowActionButton` for a visible panel-row action that an owner update can remove (for example Move to background on the foreground shell). When it is removed while it holds focus, focus moves to the row's own selection button at that moment; when focus is anywhere else, including the page body, nothing moves.
+A panel row's `afterActions` slot owns focus for its action: when an owner update removes the action while it is the active element (for example Move to background on the foreground shell), focus moves to the row's own selection button at that moment; when focus is anywhere else, including the page body, nothing moves. Callers render a plain Button there.
 
 References: WAI-ARIA APG Menu Button; shadcn/ui SidebarMenuAction; system `useRowMenu`.
 
