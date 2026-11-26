@@ -11,7 +11,7 @@ use axum::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use shellboy::protocol::Command;
+use shellboy::protocol::{Command, Deliver};
 use std::{
     collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
@@ -285,6 +285,13 @@ impl<O: Owner> AppHost<O> {
     async fn owner_call(&self, command: Value) -> Result<Value, Value> {
         let parsed: Command = serde_json::from_value(command)
             .map_err(|e| json!({"code":"invalid_args","message":e.to_string()}))?;
+        // Protocol 41 removed fresh `deliver: now`; like the browser allowlist, the app
+        // surface never sends it (the variant remains only for Core's saved replay).
+        if matches!(&parsed, Command::MessageSend(send) if send.deliver == Deliver::Now) {
+            return Err(
+                json!({"code":"invalid_args","message":"deliver must be next or complete"}),
+            );
+        }
         let _permit = self
             .apps
             .global

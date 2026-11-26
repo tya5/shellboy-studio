@@ -39,7 +39,7 @@ Every call returns a promise and rejects with an `Error` that has a `code`.
 | `shellboy.data.write(path, text, {hash})` | `{hash}`. With `hash`, fails with code `conflict` if the file changed since you read it; `hash: null` means it must not exist yet. Without the option, overwrites |
 | `shellboy.data.list(path?)` | `{entries: [{name, dir, size}]}` |
 | `shellboy.data.onChange(fn)` | Calls `fn({paths})` soon after any file in `data/` changes, whoever wrote it: your Thread's shell, an action or the page itself. Returns a function that stops it. Watches up to 4096 entries, 8 folders deep |
-| `shellboy.thread.send(text, {thread, deliver})` | Sends a message, recorded as from `app:<name>`, not from a person |
+| `shellboy.thread.send(text, {thread, deliver})` | Sends a message, recorded as from `app:<name>`, not from a person. `deliver` is `next` (default) or `complete`; `now` fails with code `invalid_args` |
 | `shellboy.thread.get(thread?)` | A Thread details object: `thread_id`, `title`, `cwd`, `connection`, `model`, `agents_path`, `shells_count`; optional fields include `run_id`, `turn_id`, `parent_thread_id`, `effort` and `archived_at` |
 | `shellboy.thread.messages({thread, limit, cursor, since})` | `{items, limit, filters, next_cursor?}`, oldest first, as `shellboy history list` returns them |
 | `shellboy.threads.list({query, limit, cursor, archived})` | `{items, limit, filters, next_cursor?}`; each item has `thread_id`, `title`, `cwd`, `state`, `activity`, `updated_at` and `excerpt`; `parent_thread_id` and `archived_at` may be omitted |
