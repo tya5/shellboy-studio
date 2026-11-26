@@ -19,7 +19,7 @@ export function senderHeaderDisplay(threadId: string, title: SenderTitle | undef
   });
 }
 
-export type MessageRelationship = {kind:'unavailable'}|{kind:'ordinary'}|{kind:'reply';requestId:string}|{kind:'request';state:'pending'|'replied'|'ignored'|'cancelled';replyId?:string};
+export type MessageRelationship = {kind:'unavailable'}|{kind:'ordinary'}|{kind:'reply';requestId:string}|{kind:'request';state:'pending'|'awaiting_own_ask'|'replied'|'ignored'|'cancelled';replyId?:string};
 export function messageRelationship(value:unknown,nodeId?:string):MessageRelationship{
  const message=admitMessageProvenance(value,nodeId);
  if(!message)return {kind:'unavailable'};

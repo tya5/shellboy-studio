@@ -261,6 +261,7 @@ export interface ThreadSummary {
 }
 
 export interface ReplyCount { count: number; exact: boolean }
+export interface AwaitingOwnAsk { message_id: string; blocking_message_id: string }
 export interface ReplySender {
   kind: "model" | "external_cli" | "human" | "unknown";
   thread_id?: string;
@@ -331,7 +332,8 @@ export interface ThreadDetails {
   archived_at?: string;
   tags?: string[];
   shells_count: number;
-  pending_replies?: { owed_by: ReplyCount; asked_by: ReplyCount };
+  /** `awaiting_own_ask` (protocol 43) lists owed duties held open by this Thread's own ask; omitted when empty. */
+  pending_replies?: { owed_by: ReplyCount; asked_by: ReplyCount; awaiting_own_ask?: AwaitingOwnAsk[] };
   [extra: string]: unknown;
 }
 
@@ -417,7 +419,7 @@ export type NotificationDescriptor =
 
 export type MessageProvenance =
   | {expect_reply:false;reply_to?:string}
-  | {expect_reply:true;reply_state:'pending'|'ignored'|'cancelled';reply_node_id?:never}
+  | {expect_reply:true;reply_state:'pending'|'awaiting_own_ask'|'ignored'|'cancelled';reply_node_id?:never}
   | {expect_reply:true;reply_state:'replied';reply_node_id:string};
 
 export type AttemptId = string & { readonly __attemptId: unique symbol };

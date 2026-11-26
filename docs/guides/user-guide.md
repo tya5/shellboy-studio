@@ -64,7 +64,7 @@ The sidebar also gains screen-reader tree navigation, focused conversation rows 
 | Tab | What to look for |
 | --- | --- |
 | **Activity** | Running work and pending deliveries. A running shell shows **Foreground** when the model's Turn is waiting on it, or **Background** when it runs on its own. The foreground row shows **Move to background** as a visible button; its action menu offers **Stop this shell** (confirmation required). Other running shells offer **Move to background** and **Stop this shell** in their action menu, and the shell's details offer both for any running shell. |
-| **Reply needed** | Requests this Thread owes a reply to. Open the request and use its reply action when available. |
+| **Reply needed** | Requests this Thread owes a reply to. Open the request and use its reply action when available. A request shows **Asked back** while this Thread waits for the answer to a question it asked; it stays here until it is answered. In the conversation, the request's caption reads **Request · Asked back** next to the other states (**Awaiting reply**, **Replied**, **Ignored**, **Cancelled**). |
 | **Awaiting reply** | Requests this Thread is waiting to have answered, not requests you need to answer. |
 | **Possessions** | **Artifacts** and **Attachments** when supported. Open an artifact to inspect its available preview and versions. Versions record references, not copies of files. |
 | **Analytics** | This Thread's **Conversation tokens** (retained history, including failed and incomplete requests), **Summary tokens**, and **Recent compactions**. |
@@ -211,7 +211,7 @@ Tab または Shift+Tab で行メニューから出ると、その行の外の�
 | タブ | 内容 |
 | --- | --- |
 | **動作** | 実行中の作業や配信待ちの項目。行を開くとツール出力などの詳細と利用できる操作が表示されます。実行中のシェルには、モデルの Turn がそのシェルを待っているときは **前面**、待たずに動いているときは **裏** と表示されます。前面の行には **バックグラウンドに移動** のボタンが表示され、行メニューには **このシェルを停止**（確認あり）があります。ほかの実行中のシェルでは、行メニューに **バックグラウンドに移動** と **このシェルを停止** があり、どの実行中のシェルでも詳細から両方を使えます。 |
-| **要返信** | このスレッドが返答する依頼。依頼を開き、利用できる場合は返信操作を使います。 |
+| **要返信** | このスレッドが返答する依頼。依頼を開き、利用できる場合は返信操作を使います。このスレッドが自分から質問を返して答えを待っている間、その依頼には **質問返し中** と表示され、返答するまでここに残ります。会話の中では、依頼の注記がほかの状態（**返信待ち**、**返信済み**、**無視済み**、**取消済み**）と同じ位置に **リクエスト · 質問返し中** と表示されます。 |
 | **返信待ち** | このスレッドが送った依頼のうち、相手の返答を待っているもの。 |
 | **持ち物** | 対応する場合に **成果物** と **添付** を表示します。成果物を開くと利用できるプレビューと版を確認できます。版に記録されるのは参照先で、ファイルのコピーではありません。 |
 | **分析** | このスレッドの **会話のトークン**（残っている履歴の完了・失敗・未完了の要求）、**要約のトークン**、**最近の圧縮**。 |

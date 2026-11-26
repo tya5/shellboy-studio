@@ -742,6 +742,8 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
   const t = model.t.value;
   const tab = side === "owed_by" ? "reply-needed" : "awaiting-reply";
   const page = model.replyPages[side].value;
+  // Core's typed list of owed duties held open by this Thread's own ask; never derived here.
+  const askedBack = side === "owed_by" ? model.details.value?.pending_replies?.awaiting_own_ask : undefined;
   return <div class="panel-list" data-panel-list={tab}>
     {page.items.map(reply => {
       const human = reply.recipient.kind === "name" && reply.recipient.name === "human";
@@ -758,7 +760,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
       const actions = [...(target ? [{ key: "open", label: t("panel.openThread"), href: target }] : []),
         ...(side === "asked_by" ? [panelCancel(model, reply.message_id, "reply")] : [])];
       return <ListRow key={reply.message_id} id={reply.message_id} title={[party, reply.excerpt || t("work.textUnavailable")].filter(Boolean).join(" · ")}
-        subtitle={panelElapsed(model.now.value, reply.created_at)} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
+        subtitle={[panelElapsed(model.now.value, reply.created_at), askedBack?.some(duty => duty.message_id === reply.message_id) ? t("convo.relation.awaiting_own_ask") : undefined].filter(Boolean).join(" · ") || undefined} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
         menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener), true)} />;
     })}
     {page.loading && !page.loaded || page.loadingMore ? <p role="status">{t("common.loading")}</p> : null}

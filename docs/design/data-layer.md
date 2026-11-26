@@ -247,6 +247,12 @@ On a Core hint, each run re-reads its loaded page count. A failed read keeps
 its previous rows and its typed error. Only `cursor_expired` clears the continuation on failure;
 other failures leave More available for retry. A cancelled read is not a failure: the rows and state stay as they were. A Thread or owner change cancels the reads. Only `owed_by` senders use the sender-title
 lookup budget; `asked_by` rows display the recipient.
+An `owed_by` row whose message ID appears in Core's typed
+`pending_replies.awaiting_own_ask` list (protocol 43, at most 16 pairs, omitted
+when empty) is captioned Asked back; the row stays in the list because Core
+counts and lists both open states. The untyped `reply` object on `message.list`
+items is not read, and the state of a duty another Thread owes (`asked_by` rows)
+is not shown.
 The HumanInbox (Awaiting you) binds one `PageRun` to `message.list` with
 `to: "human"`, 16 rows per request and at most 128 retained rows. Its hint
 source is the list hint (`listHint`), not one Thread's hints: on a list change
