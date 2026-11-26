@@ -555,6 +555,10 @@ the foundation works end to end (§2.1).
 
 For the existing macOS/Windows desktop path, each Studio launch or manual Start has a budget of one immediate automatic restart after an unsuccessful exit following the authoritative `ready` event. Readiness and elapsed time never replenish that budget. If the restarted child exits again, whether before or after ready, Studio gives up automatic restarts, keeps the last failure visible, and waits for a manual Start. A clean exit or an initial startup failure is shown without an automatic retry. Readiness itself has no new deadline: slow startup is not killed by this policy. A manual Start or Restart resets the budget. An explicit Stop or Restart bypasses automatic exit classification and never spends an automatic retry. The authenticated bridge forwards launcher-owned lifecycle facts as `launcher_state` and the bounded Core startup-stage read as `startup_stage`; neither frame is a progress estimate. This portable supervisor has no Linux end-to-end caller in #32.
 
+### Desktop logs (#171)
+
+`owner.log` and `studio.log` each keep at most 8 MiB, plus one older copy (`owner.log.1`, `studio.log.1`), so a Studio that runs for weeks doesn't fill the disk. `owner.log` has one writer in the server: Core's stdout and stderr (from `config init` and `serve`) are piped into it a whole line at a time per stream (an unfinished line is held up to 8 KiB), so one stream never splits a line of the other, and a write that would pass the cap first moves the file to `.1`, replacing the older copy. The startup-failure reader's start offset moves to the new file with it. `studio.log` is the server's own stdout and stderr, which the server holds open for its life, so the cap is applied when the launcher starts a server: a file at the cap is moved to `.1` first. Within one server run it grows only by the server's own lines (an owner becoming unreachable, startup problems).
+
 ### Conversation work observation decision (2026-11-07)
 
 | Decision | Reason and impact | Revisit when |

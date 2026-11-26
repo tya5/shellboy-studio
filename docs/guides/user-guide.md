@@ -120,7 +120,7 @@ Closing the browser tab does not stop Studio. Use **Quit Studio** to stop the br
 
 Open **Settings › Core** from the desktop status bar or the banner shown when Core is starting, stopped, or unable to start. Startup shows the last stage reported by Core, not a percentage or finish time. **Running now** links to the work’s Thread; a shell opens Activity. **Restart owner** or **Stop Core** confirms when Runs or shells are running. Interrupted Runs do not resume. **Start Core** starts the bundled owner again. An explicit Stop or Restart never triggers automatic restart. After an unexpected exit following readiness, Studio tries once; a manual Start or Restart resets that allowance.
 
-For an independently started Core, the page offers **Stop Core** and a terminal start command but does not restart it. If a TUI-hosted Core refuses shutdown, quit the TUI in its terminal. **Restart pending** lists only settings saved in this tab that Core marked as requiring a restart. For diagnostics, see `studio.log` and `owner.log` under `~/Library/Application Support/shellboy-studio` on macOS or `%APPDATA%\shellboy-studio` on Windows. Don't share tokens or private log contents.
+For an independently started Core, the page offers **Stop Core** and a terminal start command but does not restart it. If a TUI-hosted Core refuses shutdown, quit the TUI in its terminal. **Restart pending** lists only settings saved in this tab that Core marked as requiring a restart. For diagnostics, see `studio.log` and `owner.log` under `~/Library/Application Support/shellboy-studio` on macOS or `%APPDATA%\shellboy-studio` on Windows. Each keeps at most 8 MiB, with the previous part in `studio.log.1` and `owner.log.1`. Don't share tokens or private log contents.
 
 ## Open on another device
 
@@ -267,7 +267,7 @@ macOS では **システム設定 > 一般 > ログイン項目と機能拡張 >
 
 デスクトップのステータスバー、または起動中・停止中・起動失敗時に表示されるバナーから **設定 › Core** を開きます。起動中は Core が最後に報告した段階を表示し、進捗率や残り時間は表示しません。**実行中の作業** の行を選ぶと、そのスレッドを開きます。シェルの場合は右パネルの「動作」も開きます。実行中の Run やシェルがある場合、**オーナーを再起動** または **Core を停止** の前に確認します。中断された Run は再開されません。**Core を起動** で同梱 Core を起動できます。明示的な停止や再起動では自動再起動しません。準備完了後の予期しない終了に対して自動再起動は一度だけで、手動で起動または再起動すると回数が戻ります。
 
-別途起動した Core には **Core を停止** と端末で起動するコマンドを表示しますが、Studio は再起動しません。TUI が停止を拒否した場合は、その端末で TUI を終了してください。**再起動待ち** には、このタブで保存した設定のうち、Core が再起動を必要と判定したものだけを表示します。診断ログ `studio.log` と `owner.log` は macOS では `~/Library/Application Support/shellboy-studio`、Windows では `%APPDATA%\shellboy-studio` にあります。トークンや非公開ログを共有しないでください。
+別途起動した Core には **Core を停止** と端末で起動するコマンドを表示しますが、Studio は再起動しません。TUI が停止を拒否した場合は、その端末で TUI を終了してください。**再起動待ち** には、このタブで保存した設定のうち、Core が再起動を必要と判定したものだけを表示します。診断ログ `studio.log` と `owner.log` は macOS では `~/Library/Application Support/shellboy-studio`、Windows では `%APPDATA%\shellboy-studio` にあります。各ログは最大 8 MiB で、それより前の部分は `studio.log.1` と `owner.log.1` に残ります。トークンや非公開ログを共有しないでください。
 
 ### スマホなど別の端末で開く
 
