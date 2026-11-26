@@ -3004,3 +3004,136 @@ async fn intervention_commands_reach_the_pinned_owner() {
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// The first model request runs one named human Ask; later requests finish the Turn.
+async fn named_ask_provider() -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let requests = requests.clone();
+            tokio::spawn(async move {
+                let mut seen = Vec::new();
+                let mut chunk = [0u8; 8192];
+                loop {
+                    let Ok(n) = socket.read(&mut chunk).await else {
+                        return;
+                    };
+                    if n == 0 {
+                        return;
+                    }
+                    seen.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&seen);
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let length = text[..end]
+                            .lines()
+                            .find_map(|line| {
+                                line.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|value| value.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if seen.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let usage = json!({"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2});
+                let body = if seen.starts_with(b"GET ") {
+                    r#"{"object":"list","data":[{"id":"mock-model","object":"model"}]}"#.to_owned()
+                } else if requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                    let command = "shellboy message ask --to human --sender-label Release-assistant --text studio-named-ask";
+                    let args = json!({"command":command,"description":"named ask fixture"});
+                    let call = json!({"type":"function_call","id":"named-ask","call_id":"named-ask","name":"shell","arguments":args.to_string()});
+                    json!({"id":"named-ask-tool","status":"completed","output":[call],"usage":usage}).to_string()
+                } else {
+                    let item = json!({"id":"done","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]});
+                    json!({"id":"named-ask-done","status":"completed","output":[item],"usage":usage}).to_string()
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket.write_all(body.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+    format!("http://{addr}/v1")
+}
+
+/// Core #434 / Studio #163: the history window Studio reads carries the saved model sender of
+/// a named in-Turn human Ask, so the timeline needs no Studio-side identity.
+#[tokio::test]
+async fn named_ask_history_window_carries_the_saved_model_sender() {
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
+    let root = temp_root();
+    let data = root.join("data");
+    let url = named_ask_provider().await;
+    let serve = start_owner_with(&bin, &root, &data, &url);
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner.clone(), true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut client = Client { ws, next: 0 };
+    next_t(&mut client.ws, "hello").await;
+    let thread = client
+        .ok(
+            "thread.create",
+            json!({"cwd":root.to_str().unwrap()}),
+            Some(format!("{}:named-ask-thread", serve.instance)),
+        )
+        .await["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    client
+        .ok(
+            "message.send",
+            json!({"thread_id":thread,"text":"ask the person"}),
+            Some(format!("{}:named-ask-send", serve.instance)),
+        )
+        .await;
+    client.settled(&thread).await;
+    let window = client
+        .ok(
+            "history.window",
+            json!({"thread_id":thread,"items":true,"before":20,"after":0,"excerpt_chars":160}),
+            None,
+        )
+        .await;
+    let accepted = saved_shell_result(owner.as_ref(), &thread, "studio-named-ask").await;
+    assert_eq!(accepted["ok"], true, "named Ask accepted: {accepted}");
+    let ask = window["items"]
+        .as_array()
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item["provenance"]["sender"]["label"] == "Release-assistant")
+        })
+        .unwrap_or_else(|| panic!("named Ask node with its sender: {window}"));
+    assert_eq!(ask["node_id"], accepted["result"]["message_id"], "{ask}");
+    assert_eq!(ask["kind"], "assistant", "{ask}");
+    let sender = &ask["provenance"]["sender"];
+    assert_eq!(sender["kind"], "model", "{ask}");
+    assert_eq!(sender["thread_id"], thread.as_str(), "{ask}");
+    drop(client);
+    cancel.cancel();
+    drop(serve);
+    let _ = std::fs::remove_dir_all(&root);
+}

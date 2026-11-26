@@ -48,6 +48,24 @@ describe('sender facts in the existing conversation',()=>{
     expect(message.querySelector('.message-sender')?.textContent).not.toBe('You');
     expect(message.querySelector('[data-message-relation="reply"]')?.textContent).toContain('original-request');
   });
+  it('shows the saved model sender of a named in-Turn human Ask (Core #434, Studio #163)', async () => {
+    // The node shape the pinned Core returns from history.window for a named Ask (real-owner witness).
+    const r = await fixtureModel({ configure(db) {
+      db.history.lead = [{ node_id: 'ask', kind: 'assistant', excerpt: 'Should the release preview open on Overview or Timeline?', execution_count: 0, execution_count_exact: true, executions_truncated: false,
+        items: [{ item_identity: '["ask","/content/0"]', kind: 'text', text: 'Should the release preview open on Overview or Timeline?', text_complete: true }],
+        provenance: { kind: 'assistant', created_at: '2026-11-26T00:15:42Z', source_revision: 0,
+          sender: { kind: 'model', label: 'Release assistant', thread_id: 'asker', instance_id: 'fixture', run_id: 'run', turn_id: 'turn', execution_id: 'shell' } } }];
+      db.threads.asker = { ...db.threads.lead!, thread_id: 'asker', title: 'Release thread' };
+    } });
+    host = document.createElement('div'); document.body.append(host); cleanup = () => r.model.dispose();
+    const prefs = signal<Prefs>({ design: 'console', theme: 'console', lang: 'en', weights: { cached: .1, output: 5 } });
+    await act(async () => { render(<App context={{ model: r.model, prefs, designs: DESIGNS, setPrefs() {}, submitToken: async () => true }} />, host!); await settle(r.t, r.db); });
+    const message = [...host.querySelectorAll('.msg')].find(row => row.textContent?.includes('Overview or Timeline'))!;
+    expect(message).toBeDefined();
+    expect(message.textContent).not.toContain('Unknown sender');
+    expect(message.querySelector('.message-sender a')?.getAttribute('href') ?? '').toContain('asker');
+    expect(message.querySelector('.sender-fact')?.textContent).toContain('Self-asserted label: Release assistant');
+  });
   it('does not call malformed model identity You or invent a sender ID for CLI/human',async()=>{
     const r=await rig();const messages=[...r.host.querySelectorAll('.msg')];const unknown=messages.find(e=>e.textContent?.includes('body-unknown'))!;
     expect(unknown.textContent).toContain('Model sender (identity unavailable)');expect(unknown.querySelector('.message-sender')!.textContent).not.toBe('You');
