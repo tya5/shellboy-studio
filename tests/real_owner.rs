@@ -233,7 +233,7 @@ async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
             "shellboy message reply --message {ask_id} --text ok"
         ))
         .unwrap();
-    wait_run_ended(&owner, &run_id).await;
+    wait_run_ended(&owner, &thread, &run_id).await;
 
     let replied = saved_shell_result(&owner, &thread, "shellboy message reply").await;
     let reply = &replied["result"];
@@ -302,7 +302,7 @@ async fn routed_reply_delivery_is_returned_by_the_pinned_owner() {
         .as_str()
         .unwrap()
         .to_owned();
-    wait_run_ended(&owner, &run_id).await;
+    wait_run_ended(&owner, &asking, &run_id).await;
 
     // The asking model's saved tool result names its Ask exactly.
     let asked = saved_shell_result(&owner, &asking, "shellboy message ask").await;
@@ -365,8 +365,8 @@ async fn cli_json(bin: &Path, root: &Path, args: &[&str]) -> Value {
     serde_json::from_slice(&output.stdout).expect("CLI JSON result")
 }
 
-/// Waits for the owner's `run_ended` condition on exactly this Run.
-async fn wait_run_ended(owner: &IpcOwner, run_id: &str) {
+/// Waits for the owner's `run_ended` condition on exactly this Run in `thread_id`.
+async fn wait_run_ended(owner: &IpcOwner, thread_id: &str, run_id: &str) {
     use shellboy::protocol::{Command as CoreCommand, WaitArgs, WaitCondition};
     let ended = owner
         .call(
@@ -374,7 +374,10 @@ async fn wait_run_ended(owner: &IpcOwner, run_id: &str) {
                 conditions: vec![WaitCondition::RunEnded {
                     run_id: run_id.into(),
                 }],
-                timeout_ms: 30_000,
+                // Watchdog only, not a pass condition: the Run's own end is the signal. The
+                // mock's shell step can take a variable time (Windows PowerShell prepares its
+                // modules on first use), so this bound only stops a hung Run.
+                timeout_ms: 300_000,
                 after: None,
             }),
             None,
@@ -383,7 +386,10 @@ async fn wait_run_ended(owner: &IpcOwner, run_id: &str) {
         .await
         .unwrap();
     let ended = serde_json::to_value(ended).unwrap()["result"].clone();
-    assert_eq!(ended["status"], "satisfied", "Run completion: {ended}");
+    if ended["status"] != "satisfied" {
+        let shells = run_shell_report(owner, thread_id, run_id).await;
+        panic!("Run completion: {ended}\nshells of Run {run_id}:\n{shells}");
+    }
     assert!(
         ended["matched"].as_array().is_some_and(|items| {
             items
@@ -392,6 +398,89 @@ async fn wait_run_ended(owner: &IpcOwner, run_id: &str) {
         }),
         "completion must identify this Run: {ended}"
     );
+}
+
+/// Diagnostics for a Run that did not end: each of its shells with command, state, exit code
+/// and the tail of its saved stdout and stderr.
+async fn run_shell_report(owner: &IpcOwner, thread_id: &str, run_id: &str) -> String {
+    use shellboy::protocol::{Command as CoreCommand, ShellListArgs, ShellReadArgs};
+    let tail = |text: &str| {
+        let chars = text.chars().count();
+        text.chars()
+            .skip(chars.saturating_sub(2_000))
+            .collect::<String>()
+    };
+    let shells = owner
+        .call(
+            CoreCommand::ShellList(ShellListArgs {
+                thread_id: Some(thread_id.to_owned()),
+                since: None,
+                until: None,
+                command_contains: None,
+                state: None,
+                exit_code: None,
+                limit: 50,
+                cursor: None,
+            }),
+            None,
+            None,
+        )
+        .await;
+    let shells = match shells {
+        Ok(shells) => serde_json::to_value(shells).unwrap(),
+        Err(error) => return format!("shell list failed: {error:?}"),
+    };
+    let mut report = String::new();
+    for shell in shells["result"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|shell| shell["run_id"] == run_id)
+    {
+        report.push_str(&format!(
+            "- {} command={} state={} exit_code={}\n",
+            shell["execution_id"], shell["command_excerpt"], shell["state"], shell["exit_code"]
+        ));
+        let read = owner
+            .call(
+                CoreCommand::ShellRead(ShellReadArgs {
+                    execution_id: shell["execution_id"].as_str().unwrap_or_default().into(),
+                    segments: true,
+                    cursor: None,
+                    encoding: Some("UTF-8".into()),
+                    limit_bytes: 65_536,
+                }),
+                None,
+                None,
+            )
+            .await;
+        let read = match read {
+            Ok(read) => serde_json::to_value(read).unwrap()["result"].clone(),
+            Err(error) => {
+                report.push_str(&format!("  shell read failed: {error:?}\n"));
+                continue;
+            }
+        };
+        let text = read["text"].as_str().unwrap_or_default();
+        for stream in ["stdout", "stderr"] {
+            let part = read["segments"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|segment| segment["stream"] == stream)
+                .filter_map(|segment| {
+                    let start = segment["start_byte"].as_u64()? as usize;
+                    let end = segment["end_byte"].as_u64()? as usize;
+                    text.get(start..end)
+                })
+                .collect::<String>();
+            report.push_str(&format!("  {stream} tail: {}\n", tail(&part)));
+        }
+    }
+    if report.is_empty() {
+        report.push_str(&format!("(no shells for this Run): {shells}"));
+    }
+    report
 }
 
 /// The root JSON result printed on stdout by the one shell in `thread_id` whose command
