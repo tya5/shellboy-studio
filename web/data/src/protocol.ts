@@ -277,22 +277,10 @@ export interface PendingReply {
   excerpt: string;
 }
 
-/** Exact owner observation returned by run.get for a management-target Run. */
-export type RunState = "live" | "stopping" | "stopped" | "completed" | "failed";
 export type TurnState = "preparing" | "running" | "waiting" | "recovery_wait" | "completed" | "stopped" | "failed";
 
 /** A stop settlement failed and the Run is still `stopping`; cleared on successful settlement. */
 export type RunStopSettlementFailure = "storage" | "invariant";
-
-export interface RunDetails {
-  run_id: string;
-  thread_id: string;
-  state: RunState;
-  turn_id?: string;
-  recovery_hint?: string;
-  stop_settlement_failure?: RunStopSettlementFailure | null;
-  [extra: string]: unknown;
-}
 
 /** Exact owner observation returned by turn.get for a management-target Turn. */
 export interface TurnDetails {
