@@ -394,8 +394,9 @@ async fn wait_run_ended(owner: &IpcOwner, run_id: &str) {
     );
 }
 
-/// The root JSON result printed by the one shell in `thread_id` whose command contains
-/// `command`, read from the owner's saved shell output.
+/// The root JSON result printed on stdout by the one shell in `thread_id` whose command
+/// contains `command`, read from the owner's saved output segments. Stderr (for example
+/// PowerShell progress records on Windows) is excluded by stream, not by text.
 async fn saved_shell_result(owner: &IpcOwner, thread_id: &str, command: &str) -> Value {
     use shellboy::protocol::{Command as CoreCommand, ShellListArgs, ShellReadArgs};
     let shells = owner
@@ -424,7 +425,7 @@ async fn saved_shell_result(owner: &IpcOwner, thread_id: &str, command: &str) ->
         .call(
             CoreCommand::ShellRead(ShellReadArgs {
                 execution_id: items[0]["execution_id"].as_str().unwrap().into(),
-                segments: false,
+                segments: true,
                 cursor: None,
                 encoding: Some("UTF-8".into()),
                 limit_bytes: 65_536,
@@ -435,10 +436,25 @@ async fn saved_shell_result(owner: &IpcOwner, thread_id: &str, command: &str) ->
         .await
         .unwrap();
     let output = serde_json::to_value(output).unwrap();
-    let text = output["result"]["text"]
-        .as_str()
-        .expect("shell output text");
-    serde_json::from_str(text).unwrap_or_else(|error| panic!("`{command}` JSON ({error}): {text}"))
+    let read = &output["result"];
+    assert_eq!(
+        read["output_complete"], true,
+        "whole `{command}` output: {output}"
+    );
+    let text = read["text"].as_str().expect("shell output text");
+    let stdout = read["segments"]
+        .as_array()
+        .expect("shell output segments")
+        .iter()
+        .filter(|segment| segment["stream"] == "stdout")
+        .map(|segment| {
+            let start = segment["start_byte"].as_u64().unwrap() as usize;
+            let end = segment["end_byte"].as_u64().unwrap() as usize;
+            &text[start..end]
+        })
+        .collect::<String>();
+    serde_json::from_str(&stdout)
+        .unwrap_or_else(|error| panic!("`{command}` stdout JSON ({error}): {output}"))
 }
 
 #[tokio::test]
