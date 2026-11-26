@@ -470,6 +470,8 @@ export interface ShellEntry {
   started_at?: string;
   ended_at?: string;
   exit_code?: number | null;
+  /** Running items only: the current Turn waits on exactly this execution. Not used by the UI yet. */
+  foreground?: boolean | null;
   [extra: string]: unknown;
 }
 
