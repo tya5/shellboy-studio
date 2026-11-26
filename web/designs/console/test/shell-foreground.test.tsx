@@ -37,6 +37,7 @@ async function open(lang: Lang = "en") {
 }
 
 const row = (id: string) => host!.querySelector<HTMLElement>(`[data-panel-row-id="${id}"]`)!;
+const mark = (id: string) => row(id).querySelector(".panel-list-main [data-status]")?.textContent ?? "";
 const subtitle = (id: string) => row(id).querySelector(".panel-list-subtitle")?.textContent ?? "";
 const visibleButtons = (id: string) => [...row(id).querySelectorAll<HTMLButtonElement>(":scope > button:not(.panel-list-main)")];
 async function menuItems(id: string): Promise<string[]> {
@@ -49,9 +50,11 @@ async function menuItems(id: string): Promise<string[]> {
 it("labels running shells from the typed foreground fact and puts Background on the foreground row", async () => {
   const f = await open();
   try {
-    expect(subtitle("exec-fg").startsWith("Foreground")).toBe(true);
-    expect(subtitle("exec-bg").startsWith("Background")).toBe(true);
-    expect(subtitle("exec-unknown")).not.toMatch(/Foreground|Background/);
+    expect(mark("exec-fg")).toBe("Foreground");
+    expect(mark("exec-bg")).toBe("Background");
+    expect(row("exec-unknown").querySelector(".panel-list-main [data-status]")).toBeNull();
+    // The placement is the row's status mark, not part of the elapsed-time subtitle.
+    expect(subtitle("exec-fg")).not.toMatch(/Foreground|Background/);
     const fgButtons = visibleButtons("exec-fg");
     expect(fgButtons.map(button => button.textContent)).toEqual(["Move to background"]);
     expect(visibleButtons("exec-bg")).toEqual([]);
@@ -63,13 +66,21 @@ it("labels running shells from the typed foreground fact and puts Background on 
     await act(async () => { fgButtons[0]!.click(); await flush(8); await settle(f.t, f.db); });
     expect(f.t.calls("shell.background")).toHaveLength(before + 1);
     expect(f.t.calls("shell.background").at(-1)?.args).toEqual({ execution_id: "exec-fg" });
+    // The owner confirms: the shell keeps running in the background, reported on its ordinary hint.
+    const reads = { shell: f.t.calls("shell.list").length };
+    f.db.shells.lead = f.db.shells.lead!.map(shell => shell.execution_id === "exec-fg" ? { ...shell, foreground: false } : shell);
+    await act(async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }); await settle(f.t, f.db); });
+    expect(f.t.calls("shell.list").length).toBeGreaterThan(reads.shell);
+    expect(mark("exec-fg")).toBe("Background");
+    expect(visibleButtons("exec-fg")).toEqual([]);
+    expect(await menuItems("exec-fg")).toContain("Move to background");
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
 it("uses the Japanese words 前面 and 裏", async () => {
   const f = await open("ja");
   try {
-    expect(subtitle("exec-fg").startsWith("前面")).toBe(true);
-    expect(subtitle("exec-bg").startsWith("裏")).toBe(true);
+    expect(mark("exec-fg")).toBe("前面");
+    expect(mark("exec-bg")).toBe("裏");
   } finally { f.model.dispose(); f.data.stop(); }
 });
