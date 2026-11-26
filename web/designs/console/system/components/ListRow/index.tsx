@@ -6,7 +6,7 @@ import { Icon, type IconRole } from "../Icon";
 type PanelRow = {
   readonly id: string;
   readonly title: string;
-  readonly subtitle?: string;
+  readonly subtitle?: ComponentChildren;
   readonly command?: string | undefined;
   readonly icon?: IconRole;
   readonly waiting?: boolean;

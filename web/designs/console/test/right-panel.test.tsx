@@ -596,6 +596,19 @@ describe('right panel purpose',()=>{
   }finally{f.model.dispose();f.data.stop();}
  });
 
+ it('keeps the Activity elapsed time following the clock (#171)',async()=>{
+  const f=await setup();
+  try{
+   const subtitle=()=>f.host.querySelector('[data-panel-list="work"] [data-panel-row-id="shell-running"] .panel-list-subtitle')?.textContent;
+   act(()=>{f.model.now.value=Date.parse('2026-11-21T00:00:05Z');});
+   const first=subtitle();
+   expect(first).toBeTruthy();
+   act(()=>{f.model.now.value+=60_000;});
+   expect(subtitle()).toBeTruthy();
+   expect(subtitle()).not.toBe(first);
+  }finally{f.model.dispose();f.data.stop();}
+ });
+
  it('opens an action detail from its row and returns with list scroll and selection intact; Escape also returns',async()=>{
   const f=await setup();
   try{
