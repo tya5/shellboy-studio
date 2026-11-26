@@ -7,7 +7,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, expect, it } from "vitest";
 import { fixtureModel } from "../../../ui-core/test/fixture";
-import { settle, summary } from "../../../data/test/harness";
+import { settle, summary, type FakeOwnerDb } from "../../../data/test/harness";
 import type { DesignContext, Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
@@ -19,14 +19,18 @@ afterEach(() => {
   host = undefined;
 });
 
-async function open(failure: unknown, runState = "stopping") {
+/** The owner's saved Run, changed between hints the way Core records and settles a stop. */
+interface SavedRun { state: string; failure?: unknown }
+
+async function open(run: SavedRun) {
   const f = await fixtureModel({ route: "conversation", threadId: "stopping", configure(db) {
     db.threads.stopping = summary("stopping", { state: "stopping", activity: "stopping" });
+    db.details.stopping = { ...db.details.stopping!, run_id: "run-s" };
     db.work.stopping = [{ kind: "run", id: "run-s", thread_id: "stopping", run_id: "run-s", state: "stopping" }];
     const base = db.answer.bind(db);
     db.answer = call => call.command === "run.get"
-      ? { ok: true, result: { run_id: "run-s", thread_id: "stopping", state: runState, owned_execution_ids: [], context: {}, ...(failure === undefined ? {} : { stop_settlement_failure: failure }) } }
-      : base(call);
+      ? { ok: true, result: { run_id: "run-s", thread_id: "stopping", state: run.state, owned_execution_ids: [], context: {}, ...(run.failure === undefined ? {} : { stop_settlement_failure: run.failure }) } }
+      : call.command === "run.stop" ? { ok: true, result: { run_id: "run-s", state: "stopping" } } : base(call);
   } });
   const prefs = signal<Prefs>({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 } });
   const context: DesignContext = { model: f.model, designs: DESIGNS, prefs, setPrefs(change) { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true };
@@ -36,34 +40,59 @@ async function open(failure: unknown, runState = "stopping") {
   return f;
 }
 
-it("shows a saved storage failure for the stopping Run under the status line", async () => {
-  const f = await open("storage");
+/** The owner's ordinary changed hint for this Thread; no other read trigger. */
+async function hint(f: { t: Parameters<typeof settle>[0]; db: FakeOwnerDb }) {
+  await act(async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["stopping"], list: false }); await settle(f.t, f.db); });
+}
+
+const line = () => host!.querySelector<HTMLElement>("[data-stop-settlement-failure]");
+
+it("appears for the named Run on the owner's hint and clears when the owner reports settlement", async () => {
+  const run: SavedRun = { state: "stopping" };
+  const f = await open(run);
   try {
     expect(f.t.calls("run.get").map(call => call.args)).toEqual([{ run_id: "run-s" }]);
-    const line = host!.querySelector<HTMLElement>("[data-stop-settlement-failure]")!;
-    expect(line.getAttribute("data-stop-settlement-failure")).toBe("storage");
-    expect(line.textContent).toBe("Stop not confirmed for Run run-s: Core could not save it. Check free space and permissions of the data directory, then stop again.");
-    expect(line.closest(".conversation-status")).toBeNull();
+    expect(line()).toBeNull();
+    run.failure = "storage";
+    await hint(f);
+    expect(line()?.getAttribute("data-stop-settlement-failure")).toBe("storage");
+    expect(line()?.getAttribute("data-stop-settlement-run")).toBe("run-s");
+    expect(line()?.textContent).toContain("Stop not confirmed for Run run-s: Core could not save it. Check free space and permissions on the data directory. Once that is fixed, if this Run is still stopping, stop it again.");
+    expect(line()?.closest(".conversation-status")).toBeNull();
+    expect(f.t.calls("run.stop")).toHaveLength(0);
+    run.state = "stopped"; delete run.failure;
+    f.db.threads.stopping = summary("stopping", { state: "idle", activity: "stopped" });
+    f.db.work.stopping = [];
+    await hint(f);
+    expect(line()).toBeNull();
+    expect(f.t.calls("run.stop")).toHaveLength(0);
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
-it("shows an invariant failure with its own wording", async () => {
-  const f = await open("invariant");
+it("stops the named Run again only on request and only while it is still stopping", async () => {
+  const run: SavedRun = { state: "stopping", failure: "invariant" };
+  const f = await open(run);
   try {
-    expect(host!.querySelector("[data-stop-settlement-failure]")?.getAttribute("data-stop-settlement-failure")).toBe("invariant");
+    expect(line()?.getAttribute("data-stop-settlement-failure")).toBe("invariant");
+    expect(line()?.textContent).toContain("Note the Run ID and check Core diagnostics. Once the cause is addressed, if this Run is still stopping, stop it again.");
+    const again = () => [...line()!.querySelectorAll("button")].find(button => button.textContent === "Stop this Run again")!;
+    await act(async () => { again().click(); await settle(f.t, f.db); });
+    expect(f.t.calls("run.stop").map(call => call.args)).toEqual([{ run_id: "run-s" }]);
+    run.state = "stopped";
+    await act(async () => { again().click(); await settle(f.t, f.db); });
+    expect(f.t.calls("run.stop")).toHaveLength(1);
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
 it.each([
-  ["no saved failure", undefined, "stopping"],
   ["a null failure", null, "stopping"],
   ["an unknown failure value", "disk", "stopping"],
   ["a Run that is no longer stopping", "storage", "stopped"],
-])("shows nothing for %s", async (_name, failure, runState) => {
-  const f = await open(failure, runState);
+])("shows nothing for %s", async (_name, failure, state) => {
+  const f = await open({ state, failure });
   try {
     expect(f.t.calls("run.get")).toHaveLength(1);
-    expect(host!.querySelector("[data-stop-settlement-failure]")).toBeNull();
+    expect(line()).toBeNull();
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
