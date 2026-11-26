@@ -27,7 +27,7 @@ windows-desktop = []
 # Explicit integration suite: never part of owner-free unit/synthetic checks.
 real-owner-tests = []
 default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
-# Core main snapshot exact pair: fcc04eeb1a2bc0b2dfdb640ac58f39e751fd70ea, protocol 40.
+# Core main snapshot exact pair: 58a0882e096fedf644a20cc911040e7923c74efa, protocol 41.
 next-shellboy = []
 # #262 owner branch adds message.ask; never forward it from Studio.
 next-reply = ["next-shellboy"]
@@ -42,7 +42,7 @@ next-cwds = ["next-tags"]
 
 [dependencies]
 # Core main snapshot at the start of this pin task.
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "fcc04eeb1a2bc0b2dfdb640ac58f39e751fd70ea" }
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "58a0882e096fedf644a20cc911040e7923c74efa" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt", "io"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
