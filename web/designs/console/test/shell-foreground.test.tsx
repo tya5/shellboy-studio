@@ -36,6 +36,12 @@ async function open(lang: Lang = "en") {
   return f;
 }
 
+/** The owner's saved fact moves the foreground shell to the background and sends its ordinary hint. */
+async function confirmBackground(f: Awaited<ReturnType<typeof open>>) {
+  f.db.shells.lead = f.db.shells.lead!.map(shell => shell.execution_id === "exec-fg" ? { ...shell, foreground: false } : shell);
+  await act(async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }); await settle(f.t, f.db); });
+}
+
 const row = (id: string) => host!.querySelector<HTMLElement>(`[data-panel-row-id="${id}"]`)!;
 const mark = (id: string) => row(id).querySelector(".panel-list-main [data-status]")?.textContent ?? "";
 const subtitle = (id: string) => row(id).querySelector(".panel-list-subtitle")?.textContent ?? "";
@@ -68,12 +74,28 @@ it("labels running shells from the typed foreground fact and puts Background on 
     expect(f.t.calls("shell.background").at(-1)?.args).toEqual({ execution_id: "exec-fg" });
     // The owner confirms: the shell keeps running in the background, reported on its ordinary hint.
     const reads = { shell: f.t.calls("shell.list").length };
-    f.db.shells.lead = f.db.shells.lead!.map(shell => shell.execution_id === "exec-fg" ? { ...shell, foreground: false } : shell);
-    await act(async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }); await settle(f.t, f.db); });
+    fgButtons[0]!.focus();
+    expect(document.activeElement).toBe(fgButtons[0]);
+    await confirmBackground(f);
     expect(f.t.calls("shell.list").length).toBeGreaterThan(reads.shell);
     expect(mark("exec-fg")).toBe("Background");
+    // The removed action held focus, so the row hands it to its own selection button.
+    expect(document.activeElement).toBe(row("exec-fg").querySelector(".panel-list-main"));
     expect(visibleButtons("exec-fg")).toEqual([]);
     expect(await menuItems("exec-fg")).toContain("Move to background");
+  } finally { f.model.dispose(); f.data.stop(); }
+});
+
+it("leaves focus alone when the person had already left the row", async () => {
+  const f = await open();
+  try {
+    const button = visibleButtons("exec-fg")[0]!;
+    button.focus();
+    const elsewhere = row("exec-bg").querySelector<HTMLButtonElement>(".panel-list-main")!;
+    elsewhere.focus();
+    await confirmBackground(f);
+    expect(visibleButtons("exec-fg")).toEqual([]);
+    expect(document.activeElement).toBe(elsewhere);
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
