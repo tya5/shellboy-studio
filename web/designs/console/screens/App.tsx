@@ -84,14 +84,6 @@ export function App({ context }: { context: DesignContext }) {
     return (position !== undefined ? links[position] ?? links[Math.min(position - 1, links.length - 1)] : undefined)
       ?? document.getElementById("sidebar-thread-list-heading");
   };
-  useLayoutEffect(() => {
-    const links = sidebarLinks();
-    rememberSidebarPositions(links);
-    const claimed = lastSidebarFocus.current;
-    if (!claimed || links.some(link => link.id === claimed)) return;
-    lastSidebarFocus.current = undefined;
-    resolveSidebarLink(claimed)?.focus();
-  });
   const t = model.t.value;
   const route = model.route.value;
   useEffect(() => { model.actionError.value = undefined; }, [model, route]);
@@ -190,6 +182,15 @@ export function App({ context }: { context: DesignContext }) {
   const closedGroups = context.prefs.value.sidebarClosedGroups ?? [];
   const openGroups = context.prefs.value.sidebarOpenGroups ?? [];
   const openParents = context.prefs.value.sidebarOpenParents ?? [];
+  // The links change only with the rows and the folds; a render for anything else scans nothing.
+  useLayoutEffect(() => {
+    const links = sidebarLinks();
+    rememberSidebarPositions(links);
+    const claimed = lastSidebarFocus.current;
+    if (!claimed || links.some(link => link.id === claimed)) return;
+    lastSidebarFocus.current = undefined;
+    resolveSidebarLink(claimed)?.focus();
+  }, [groups, context.prefs.value.sidebarClosedGroups, context.prefs.value.sidebarOpenGroups, context.prefs.value.sidebarOpenParents]);
   const setFold = (field: "sidebarClosedGroups" | "sidebarOpenGroups" | "sidebarOpenParents", id: string, add: boolean) => {
     const keys = (context.prefs.peek()[field] ?? []).filter(key => key !== id);
     context.setPrefs({ [field]: add ? [...keys, id].slice(-1000) : keys });

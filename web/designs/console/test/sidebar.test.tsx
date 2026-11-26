@@ -90,7 +90,7 @@ it("keeps status updates in place, persists child folds, and adds a pinned copy 
     expect(document.querySelector('[role="menu"]')).toBeNull();
     expect(prefs.peek().sidebarOpenParents).toEqual([JSON.stringify(["all", "lead"])]);
     const order = sides(), other = link("other")!;
-    f.db.threads.other!.activity = "running";
+    f.db.threads.other = { ...f.db.threads.other!, activity: "running" };
     await act(hint);
     expect(sides()).toEqual(order);
     expect(link("other")).toBe(other);
@@ -142,7 +142,7 @@ it("keeps the owner's created order on status hints and inserts a new Thread at 
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(order()).toEqual(["other", "lead", "child"]);
-    Object.assign(f.db.threads.other!, { activity: "tools", updated_at: "2099-01-01T00:00:00Z" });
+    f.db.threads.other = { ...f.db.threads.other!, activity: "tools", updated_at: "2099-01-01T00:00:00Z" };
     await act(() => hint("other"));
     expect(order()).toEqual(["other", "lead", "child"]);
     await act(async () => {
@@ -344,7 +344,7 @@ it('settles the mounted tag session while hidden and ignores late results after 
     await open('lead');
     expect(f.model.threadActions.tagDraft.peek()).toMatchObject({ add: [], action: { kind: 'idle' } });
     expect(panel()?.textContent).not.toContain('new-tag');
-    Object.assign(f.db.threads.lead!, { tags: ['old', 'new-tag'] });
+    f.db.threads.lead = summary('lead', { ...f.db.threads.lead!, tags: ['old', 'new-tag'] });
     await act(async () => { f.t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
     expect(f.model.data.threadRows.value.get('lead')?.tags).toEqual(['old', 'new-tag']);
     expect(panel()?.textContent).toContain('new-tag');
@@ -389,7 +389,7 @@ it("bolds a background completion only after the list hint and clears on open or
     expect(prefs.peek().sidebarUnread?.filter(r => r.thread === "other")).toEqual([
       { thread: "other", node: "a", manual: false },
     ]);
-    f.db.threads.other!.title = "Renamed";
+    f.db.threads.other = { ...f.db.threads.other!, title: "Renamed" };
     await act(() => hint());
     expect(unread()).toBe(false);
     f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: second });

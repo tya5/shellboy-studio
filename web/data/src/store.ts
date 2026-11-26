@@ -186,6 +186,13 @@ function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary
 }
 
 
+const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((id, i) => id === b[i]);
+
+/** The same decoded row: every field equal (a hint can change any of them, `updated_at` or not). */
+const sameRow = (a: ThreadSummary | undefined, b: ThreadSummary): boolean =>
+  a === b || (a !== undefined && JSON.stringify(a) === JSON.stringify(b));
+
 const isActiveSummary = (row: ThreadSummary): boolean =>
   (row.awaiting_named_count ?? 0) > 0 || isActiveThreadActivity(row.activity);
 
@@ -201,7 +208,8 @@ function trimRows(rows: Map<string, ThreadSummary>, held: ReadonlySet<string>): 
   return rows;
 }
 
-function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[], held: ReadonlySet<string>): Map<string, ThreadSummary> {
+function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[], held: ReadonlySet<string>): ReadonlyMap<string, ThreadSummary> {
+  if (rows.every(row => sameRow(previous.get(row.thread_id), row))) return previous;
   const next = new Map(previous);
   for (const row of rows) { next.delete(row.thread_id); next.set(row.thread_id, row); }
   return trimRows(next, held);
@@ -817,7 +825,7 @@ export class ShellboyData {
     }
     const nextIds = [...ids];
     const previousIds = this.activeThreadIdsSig.peek();
-    if (nextIds.length !== previousIds.length || nextIds.some((id, i) => id !== previousIds[i])) this.activeThreadIdsSig.value = nextIds;
+    if (!sameIds(nextIds, previousIds)) this.activeThreadIdsSig.value = nextIds;
     await this.refreshActiveRows(nextIds, epoch);
   }
 
@@ -868,7 +876,8 @@ export class ShellboyData {
       cursor = out.value.next_cursor;
     } while (cursor && rows.length < MAX_LIST_ROWS);
     batch(() => {
-      this.pinnedThreadIdsSig.value = rows.map(row => row.thread_id);
+      const ids = rows.map(row => row.thread_id);
+      if (!sameIds(ids, this.pinnedThreadIdsSig.peek())) this.pinnedThreadIdsSig.value = ids;
       this.pinnedErrorSig.value = undefined;
       this.pinnedMoreSig.value = cursor !== undefined;
       this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), rows, this.heldRows());
@@ -954,18 +963,25 @@ export class ShellboyData {
     // Archiving, unarchiving, a new parent or a changed filter field can move a Thread into or out of the Archive band.
     const archiveMayChange = shapeChanged || filterMembershipMayChange || ids.some(id => before.get(id)?.archived_at !== returned.get(id)?.archived_at);
     // Rows another read stored meanwhile stay: start from the current cache, not from `before`.
-    const next = new Map(this.threadRowsSig.peek());
-    for (const row of out.value.items) { next.delete(row.thread_id); next.set(row.thread_id, row); }
-    for (const id of ids) if (!returned.has(id)) next.delete(id);
-    trimRows(next, this.heldRows());
+    const current = this.threadRowsSig.peek();
+    // A hint that changed nothing keeps every identity, so nothing derived from the rows rebuilds.
+    const rowsChanged = out.value.items.some(row => !sameRow(current.get(row.thread_id), row))
+      || ids.some(id => !returned.has(id) && current.has(id));
+    const active = [...activeStatus];
+    const activeChanged = !sameIds(active, this.activeThreadIdsSig.peek());
     batch(() => {
-      this.threadRowsSig.value = next;
-      this.activeThreadIdsSig.value = [...activeStatus];
+      if (rowsChanged) {
+        const next = new Map(current);
+        for (const row of out.value.items) { next.delete(row.thread_id); next.set(row.thread_id, row); }
+        for (const id of ids) if (!returned.has(id)) next.delete(id);
+        this.threadRowsSig.value = trimRows(next, this.heldRows());
+      }
+      if (activeChanged) this.activeThreadIdsSig.value = active;
       for (const { state } of [this.listPages, this.archivePages]) {
         const list = state.peek();
-        if (list.loaded && list.items.some(id => ids.includes(id))) {
-          state.value = { ...list, items: list.items.filter(id => !ids.includes(id) || returned.has(id)) };
-        }
+        if (!list.loaded) continue;
+        const items = list.items.filter(id => !ids.includes(id) || returned.has(id));
+        if (items.length !== list.items.length) state.value = { ...list, items };
       }
     });
     if (listChanged && (shapeChanged || filterMembershipMayChange) && this.listRefs > 0) void this.refresher.requestFresh(shapeChanged ? "list-shape" : "list");
