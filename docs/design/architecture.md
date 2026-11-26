@@ -238,7 +238,7 @@ Views below are data-layer view models; their layout belongs to presentation.
   Markdown rendering of model and user text, code blocks with highlighting and
   a copy button. Tool calls render as collapsible rows (collapsed by default
   once settled, expanded while running); body from `shell.get`/`shell.read`.
-- **Live progress**: streamed model text (§3.1) while a Turn runs, then the saved output; Run/Turn state from `thread.get` → `run.get`/`turn.get`,
+- **Live progress**: streamed model text (§3.1) while a Turn runs, then the saved output; Run/Turn state from the open Thread's `status` work rows (one bounded page; a stopping Run row carries `stop_settlement_failure`) and the history reads (`history.window`, `history.read`), with `thread.get` naming the current Run and Turn; no `run.get`/`turn.get`,
   tool start/finish from `shell.list`, re-read on each `changed` for the open
   Thread. Elapsed time ticks client-side from saved `started_at`; it is a
   display tick, not a data poll.
