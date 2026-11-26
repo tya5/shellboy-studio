@@ -131,6 +131,23 @@ describe("Operations", () => {
     link.stop();
   });
 
+  it.each([
+    ["omitted", undefined, true],
+    ["the Core pair shape", [{ message_id: "duty", blocking_message_id: "question" }], true],
+    ["a non-array", { message_id: "duty", blocking_message_id: "question" }, false],
+    ["a null entry", [null], false],
+    ["a pair without its blocking ask", [{ message_id: "duty" }], false],
+    ["a pair with an empty ID", [{ message_id: "", blocking_message_id: "question" }], false],
+  ])("thread get decodes pending_replies.awaiting_own_ask given %s", async (_case, awaiting, ok) => {
+    const { t, ops } = setup();
+    const read = ops.threadGet("a");
+    const pending_replies = { owed_by: { count: 1, exact: true }, asked_by: { count: 0, exact: true }, ...(awaiting !== undefined && { awaiting_own_ask: awaiting }) };
+    t.ok(t.calls("thread.get")[0]!.id, details("a", { pending_replies }));
+    const outcome = await read;
+    if (ok) expect(outcome).toMatchObject({ ok: true, value: { pending_replies } });
+    else expect(outcome).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  });
+
   it("thread get and current positional history read", async () => {
     const { t, ops } = setup();
     const g = ops.threadGet("a");
