@@ -229,36 +229,54 @@ mod job {
     }
 }
 
-/// Resolves once the script has exited. On Unix it doesn't reap the script (`WNOWAIT`), so the group ID
-/// stays this action's until `Tree::kill` has run; `Child::wait` reaps it afterwards.
+/// Resolves once the script has exited, or with the error that stopped this from telling. It runs in
+/// `run`, the child's one owner, and stops with it: no detached wait on a bare process ID. On Unix it
+/// doesn't reap the script (`WNOWAIT`), so the group ID stays this action's until `Tree::kill` has run;
+/// `Child::wait` reaps it afterwards. It looks again on each `SIGCHLD`, registered before the first look.
 #[cfg(unix)]
-async fn exited(child: &mut tokio::process::Child) {
-    let Some(pid) = child.id() else { return };
-    let _ = tokio::task::spawn_blocking(move || {
-        loop {
-            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
-            let waited = unsafe {
-                libc::waitid(
-                    libc::P_PID,
-                    pid as libc::id_t,
-                    &mut info,
-                    libc::WEXITED | libc::WNOWAIT,
-                )
-            };
-            if waited == 0
-                || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
-            {
-                return;
-            }
+async fn exited(child: &tokio::process::Child) -> std::io::Result<()> {
+    use tokio::signal::unix::{SignalKind, signal};
+    let pid = child
+        .id()
+        .ok_or_else(|| std::io::Error::other("the script has no process ID"))?;
+    let mut changed = signal(SignalKind::child())?;
+    while !has_exited(pid)? {
+        changed
+            .recv()
+            .await
+            .ok_or_else(|| std::io::Error::other("SIGCHLD can no longer be received"))?;
+    }
+    Ok(())
+}
+
+/// One look, without reaping: true once `pid` has exited.
+#[cfg(unix)]
+fn has_exited(pid: u32) -> std::io::Result<bool> {
+    loop {
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        let waited = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+            )
+        };
+        if waited == 0 {
+            // With `WNOHANG`, no process ID in the answer means it still runs.
+            return Ok(unsafe { info.si_pid() } != 0);
         }
-    })
-    .await;
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
 }
 
 /// The Job, not the process ID, names the tree on Windows, so waiting may reap.
 #[cfg(windows)]
-async fn exited(child: &mut tokio::process::Child) {
-    let _ = child.wait().await;
+async fn exited(child: &mut tokio::process::Child) -> std::io::Result<()> {
+    child.wait().await.map(drop)
 }
 
 /// How long output is still read after the script exits and its tree is killed. Only a process that left
@@ -337,6 +355,9 @@ pub async fn run(
                     let _ = s.write_all(&input).await;
                 }
             });
+            #[cfg(unix)]
+            let mut exit = std::pin::pin!(exited(&child));
+            #[cfg(windows)]
             let mut exit = std::pin::pin!(exited(&mut child));
             let mut fed = false;
             tokio::time::timeout(limit, async {
@@ -344,20 +365,35 @@ pub async fn run(
                     tokio::select! {
                         () = &mut feed, if !fed => fed = true,
                         () = &mut reading, if !read => read = true,
-                        () = &mut exit => break,
+                        observed = &mut exit => break observed,
                     }
                 }
             })
             .await
-            .is_ok()
         };
         // One kill while the script is unreaped, then reap, then read what the pipes still hold.
         tree.kill();
-        let status = child.wait().await.ok();
-        if in_time && !read {
-            let _ = tokio::time::timeout(DRAIN, &mut reading).await;
+        let status = child.wait().await;
+        match &in_time {
+            // Not seen to exit: it was killed and reaped, but nothing is reported as its exit.
+            Ok(Err(e)) => {
+                return Err((
+                    "run_failed",
+                    format!("Couldn't follow {}: {e}", script.display()),
+                ));
+            }
+            Ok(Ok(())) if !read => {
+                let _ = tokio::time::timeout(DRAIN, &mut reading).await;
+            }
+            _ => {}
         }
-        (status, !in_time)
+        let status = status.map_err(|e| {
+            (
+                "run_failed",
+                format!("Couldn't reap {}: {e}", script.display()),
+            )
+        })?;
+        (Some(status), in_time.is_err())
     };
     let finish = |status: Option<std::process::ExitStatus>,
                   out: (Vec<u8>, bool),

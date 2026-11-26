@@ -15,10 +15,7 @@ use shellboy::protocol::Command;
 use std::{
     collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
@@ -57,9 +54,8 @@ pub struct AppHost<O> {
     watch: tokio::sync::watch::Sender<DataSnapshot>,
     instance_watch:
         Mutex<std::collections::HashMap<String, tokio::sync::watch::Sender<DataSnapshot>>>,
-    hint_waits: Mutex<HintWaits>,
-    /// The app's one lifecycle task is running (`ensure_lifecycle`).
-    watching: AtomicBool,
+    /// What the app's one lifecycle task owns: both interests and whether it runs.
+    lifecycle: Mutex<Lifecycle>,
 }
 
 /// The hub session `thread.onChange` waits on. Held while pages wait and `WATCH_LINGER` after the last
@@ -72,25 +68,64 @@ struct Hints {
     released: bool,
 }
 
+/// One kind of wait (hints or data): how many run and when one last began or ended. Live while one
+/// runs and `WATCH_LINGER` after the last entry or end, so a wait that ends before the first tick
+/// still lingers.
 #[derive(Default)]
-struct HintWaits {
+struct Interest {
     active: usize,
-    ended: Option<tokio::time::Instant>,
+    last: Option<tokio::time::Instant>,
 }
 
-/// One `thread.onChange` wait, from entry to return or cancellation (drop).
-struct HintLease<'a>(&'a Mutex<HintWaits>);
-impl<'a> HintLease<'a> {
-    fn new(waits: &'a Mutex<HintWaits>) -> Self {
-        waits.lock().unwrap_or_else(|p| p.into_inner()).active += 1;
-        Self(waits)
+impl Interest {
+    fn live(&self) -> bool {
+        self.active > 0 || self.last.is_some_and(|at| at.elapsed() < WATCH_LINGER)
     }
 }
-impl Drop for HintLease<'_> {
+
+#[derive(Default)]
+struct Lifecycle {
+    hint: Interest,
+    data: Interest,
+    /// The lifecycle task runs. Set and cleared only under this lock, with the interests.
+    running: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Kind {
+    Hint,
+    Data,
+}
+
+impl Lifecycle {
+    fn interest(&mut self, kind: Kind) -> &mut Interest {
+        match kind {
+            Kind::Hint => &mut self.hint,
+            Kind::Data => &mut self.data,
+        }
+    }
+}
+
+/// One wait, from entry to return or cancellation (drop).
+struct Lease<'a, O: Owner>(&'a Arc<AppHost<O>>, Kind);
+impl<'a, O: Owner> Lease<'a, O> {
+    fn new(host: &'a Arc<AppHost<O>>, kind: Kind) -> Self {
+        let mut lifecycle = host.lifecycle.lock().unwrap_or_else(|p| p.into_inner());
+        let interest = lifecycle.interest(kind);
+        interest.active += 1;
+        interest.last = Some(tokio::time::Instant::now());
+        if !std::mem::replace(&mut lifecycle.running, true) {
+            host.spawn_lifecycle();
+        }
+        Self(host, kind)
+    }
+}
+impl<O: Owner> Drop for Lease<'_, O> {
     fn drop(&mut self) {
-        let mut waits = self.0.lock().unwrap_or_else(|p| p.into_inner());
-        waits.active -= 1;
-        waits.ended = Some(tokio::time::Instant::now());
+        let mut lifecycle = self.0.lifecycle.lock().unwrap_or_else(|p| p.into_inner());
+        let interest = lifecycle.interest(self.1);
+        interest.active -= 1;
+        interest.last = Some(tokio::time::Instant::now());
     }
 }
 
@@ -279,11 +314,10 @@ impl<O: Owner> AppHost<O> {
             apps,
             writes: tokio::sync::Mutex::new(()),
             hints: tokio::sync::Mutex::new(Hints::default()),
-            hint_waits: Mutex::new(HintWaits::default()),
             running: Mutex::new(HashSet::new()),
             watch: tokio::sync::watch::channel(DataSnapshot::default()).0,
             instance_watch: Mutex::new(std::collections::HashMap::new()),
-            watching: AtomicBool::new(false),
+            lifecycle: Mutex::new(Lifecycle::default()),
         })
     }
 
@@ -448,8 +482,7 @@ impl<O: Owner> AppHost<O> {
     async fn events_wait(self: &Arc<Self>, args: &Value) -> Result<Value, ApiFail> {
         let thread = self.bound(args).await.ok();
         let list = args.get("list").and_then(Value::as_bool).unwrap_or(false);
-        let _lease = HintLease::new(&self.hint_waits);
-        self.ensure_lifecycle();
+        let _lease = Lease::new(self, Kind::Hint);
         let mut hints = self.hints.lock().await;
         if hints.session.is_none() {
             hints.session = self.apps.hub.register().map(|(guard, _)| guard);
@@ -478,36 +511,6 @@ impl<O: Owner> AppHost<O> {
         Ok(
             json!({"changed": changed, "threads": threads, "list": pending.list || more.list || (resumed && list)}),
         )
-    }
-
-    /// Drops the hint session once no wait has run for `WATCH_LINGER`. True while it is still needed.
-    fn release_idle_hints(&self) -> bool {
-        let waits = self.hint_waits.lock().unwrap_or_else(|p| p.into_inner());
-        if waits.active > 0 {
-            return true;
-        }
-        let Ok(mut hints) = self.hints.try_lock() else {
-            return true;
-        };
-        if hints.session.is_none() {
-            return false;
-        }
-        if waits.ended.is_some_and(|at| at.elapsed() < WATCH_LINGER) {
-            return true;
-        }
-        hints.session = None;
-        hints.released = true;
-        false
-    }
-
-    fn data_waiting(&self) -> bool {
-        self.watch.receiver_count() > 0
-            || self
-                .instance_watch
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .values()
-                .any(|watch| watch.receiver_count() > 0)
     }
 
     /// One look at `data/`. Moves the version only if something changed.
@@ -557,51 +560,47 @@ impl<O: Owner> AppHost<O> {
         });
     }
 
-    /// One task per app, whatever the number of pages. It looks at `data/` while a page waits on it and
-    /// `WATCH_LINGER` after, and releases the hint session `WATCH_LINGER` after the last hint wait. An app
-    /// that only waits on hints gets no data walks. It ends when neither is left.
-    fn ensure_lifecycle(self: &Arc<Self>) {
-        if self.watching.swap(true, Ordering::SeqCst) {
-            return;
-        }
+    /// One task per app, whatever the number of pages, started by the first `Lease` while none runs.
+    /// Each tick it judges the two interests on their own: it releases the hint session once the hint
+    /// interest has expired, even while pages still wait on data, and looks at `data/` while the data
+    /// interest is live, so an app that only waits on hints gets no data walks. When neither is live it
+    /// clears `running` under the same lock a new lease takes, so a lease either sees it running or
+    /// starts the next one.
+    fn spawn_lifecycle(self: &Arc<Self>) {
         let host = self.clone();
         let cancel = self.apps.cancel_token();
         let task = tokio::spawn(async move {
-            let mut data_live = false;
-            let mut data_idle_since = None;
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => break,
                     _ = tokio::time::sleep(WATCH_INTERVAL) => {}
                 }
-                if host.data_waiting() {
-                    data_live = true;
-                    data_idle_since = None;
-                } else if data_live
-                    && data_idle_since
-                        .get_or_insert_with(tokio::time::Instant::now)
-                        .elapsed()
-                        > WATCH_LINGER
-                {
-                    data_live = false;
-                    data_idle_since = None;
-                }
+                let data_live = {
+                    let mut lifecycle = host.lifecycle.lock().unwrap_or_else(|p| p.into_inner());
+                    let hint_live = lifecycle.hint.live();
+                    if !hint_live {
+                        // No hint wait runs, so none holds `hints`.
+                        if let Ok(mut hints) = host.hints.try_lock()
+                            && hints.session.take().is_some()
+                        {
+                            hints.released = true;
+                        }
+                    }
+                    let data_live = lifecycle.data.live();
+                    if !hint_live && !data_live {
+                        lifecycle.running = false;
+                        return;
+                    }
+                    data_live
+                };
                 if data_live {
                     host.look().await;
                 }
-                if data_live || host.release_idle_hints() {
-                    continue;
-                }
-                host.watching.store(false, Ordering::SeqCst);
-                // A wait that started while this decided to stop has seen the flag still set: keep going.
-                if (host.data_waiting() || host.release_idle_hints())
-                    && !host.watching.swap(true, Ordering::SeqCst)
-                {
-                    continue;
-                }
-                return;
             }
-            host.watching.store(false, Ordering::SeqCst);
+            host.lifecycle
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .running = false;
         });
         self.apps.keep_task(task);
     }
@@ -612,6 +611,7 @@ impl<O: Owner> AppHost<O> {
         args: &Value,
         instance: Option<&str>,
     ) -> Result<Value, ApiFail> {
+        let _lease = Lease::new(self, Kind::Data);
         let mut rx = if let Some(name) = instance {
             if !super::valid_instance_name(name) {
                 return Err(("invalid_instance", "Invalid instance name".into()));
@@ -630,7 +630,6 @@ impl<O: Owner> AppHost<O> {
         } else {
             self.watch.subscribe()
         };
-        self.ensure_lifecycle();
         let Some(known) = args.get("version").and_then(Value::as_u64) else {
             self.look().await;
             let now = rx.borrow_and_update().clone();
@@ -902,6 +901,98 @@ mod tests {
             "hints were missed: {resumed}"
         );
         assert_eq!(hub.session_count(), 1);
+        cancel.cancel();
+        apps.stopped().await;
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn one_app() -> (
+        PathBuf,
+        Arc<crate::hub::Hub>,
+        CancellationToken,
+        Arc<Apps<NoOwner>>,
+    ) {
+        let dir = std::env::temp_dir().join(format!("studio-lifecycle-{}", random()));
+        std::fs::create_dir_all(dir.join("one/data")).unwrap();
+        std::fs::write(dir.join("one/app.json"), "{}").unwrap();
+        std::fs::write(dir.join("one/index.html"), "x").unwrap();
+        let hub = crate::hub::Hub::new();
+        let cancel = CancellationToken::new();
+        let apps = Apps::new(
+            dir.clone(),
+            Arc::new(NoOwner),
+            hub.clone(),
+            Arc::new(Semaphore::new(4)),
+            cancel.clone(),
+        );
+        (dir, hub, cancel, apps)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_hint_session_is_released_while_a_page_still_waits_on_data() {
+        let (dir, hub, cancel, apps) = one_app();
+        let first = apps.call("one", "data.wait", json!({})).await;
+        let mut version = first["result"]["version"].as_u64().unwrap();
+        // A page that keeps one data wait open, as a real page does.
+        let (tx, mut replies) = tokio::sync::mpsc::unbounded_channel();
+        let page = tokio::spawn({
+            let apps = apps.clone();
+            async move {
+                loop {
+                    let reply = apps
+                        .call("one", "data.wait", json!({"version": version}))
+                        .await;
+                    version = reply["result"]["version"].as_u64().unwrap();
+                    if tx.send(reply).is_err() {
+                        return;
+                    }
+                }
+            }
+        });
+        assert_eq!(
+            apps.call("one", "events.wait", json!({})).await["result"]["changed"],
+            false
+        );
+        assert_eq!(hub.session_count(), 1);
+        tokio::time::sleep(WATCH_LINGER + Duration::from_secs(2)).await;
+        assert_eq!(
+            hub.session_count(),
+            0,
+            "the hint lease expired although a data wait is open"
+        );
+        assert!(!page.is_finished());
+        std::fs::write(dir.join("one/data/x"), "1").unwrap();
+        let seen = loop {
+            let reply = replies.recv().await.unwrap();
+            if reply["result"]["changed"] == true {
+                break reply;
+            }
+        };
+        assert_eq!(seen["result"]["paths"], json!(["x"]), "{seen}");
+        page.abort();
+        cancel.cancel();
+        apps.stopped().await;
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_data_wait_that_returns_before_the_first_tick_still_lingers() {
+        let (dir, _hub, cancel, apps) = one_app();
+        let first = apps.call("one", "data.wait", json!({})).await;
+        let version = first["result"]["version"].as_u64().unwrap();
+        std::fs::write(dir.join("one/data/x"), "1").unwrap();
+        tokio::time::sleep(WATCH_INTERVAL * 5).await;
+        let host = apps.host("one").await.unwrap();
+        assert_ne!(
+            host.watch.borrow().version,
+            version,
+            "the watcher kept looking after the wait returned"
+        );
+        let later = apps
+            .call("one", "data.wait", json!({"version": version}))
+            .await;
+        assert_eq!(later["result"]["changed"], true, "{later}");
+        assert_eq!(later["result"]["paths"], json!(["x"]), "{later}");
         cancel.cancel();
         apps.stopped().await;
         let _ = std::fs::remove_dir_all(dir);
