@@ -62,6 +62,8 @@ url = "=2.5.8"
 libc = "=0.2.191"
 
 [dev-dependencies]
+# Paused time for the 30 s idle release of an app's hint session; tokio is already a dependency.
+tokio = { version = "=1.54.1", features = ["test-util"] }
 tokio-tungstenite = "=0.28.0"
 tower = { version = "=0.5.3", features = ["util"] }
 futures-util = "=0.3.34"

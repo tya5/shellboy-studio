@@ -941,6 +941,34 @@ async fn run_kills_what_the_script_started() {
 }
 
 #[tokio::test]
+async fn a_removed_app_gives_up_its_slot() {
+    let f = fixture().await;
+    let max = shellboy_studio::apps::catalog::MAX_APPS;
+    for n in 0..max {
+        write_app(&f.apps, &format!("app{n}"), "{}", &[PAGE]);
+        assert_eq!(
+            call(&f, &format!("app{n}"), "app.info", json!({})).await["ok"],
+            true
+        );
+    }
+    write_app(&f.apps, "late", "{}", &[PAGE]);
+    assert_eq!(
+        call(&f, "late", "app.info", json!({})).await["error"]["code"],
+        "too_many_apps"
+    );
+    // Removed with no call after it: the slot is found free when one is needed.
+    std::fs::remove_dir_all(f.apps.join("app0")).unwrap();
+    assert_eq!(call(&f, "late", "app.info", json!({})).await["ok"], true);
+    write_app(&f.apps, "later", "{}", &[PAGE]);
+    std::fs::remove_dir_all(f.apps.join("app1")).unwrap();
+    assert_eq!(
+        call(&f, "app1", "app.info", json!({})).await["error"]["code"],
+        "app_not_found"
+    );
+    assert_eq!(call(&f, "later", "app.info", json!({})).await["ok"], true);
+}
+
+#[tokio::test]
 async fn watchers_stop_with_the_bridge() {
     let f = fixture().await;
     write_app(&f.apps, "one", "{}", &[PAGE]);
