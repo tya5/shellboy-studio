@@ -718,12 +718,14 @@ function PanelActivity({ model }: { model: AppModel }) {
         // Only Core's typed foreground fact on a running shell; absent or null shows no word.
         const placement = shellRunning && typeof shell?.foreground === "boolean" ? shell.foreground ? "foreground" : "background" : undefined;
         return <ListRow key={row.id} id={row.id} title={label} command={command?.trim() !== label ? command : undefined}
-          subtitle={(section.kind === "step" ? [placement ? t(`work.${placement}`) : undefined, elapsed] : [state, elapsed]).filter(Boolean).join(" · ") || undefined} icon={section.icon}
+          subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
           onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener), true)} menuLabel={t("panel.rowActions")}
           // The Turn waits on a foreground shell: its exact-execution Background action moves out of the menu onto the row.
           afterActions={placement === "foreground" ? <Button variant="primary" onClick={() => void model.backgroundShell(row.id)}>{t("action.shellBackground")}</Button> : undefined}
-          actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, command ?? row.label, requestStop, placement !== "foreground") : undefined} error={panelOperationError(model, row.id)} />;
+          actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, command ?? row.label, requestStop, placement !== "foreground") : undefined} error={panelOperationError(model, row.id)}>
+          {placement ? <StatusMark shell status="running" label={t(`work.${placement}`)} /> : null}
+        </ListRow>;
       })}</section> : null;
     })}
     {model.handle.value ? (["schedule", "service"] as const).map(kind => <SchedulePanel key={`${model.handle.value!.threadId}:${kind}`} model={model} kind={kind} open={(id, opener) => model.openInPanel({ kind, id }, panelFocusReturn(opener), true)} />) : null}
