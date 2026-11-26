@@ -611,7 +611,6 @@ impl<O: Owner> AppHost<O> {
         args: &Value,
         instance: Option<&str>,
     ) -> Result<Value, ApiFail> {
-        let _lease = Lease::new(self, Kind::Data);
         let mut rx = if let Some(name) = instance {
             if !super::valid_instance_name(name) {
                 return Err(("invalid_instance", "Invalid instance name".into()));
@@ -630,6 +629,8 @@ impl<O: Owner> AppHost<O> {
         } else {
             self.watch.subscribe()
         };
+        // Only an admitted subscription holds the data interest, so a refused call starts no walks.
+        let _lease = Lease::new(self, Kind::Data);
         let Some(known) = args.get("version").and_then(Value::as_u64) else {
             self.look().await;
             let now = rx.borrow_and_update().clone();
@@ -906,6 +907,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// Hang watchdog only; it never decides a result.
+    const HANG_WATCHDOG: Duration = Duration::from_secs(600);
+
     fn one_app() -> (
         PathBuf,
         Arc<crate::hub::Hub>,
@@ -962,12 +966,16 @@ mod tests {
         );
         assert!(!page.is_finished());
         std::fs::write(dir.join("one/data/x"), "1").unwrap();
-        let seen = loop {
-            let reply = replies.recv().await.unwrap();
-            if reply["result"]["changed"] == true {
-                break reply;
+        let seen = tokio::time::timeout(HANG_WATCHDOG, async {
+            loop {
+                let reply = replies.recv().await.unwrap();
+                if reply["result"]["changed"] == true {
+                    break reply;
+                }
             }
-        };
+        })
+        .await
+        .expect("the file change never reached the waiting page");
         assert_eq!(seen["result"]["paths"], json!(["x"]), "{seen}");
         page.abort();
         cancel.cancel();
@@ -980,14 +988,15 @@ mod tests {
         let (dir, _hub, cancel, apps) = one_app();
         let first = apps.call("one", "data.wait", json!({})).await;
         let version = first["result"]["version"].as_u64().unwrap();
-        std::fs::write(dir.join("one/data/x"), "1").unwrap();
-        tokio::time::sleep(WATCH_INTERVAL * 5).await;
         let host = apps.host("one").await.unwrap();
-        assert_ne!(
-            host.watch.borrow().version,
-            version,
-            "the watcher kept looking after the wait returned"
-        );
+        // Watching the published snapshot opens no data lease of its own.
+        let mut published = host.watch.subscribe();
+        std::fs::write(dir.join("one/data/x"), "1").unwrap();
+        tokio::time::timeout(HANG_WATCHDOG, published.changed())
+            .await
+            .expect("the watcher stopped looking after the wait returned")
+            .unwrap();
+        assert_ne!(published.borrow().version, version);
         let later = apps
             .call("one", "data.wait", json!({"version": version}))
             .await;
