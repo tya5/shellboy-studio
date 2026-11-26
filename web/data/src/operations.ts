@@ -255,7 +255,8 @@ export const ACTIVE_STATUS_PAGE_LIMIT = 200;
 
 const workPage = pageOf<WorkItem, StatusFilters>((v) =>
   isObject(v) && typeof v.kind === "string" && typeof v.id === "string" && typeof v.state === "string" && typeof v.thread_id === "string"
-    ? undefined : "status item lacks kind, id, state or thread_id", recordFilters.status,
+    && (v.stop_settlement_failure === undefined || v.stop_settlement_failure === null || stopSettlementFailures.includes(v.stop_settlement_failure))
+    ? undefined : "status item lacks kind, id, state or thread_id, or has an unknown stop_settlement_failure", recordFilters.status,
 );
 const decodeThreadWorkPage = (threadId: string): Decoder<Page<WorkItem, StatusFilters>> => (v) => {
   const decoded = workPage(v);

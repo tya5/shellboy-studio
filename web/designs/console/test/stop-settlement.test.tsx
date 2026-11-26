@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-// Core #431: a saved stop settlement failure on the stopping Run (run.get) is one supporting line
-// under the existing conversation status. Only the typed value is shown; nothing is inferred.
+// Core #431 / #444: a saved stop settlement failure on the Thread's Run, read from that Run's status
+// work row, is one supporting line under the existing conversation status. Only the typed value is
+// shown; nothing is inferred and nothing is stopped.
 import "@preact/signals";
 import { signal } from "@preact/signals-core";
 import { render } from "preact";
@@ -19,18 +20,14 @@ afterEach(() => {
   host = undefined;
 });
 
-/** The owner's saved Run, changed between hints the way Core records and settles a stop. */
-interface SavedRun { state: string; failure?: unknown }
+/** The status work row Core reports for the stopping Run; it carries the failure only while stopping. */
+const runRow = (failure?: unknown) => ({ kind: "run", id: "run-s", thread_id: "stopping", run_id: "run-s", state: "stopping", ...(failure === undefined ? {} : { stop_settlement_failure: failure }) });
 
-async function open(run: SavedRun) {
+async function open(failure?: unknown) {
   const f = await fixtureModel({ route: "conversation", threadId: "stopping", configure(db) {
     db.threads.stopping = summary("stopping", { state: "stopping", activity: "stopping" });
     db.details.stopping = { ...db.details.stopping!, run_id: "run-s" };
-    db.work.stopping = [{ kind: "run", id: "run-s", thread_id: "stopping", run_id: "run-s", state: "stopping" }];
-    const base = db.answer.bind(db);
-    db.answer = call => call.command === "run.get"
-      ? { ok: true, result: { run_id: "run-s", thread_id: "stopping", state: run.state, owned_execution_ids: [], context: {}, ...(run.failure === undefined ? {} : { stop_settlement_failure: run.failure }) } }
-      : base(call);
+    db.work.stopping = [runRow(failure)];
   } });
   const prefs = signal<Prefs>({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 } });
   const context: DesignContext = { model: f.model, designs: DESIGNS, prefs, setPrefs(change) { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true };
@@ -48,17 +45,14 @@ async function hint(f: { t: Parameters<typeof settle>[0]; db: FakeOwnerDb }) {
 const line = () => host!.querySelector<HTMLElement>("[data-stop-settlement-failure]");
 
 it("appears for the named Run on the owner's hint and clears when the owner reports settlement", async () => {
-  const run: SavedRun = { state: "stopping" };
-  const f = await open(run);
+  const f = await open();
   try {
-    expect(f.t.calls("run.get").map(call => call.args)).toContainEqual({ run_id: "run-s" });
     expect(line()).toBeNull();
-    run.failure = "storage";
+    f.db.work.stopping = [runRow("storage")];
     await hint(f);
     expect(line()?.getAttribute("data-stop-settlement-failure")).toBe("storage");
     expect(line()?.getAttribute("data-stop-settlement-run")).toBe("run-s");
     expect(f.t.calls("run.stop")).toHaveLength(0);
-    run.state = "stopped"; delete run.failure;
     f.db.threads.stopping = summary("stopping", { state: "idle", activity: "stopped" });
     f.db.work.stopping = [];
     await hint(f);
@@ -68,35 +62,21 @@ it("appears for the named Run on the owner's hint and clears when the owner repo
 });
 
 it("shows the invariant failure for the named Run as information only", async () => {
-  const f = await open({ state: "stopping", failure: "invariant" });
+  const f = await open("invariant");
   try {
     expect(line()?.getAttribute("data-stop-settlement-failure")).toBe("invariant");
     expect(line()?.getAttribute("data-stop-settlement-run")).toBe("run-s");
     expect(line()?.querySelector("button")).toBeNull();
+    expect(f.t.calls("run.stop")).toHaveLength(0);
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
 it.each([
-  ["a null failure", null, "stopping"],
-  ["an unknown failure value", "disk", "stopping"],
-  ["a Run that is no longer stopping", "storage", "stopped"],
-])("shows nothing for %s", async (_name, failure, state) => {
-  const f = await open({ state, failure });
+  ["a null failure", null],
+  ["an unknown failure value", "disk"],
+])("shows nothing for %s", async (_name, failure) => {
+  const f = await open(failure);
   try {
-    expect(f.t.calls("run.get").map(call => call.args)).toContainEqual({ run_id: "run-s" });
     expect(line()).toBeNull();
-  } finally { f.model.dispose(); f.data.stop(); }
-});
-
-it("reads no Run when no Run is stopping", async () => {
-  const f = await fixtureModel({ route: "conversation", threadId: "lead" });
-  const prefs = signal<Prefs>({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 } });
-  const context: DesignContext = { model: f.model, designs: DESIGNS, prefs, setPrefs(change) { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true };
-  host = document.createElement("div");
-  document.body.append(host);
-  try {
-    await act(async () => { render(<App context={context} />, host!); await settle(f.t, f.db); });
-    expect(f.t.calls("status").length).toBeGreaterThan(0);
-    expect(f.t.calls("run.get")).toHaveLength(0);
   } finally { f.model.dispose(); f.data.stop(); }
 });

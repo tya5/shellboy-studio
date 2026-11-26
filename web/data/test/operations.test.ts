@@ -511,6 +511,15 @@ it.each(['work','handoff'] as const)('scoped %s decoder preserves valid operatio
   {kind:'shell',id:'operation-b',thread_id:'selected',state:'running',execution_id:'execution-b'}];
  t.ok(t.calls('status')[0]!.id,{items});expect(await pending).toMatchObject({ok:true, ownerOperationId: "op",value:{items}});
 });
+it.each([
+ ['omitted',undefined,true],['storage','storage',true],['invariant','invariant',true],['null',null,true],
+ ['an unknown value','disk',false],['a non-string',1,false],
+])('thread work decodes a Run row stop_settlement_failure given %s',async(_case,failure,ok)=>{
+ const {t,ops}=setup();const pending=ops.threadWork('selected');
+ const items=[{kind:'run',id:'run-s',thread_id:'selected',state:'stopping',...(failure!==undefined&&{stop_settlement_failure:failure})}];
+ t.ok(t.calls('status')[0]!.id,{items});const out=await pending;
+ if(ok)expect(out).toMatchObject({ok:true,value:{items}});else expect(out).toMatchObject({ok:false,error:{kind:'invalid_response'}});
+});
 it.each(['work','handoff'] as const)('scoped %s decoder keeps missing public thread identity rejected',async mode=>{
  const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
  t.ok(t.calls('status')[0]!.id,{items:[{kind:'run',id:'missing-scope',state:'live'}]});

@@ -26,8 +26,7 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_43_has_directional_reply_counts_and_awaiting_own_ask() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 43);
+fn thread_details_have_directional_reply_counts_and_awaiting_own_ask() {
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_thread_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false},
@@ -63,6 +62,39 @@ fn exact_protocol_43_has_directional_reply_counts_and_awaiting_own_ask() {
         })),
         Access::Read
     );
+}
+
+#[test]
+fn exact_protocol_44_status_run_item_carries_stop_settlement_failure() {
+    use shellboy::{protocol::RunStopSettlementFailure, status::WorkItem};
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 44);
+    let row = |failure: Option<serde_json::Value>| {
+        let mut row = json!({"kind":"run","id":"run-s","state":"stopping","thread_id":"t",
+            "thread_title":"synthetic","current_connection":"c","current_model":"m",
+            "response_nodes":[],"response_nodes_truncated":false,"activity_at":"2026-11-26T00:00:00Z",
+            "targets":[]});
+        if let Some(failure) = failure {
+            row["stop_settlement_failure"] = failure;
+        }
+        serde_json::from_value::<WorkItem>(row)
+    };
+    for (wire, typed) in [
+        ("storage", RunStopSettlementFailure::Storage),
+        ("invariant", RunStopSettlementFailure::Invariant),
+    ] {
+        assert_eq!(
+            row(Some(json!(wire))).unwrap().stop_settlement_failure,
+            Some(typed)
+        );
+    }
+    assert_eq!(row(None).unwrap().stop_settlement_failure, None);
+    assert_eq!(
+        row(Some(serde_json::Value::Null))
+            .unwrap()
+            .stop_settlement_failure,
+        None
+    );
+    assert!(row(Some(json!("disk"))).is_err());
 }
 
 #[test]
@@ -184,13 +216,13 @@ fn mismatched_protocol_fails_closed_without_downgrade() {
         serde_json::from_value(json!({"command":"thread.get","args":{"thread_id":"t"}})).unwrap();
     let mut request = shellboy::protocol::Request::new("synthetic", command);
     assert!(request.validate().is_ok());
-    request.protocol_version = 42;
+    request.protocol_version = 43;
     assert_eq!(
         request.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
     );
     let mut response = shellboy::protocol::Response::success("synthetic", json!({}));
-    response.protocol_version = 42;
+    response.protocol_version = 43;
     assert_eq!(
         response.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
@@ -254,7 +286,7 @@ fn core_schedule_and_service_reads_require_a_thread() {
 #[test]
 fn message_acceptance_and_reply_match_the_pinned_result_schemas() {
     use shellboy::protocol::{MessageAccepted, MessageReplied};
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 43);
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 44);
     let schema: serde_json::Value =
         serde_json::from_str(&shellboy::protocol::schema_json()).unwrap();
     let results = &schema["operation_results"];
