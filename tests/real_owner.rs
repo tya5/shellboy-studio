@@ -2004,6 +2004,10 @@ async fn an_app_message_is_recorded_as_from_the_app() {
     .await;
     assert_eq!(gone["ok"], false, "{gone}");
     assert_eq!(gone["error"]["code"], "thread_not_found", "{gone}");
+    // Core owns the delivery rule: its typed refusal of `now` reaches the page as is.
+    let now = call("thread.send", json!({"text": "x", "deliver": "now"})).await;
+    assert_eq!(now["ok"], false, "{now}");
+    assert_eq!(now["error"]["code"], "invalid_argument", "{now}");
     assert_eq!(
         call("data.write", json!({"path": "k.txt", "text": "ok"})).await["ok"],
         true

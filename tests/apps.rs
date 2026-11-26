@@ -719,17 +719,6 @@ async fn messages_are_recorded_as_from_the_app_not_a_person() {
         json!({"text":"there","thread":"other"}),
     )
     .await;
-    // Never forwarded: the send count below stays at two.
-    assert_eq!(
-        call(
-            &f,
-            "one",
-            "thread.send",
-            json!({"text":"urgent","deliver":"now"}),
-        )
-        .await["error"]["code"],
-        "invalid_args"
-    );
     let sends: Vec<_> = f
         .owner
         .other_calls
