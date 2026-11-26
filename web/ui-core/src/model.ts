@@ -1474,6 +1474,14 @@ export class AppModel {
     this.report("action.stop", await this.ops.runStop(runId));
   }
 
+  /** Core #431 recovery, on the person's request only: stop the named Run again if it is still stopping. */
+  async stopRunAgain(runId: string): Promise<void> {
+    const threadId = this.handle.peek()?.threadId;
+    const run = await this.ops.runGet(runId, threadId === undefined ? undefined : { threadId });
+    if (!run.ok) return this.report("action.stop", run);
+    if (run.value.state === "stopping") this.report("action.stop", await this.ops.runStop(runId));
+  }
+
   async backgroundShell(executionId: string): Promise<void> {
     const threadId = this.handle.peek()?.threadId;
     if (!threadId || this.shells.peek().get(executionId)?.thread_id !== threadId) return;
