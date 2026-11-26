@@ -170,6 +170,10 @@ fn temp_root() -> PathBuf {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    windows,
+    ignore = "Core v0.17.0 model shell on Windows returns no stdout for shellboy CLI commands; tya5/shellboy#440"
+)]
 async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
     use shellboy::protocol::{Command as CoreCommand, ThreadCreateArgs};
     let bin = PathBuf::from(
@@ -253,6 +257,10 @@ async fn standalone_reply_has_no_delivery_against_the_pinned_owner() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    windows,
+    ignore = "Core v0.17.0 model shell on Windows returns no stdout for shellboy CLI commands; tya5/shellboy#440"
+)]
 async fn routed_reply_delivery_is_returned_by_the_pinned_owner() {
     use shellboy::protocol::{Command as CoreCommand, MessageSendArgs, ThreadCreateArgs};
     let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("explicit owner binary"));
