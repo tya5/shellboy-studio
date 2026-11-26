@@ -29,6 +29,8 @@ version mismatch without explicit approval.
 
 Runs are independent: no Run owns another Run and organizational Thread parents
 are not Run owners. Shell ownership remains unchanged. Studio reads bounded directional `message.list` pages and uses
-`thread.get.pending_replies` for tab counts. The sender is shown from the saved
+`thread.get.pending_replies` for tab counts. A Reply needed row is captioned
+Asked back only when its message ID is in Core's `pending_replies.awaiting_own_ask`
+list; Studio never derives that state. The sender is shown from the saved
 identity. Answer a duty with `message.reply` and its exact message ID. A count
 marked with `+` is a lower bound. A recovery wait does not clear a duty.

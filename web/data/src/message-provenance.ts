@@ -26,7 +26,7 @@ export function admitMessageProvenance(value:unknown,nodeId:unknown):MessageProv
   if(id(value.reply_to))return {expect_reply:false,reply_to:value.reply_to as string};
  }else if(value.expect_reply===true&&absent('reply_to')){
   if(value.reply_state==='replied'&&id(value.reply_node_id))return {expect_reply:true,reply_state:'replied',reply_node_id:value.reply_node_id as string};
-  if(['pending','ignored','cancelled'].includes(value.reply_state as string)&&absent('reply_node_id'))return {expect_reply:true,reply_state:value.reply_state as 'pending'|'ignored'|'cancelled'};
+  if(['pending','awaiting_own_ask','ignored','cancelled'].includes(value.reply_state as string)&&absent('reply_node_id'))return {expect_reply:true,reply_state:value.reply_state as 'pending'|'awaiting_own_ask'|'ignored'|'cancelled'};
  }
 }
 /** Invalid optional notification metadata is quarantined, not a body rejection. */
