@@ -249,7 +249,9 @@ other failures leave More available for retry. A cancelled read is not a failure
 lookup budget; `asked_by` rows display the recipient.
 An `owed_by` row whose message ID appears in Core's typed
 `pending_replies.awaiting_own_ask` list (protocol 43, at most 16 pairs, omitted
-when empty) is captioned Asked back; the row stays in the list because Core
+when empty) is captioned Asked back. The Thread-detail decoder rejects a
+`thread.get` result whose list is not an array of nonempty ID pairs, as it does
+for a malformed `last_end_message`; the row stays in the list because Core
 counts and lists both open states. The untyped `reply` object on `message.list`
 items is not read, and the state of a duty another Thread owes (`asked_by` rows)
 is not shown.

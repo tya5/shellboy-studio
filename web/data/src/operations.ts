@@ -216,11 +216,21 @@ const decodeDeleteSetPreview = (ids: readonly string[]): Decoder<ThreadDeleteSet
 };
 
 const decodeThreadPage = pageOf<ThreadSummary, ThreadListFilters>(summaryProblem, recordFilters.threads);
+/** Optional Core list (protocol 43): omitted when empty, else `{message_id, blocking_message_id}` pairs. */
+const validAwaitingOwnAsk = (replies: unknown): boolean => {
+  if (!isObject(replies) || replies.awaiting_own_ask === undefined) return true;
+  const list = replies.awaiting_own_ask;
+  return Array.isArray(list) && list.every(pair => isObject(pair)
+    && typeof pair.message_id === "string" && pair.message_id !== ""
+    && typeof pair.blocking_message_id === "string" && pair.blocking_message_id !== "");
+};
 const decodeDetails: Decoder<ThreadDetails> = (v) =>
   isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string"
-    ? validEndMessage(v.last_end_message)
-      ? { ok: true, value: v as ThreadDetails }
-      : { ok: false, reason: "thread detail last_end_message is not an answer marker" }
+    ? !validEndMessage(v.last_end_message)
+      ? { ok: false, reason: "thread detail last_end_message is not an answer marker" }
+      : !validAwaitingOwnAsk(v.pending_replies)
+        ? { ok: false, reason: "thread detail pending_replies.awaiting_own_ask is not a list of message ID pairs" }
+        : { ok: true, value: v as ThreadDetails }
     : { ok: false, reason: "thread.get result lacks thread_id or title" };
 const runStates = new Set<RunState>(["live", "stopping", "stopped", "completed", "failed"]);
 const turnStates = new Set<TurnState>(["preparing", "running", "waiting", "recovery_wait", "completed", "stopped", "failed"]);
