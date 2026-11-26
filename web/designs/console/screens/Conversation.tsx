@@ -379,7 +379,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const character = errorActivity ?? status;
   const label = errorActivity ? t(`status.${errorActivity}`) : status === "running" && activity ? activityLabel(model.lang.value, activity) : status ? activityStatusLabel(t, status) : "";
   const interrupted = status !== "running" && row?.summary.latest_run_stop_reason === "app_shutdown";
-  // The failure names its own Run; the recovery action targets that Run, not the displayed one.
+  // Informational only: the failure names its own Run; stopping stays with the existing Activity action.
   const settlement = work.stopSettlementFailure;
   const line = <div key="conversation-status" class="work-row conversation-status">{status === "idle" ? <StatusMark status="idle" label={interrupted ? t("core.runInterrupted") : statusLabel(t, "idle")} /> : status ? <><ConversationCharacter name={statusCharacter(character ?? "neutral")} running={status === "running"} /><span>{interrupted ? t("core.runInterrupted") : label}</span>
     {running ? <>
@@ -392,7 +392,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   // Supporting text under the one-line status (Material 3 supporting text): it wraps in full, never ellipsized.
   return <>{line}{recovery && model.canRetry.value ? <div key="conversation-retry-note" id="conversation-retry-note" class="conversation-retry-note muted" data-retry-note>{t("recovery.body")}</div> : null}
     {recovery ? <div key="conversation-recovery-evidence" class="conversation-retry-note muted"><OwnerDiagnostic t={t} {...recovery} /></div> : null}
-    {settlement ? <div key="conversation-stop-settlement" class="conversation-retry-note muted" data-stop-settlement-failure={settlement.failure} data-stop-settlement-run={settlement.runId}>{t(`run.stopSettlement.${settlement.failure}`, { run: settlement.runId })} <Button variant="stop" onClick={() => void model.stopRunAgain(settlement.runId)}>{t("run.stopSettlement.again")}</Button></div> : null}
+    {settlement ? <div key="conversation-stop-settlement" class="conversation-retry-note muted" data-stop-settlement-failure={settlement.failure} data-stop-settlement-run={settlement.runId}>{t(`run.stopSettlement.${settlement.failure}`, { run: settlement.runId })}</div> : null}
     <span key="conversation-announcement" class="conversation-announcement" data-conversation-announcement role="status" aria-live="polite" aria-atomic="true">
       {interrupted ? t("core.runInterrupted") : status === "idle" ? statusLabel(t, "idle") : label}
     </span>

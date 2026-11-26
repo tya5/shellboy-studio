@@ -30,7 +30,7 @@ async function open(run: SavedRun) {
     const base = db.answer.bind(db);
     db.answer = call => call.command === "run.get"
       ? { ok: true, result: { run_id: "run-s", thread_id: "stopping", state: run.state, owned_execution_ids: [], context: {}, ...(run.failure === undefined ? {} : { stop_settlement_failure: run.failure }) } }
-      : call.command === "run.stop" ? { ok: true, result: { run_id: "run-s", state: "stopping" } } : base(call);
+      : base(call);
   } });
   const prefs = signal<Prefs>({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 } });
   const context: DesignContext = { model: f.model, designs: DESIGNS, prefs, setPrefs(change) { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true };
@@ -69,18 +69,12 @@ it("appears for the named Run on the owner's hint and clears when the owner repo
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
-it("stops the named Run again only on request and only while it is still stopping", async () => {
-  const run: SavedRun = { state: "stopping", failure: "invariant" };
-  const f = await open(run);
+it("shows the invariant guidance as information only", async () => {
+  const f = await open({ state: "stopping", failure: "invariant" });
   try {
     expect(line()?.getAttribute("data-stop-settlement-failure")).toBe("invariant");
-    expect(line()?.textContent).toContain("Note the Run ID and check Core diagnostics. Once the cause is addressed, if this Run is still stopping, stop it again.");
-    const again = () => [...line()!.querySelectorAll("button")].find(button => button.textContent === "Stop this Run again")!;
-    await act(async () => { again().click(); await settle(f.t, f.db); });
-    expect(f.t.calls("run.stop").map(call => call.args)).toEqual([{ run_id: "run-s" }]);
-    run.state = "stopped";
-    await act(async () => { again().click(); await settle(f.t, f.db); });
-    expect(f.t.calls("run.stop")).toHaveLength(1);
+    expect(line()?.textContent).toBe("Stop not confirmed for Run run-s: Core found an inconsistent state. Note the Run ID and check Core diagnostics. Once the cause is addressed, if this Run is still stopping, stop it again.");
+    expect(line()?.querySelector("button")).toBeNull();
   } finally { f.model.dispose(); f.data.stop(); }
 });
 
