@@ -146,6 +146,12 @@ describe('right panel purpose',()=>{
   {running:true,services:false,schedules:true},
   {running:false,services:true,schedules:false},
  ])('keeps one section order in Activity: %j',async state=>{
+  const original = ResizeObserver;
+  let reveal: (() => void) | undefined;
+  vi.stubGlobal('ResizeObserver', class extends original {
+    constructor(cb: ResizeObserverCallback) { super(cb); reveal = () => cb([], this); }
+    override observe(node: Element) { if (node.matches('[data-panel-root]')) reveal?.(); }
+  });
   const f=await setup();
   const at='2026-11-21T00:00:00Z';
   const answer=f.db.answer.bind(f.db);
@@ -160,12 +166,23 @@ describe('right panel purpose',()=>{
   try {
    await act(async()=>{hint();await settle(f.t,f.db);});
    const list=f.host.querySelector('[data-panel-list="work"]')!;
-   const labels=[...list.querySelectorAll('.group-label')].map(node=>node.textContent??'');
    const order=[t('work.running'),t('panel.pending'),t('service.heading'),t('schedule.heading')];
-   const seen=labels.map(text=>order.find(label=>text.includes(label))).filter(Boolean);
-   expect(seen).toEqual(order);
-   expect(list.querySelector('[data-panel-row-id="shell-running"]')!==null).toBe(state.running);
-  } finally {f.model.dispose();f.data.stop();}
+   const sections=[...list.querySelectorAll('section')];
+   const heads=sections.map(section=>section.querySelector('.group-label')?.textContent??'');
+   expect(order.map(label=>heads.findIndex(head=>head.includes(label)))).toEqual([0,1,2,3]);
+   const hasRows=[state.running,false,state.services,state.schedules];
+   const rowsIn=[
+    (section:Element)=>section.querySelector('[data-panel-row-id="shell-running"]'),
+    (section:Element)=>section.querySelector('[data-panel-row-id]'),
+    (section:Element)=>section.querySelector('[data-schedule-row="service"]'),
+    (section:Element)=>section.querySelector('[data-schedule-row="schedule"]'),
+   ];
+   sections.forEach((section,index)=>{
+    const empty=[...section.querySelectorAll('p')].some(p=>p.textContent===t('schedule.none'));
+    expect(rowsIn[index]!(section)!==null).toBe(hasRows[index]);
+    expect(empty).toBe(!hasRows[index]);
+   });
+  } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
  });
 
  it('captures the Run ID and opener through Activity confirmation when thread details change', async () => {
@@ -225,7 +242,7 @@ describe('right panel purpose',()=>{
    expect(f.db.answered.has(refresh.id)).toBe(false);
    expect(row()).toBe(retained);
    expect(count()).toBe('1');
-   expect(activity()).not.toContain(text('panel.empty.work'));
+   expect(row()!.closest('section')!.querySelector('p.muted')).toBeNull();
    expect(activity()).toContain(text('work.stale'));
    await act(async()=>row()!.querySelector<HTMLButtonElement>('.panel-list-main')!.click());
    const cancel=[...f.host.querySelectorAll<HTMLButtonElement>('[data-panel-detail] button')].find(item=>item.textContent===text('work.cancel'));
@@ -238,7 +255,7 @@ describe('right panel purpose',()=>{
    expect(row()?.textContent).toContain('Pending fixture message');
    expect(count()).toBe('1');
    expect(activity()).toContain(text('work.stale'));
-   expect(activity()).not.toContain(text('panel.empty.work'));
+   expect(row()!.closest('section')!.querySelector('p.muted')).toBeNull();
    await act(async()=>{await settle(f.t,f.db);});
    expect(row()).toBeNull();
    expect(count()).toBeUndefined();
