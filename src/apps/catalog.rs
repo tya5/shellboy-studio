@@ -8,8 +8,6 @@ use std::path::{Component, Path, PathBuf};
 pub const MAX_APPS: usize = 64;
 /// `artifact.list` serves 1 to 32 rows a page (Core's `docs/design/thread-artifacts.md`).
 const LIST_PAGE: u32 = 32;
-/// Pages of one Thread's artifacts one listing reads: it stops here and says the list is partial.
-const MAX_LIST_PAGES: usize = 8;
 const SCHEME: &str = "shellboy-app";
 
 /// What a listing shows. `name` is the artifact ID, which also names the route and the sender label.
@@ -120,42 +118,36 @@ where
         .ok_or_else(|| serde_json::json!({"code": "invalid_reply", "message": "The owner's artifact reply was not understood"}))
 }
 
-/// The apps of one Thread, most recently updated first, and whether more artifacts were left unread.
-pub async fn list<F, Fut>(call: &F, thread: &str) -> Result<(Vec<AppEntry>, bool), Value>
+/// One Core page of a Thread's artifacts, most recently updated first: the apps in it and Core's cursor
+/// for the next page, if any. The person decides how far to read.
+pub async fn list<F, Fut>(
+    call: &F,
+    thread: &str,
+    cursor: Option<String>,
+) -> Result<(Vec<AppEntry>, Option<String>), Value>
 where
     F: Fn(Command) -> Fut,
     Fut: std::future::Future<Output = Result<Value, Value>>,
 {
-    let mut apps = Vec::new();
-    let mut cursor: Option<String> = None;
-    for _ in 0..MAX_LIST_PAGES {
-        let page = call(Command::ArtifactList(ArtifactListArgs {
-            thread_id: thread.to_owned(),
-            cursor: cursor.take(),
-            limit: LIST_PAGE,
-        }))
-        .await?;
-        for item in page["items"].as_array().into_iter().flatten() {
-            if let Some(found) = latest_of(item)
-                && matches!(found.kind(), Some(Kind::App(_)))
-                && apps.len() < MAX_APPS
-            {
-                apps.push(AppEntry {
-                    name: found.artifact,
-                    title: found.title,
-                    thread: found.thread,
-                });
-            }
-        }
-        cursor = page["next_cursor"].as_str().map(str::to_owned);
-        if cursor.is_none() {
-            return Ok((apps, false));
-        }
-        if apps.len() >= MAX_APPS {
-            break;
-        }
-    }
-    Ok((apps, true))
+    let page = call(Command::ArtifactList(ArtifactListArgs {
+        thread_id: thread.to_owned(),
+        cursor,
+        limit: LIST_PAGE,
+    }))
+    .await?;
+    let apps = page["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(latest_of)
+        .filter(|found| matches!(found.kind(), Some(Kind::App(_))))
+        .map(|found| AppEntry {
+            name: found.artifact,
+            title: found.title,
+            thread: found.thread,
+        })
+        .collect();
+    Ok((apps, page["next_cursor"].as_str().map(str::to_owned)))
 }
 
 #[cfg(test)]

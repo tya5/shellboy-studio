@@ -467,7 +467,10 @@ fn apps_call<O: Owner>(
     let handle = tasks.spawn(async move {
         let text = |key: &str| args.as_ref().and_then(|a| a.get(key)).and_then(Value::as_str).unwrap_or_default().to_owned();
         let result = match name.as_str() {
-            "list" => apps.list(&text("thread")).await,
+            "list" => {
+                let cursor = args.as_ref().and_then(|a| a.get("cursor")).and_then(Value::as_str);
+                apps.list(&text("thread"), cursor).await
+            }
             "open" => apps.open(&text("name")).await,
             "instances" => apps.instances(&text("name")).await.map(|items| json!({"items": items})),
             "instance.create" => apps.add_instance(&text("name"), &text("instance")).await,
