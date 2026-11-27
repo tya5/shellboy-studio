@@ -1,3 +1,4 @@
+import { useClockText } from "./clock-display";
 // Branches (#138): a Thread's lines of work as coloured vertical lanes, where each split off, the two picked lines
 // compared from their split, and New branch / Rewind on a selected message. Approved mock:
 // web/designs/console/mocks/branches.tsx on wip/studio-branches-redesign-mock (53cf3c7). No flicker: rows keep
@@ -38,10 +39,10 @@ function LaneStatus({ t, item }: { t: Translate; item: BranchItem }) {
 }
 
 /** One line of work: its colour and name, where it came from, its size and age, and the Compare choice. */
-function LineCard({ t, lane, name, parentName, now, picked, onPick }: { t: Translate; lane: Lane; name: string; parentName: string | undefined; now: number; picked: boolean; onPick: () => void }) {
+function LineCard({ t, lane, name, parentName, now, picked, onPick }: { t: Translate; lane: Lane; name: string; parentName: string | undefined; now: AppModel["coarseNow"]; picked: boolean; onPick: () => void }) {
   const i = lane.item;
   const origin = i.divergence && !lane.detached && parentName ? t("branches.splitFrom", { parent: parentName, n: i.divergence.ordinal + 1 }) : lane.detached && parentName ? t("branches.apart", { parent: parentName }) : t("branches.original");
-  const age = formatAge(i.tipAt, now);
+  const age = useClockText(now, clock => formatAge(i.tipAt, clock), [i.tipAt]);
   const facts = [origin, ...(i.pathNodes !== undefined ? [t("branches.messages", { n: i.pathNodes.toLocaleString("en-US") })] : []), ...(age ? [t("branches.lastAt", { age })] : [])];
   return <LaneTinted as="li" mark={markOf(lane)} class="branch-line" data-picked={picked || undefined}>
     <span class="branch-line-head"><LaneName mark={markOf(lane)} name={name} strong /><LaneStatus t={t} item={i} /></span>
@@ -105,11 +106,11 @@ function afterSplit(pages: readonly (readonly HistoryItem[])[]): HistoryItem[] {
   return pages.flatMap((page) => page.slice(1));
 }
 
-function CompareSideView({ t, side, lane, name, now, onMore }: { t: Translate; side: CompareSide; lane: Lane | undefined; name: string; now: number; onMore: () => void }) {
+function CompareSideView({ t, side, lane, name, now, onMore }: { t: Translate; side: CompareSide; lane: Lane | undefined; name: string; now: AppModel["coarseNow"]; onMore: () => void }) {
   const mark = lane ? markOf(lane) : { column: 0, tone: 0 };
   const rows = afterSplit(side.pages);
   const count = side.total !== undefined && side.ordinal !== undefined ? side.total - side.ordinal - 1 : undefined;
-  const age = formatAge(side.item.tipAt, now);
+  const age = useClockText(count === undefined ? undefined : now, clock => formatAge(side.item.tipAt, clock), [side.item.tipAt]);
   const first = side.busy && side.pages.length === 0;
   return <LaneTinted as="article" mark={mark} class="branch-side">
     <header class="branch-side-head"><LaneName mark={mark} name={name} strong /><LaneStatus t={t} item={side.item} /></header>
@@ -132,7 +133,7 @@ function Compare({ model, family, graph, name, held }: { model: AppModel; family
   const t = model.t.value;
   const c = model.branchCompare;
   const s = c.state.value;
-  const now = model.coarseNow.value;
+  const now = model.coarseNow;
   if (s.selected.length !== 2) return <p class="muted">{t("branches.pickTwo")}</p>;
   if (!model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW)) return <p class="muted">{t("branches.compareNeedsReads")}</p>;
   const pair = s.selected.map((id) => family.items.find((i) => i.threadId === id));
@@ -167,7 +168,7 @@ export function Branches({ model }: { model: AppModel }) {
   const compare = c.state.value;
   const target = b.target.value;
   const rewind = b.rewind.value;
-  const now = model.coarseNow.value;
+  const now = model.coarseNow;
   const supported = model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
   const rowsById = model.rowById.value;
   const [phoneView, setPhoneView] = useState<"family" | "compare">("family");

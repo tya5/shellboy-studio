@@ -1,5 +1,6 @@
+import { clockAge } from "./clock-display";
 import { useRef, useState } from "preact/hooks";
-import { errorMessage, formatAge, formatCount, formatRoute, HUMAN_RETAINED, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
+import { errorMessage, formatCount, formatRoute, HUMAN_RETAINED, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
 import { Button } from "../system/components/Button";
 import { EmptyState } from "../system/components/EmptyState";
 import { Icon } from "../system/components/Icon";
@@ -40,7 +41,7 @@ export function Inbox({ model }: { model: AppModel }) {
           const row = model.rowById.value.get(p.threadId)?.summary;
           const count = row?.awaiting_named_count;
           const title = `${row?.title ?? p.threadId}${count !== undefined ? ` (${count}${row?.awaiting_named_count_exact === false ? "+" : ""})` : ""}`;
-          return <QuestionItem key={p.id} title={title} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />;
+          return <QuestionItem key={p.id} title={title} age={clockAge(model.now, p.askedAt)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />;
         })}
         {model.pending.loading?.value && !model.pending.loaded?.value || model.pending.loadingMore?.value ? <p class="muted caption" role="status">{t("common.loading")}</p> : null}
         {model.pending.stale?.value ? <p class="muted caption">{t("work.stale")}</p> : null}

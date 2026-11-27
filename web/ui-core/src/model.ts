@@ -1,3 +1,5 @@
+import { HistoryBodies, type BodyState } from "./history-bodies";
+export type { BodyState } from "./history-bodies";
 import { readThreadSettings } from "./resources";
 import { readCompactionEvent, type CompactionEvent } from "./analytics";
 import { seedUnreadMarkers, isUnread, markUnread, type UnreadRecord } from "./sidebar-unread";
@@ -81,18 +83,11 @@ export interface OutputState {
   error: string | undefined;
 }
 
-export interface BodyState {
-  text: string | undefined;
-  loading: boolean;
-  error: string | undefined;
-}
-interface BodyReadToken { manualAuthorized: boolean; }
-
 /** Failed connection attempts before suggesting that the token may be the problem. */
 const AUTH_HINT_ATTEMPTS = 2;
 /** `shell.list` page for one Thread; steps beyond it fall back to the state in history. */
 const SHELL_LIST_LIMIT = 200;
-/** Output and body caches keep this many entries, oldest dropped first. */
+/** Shell output cache: oldest entries are dropped first. */
 const CACHE_ENTRIES = 64;
 const COARSE_TICK_MS = 30_000;
 /** One output or body read stops after this many pages (64 KiB each by the owner's default). */
@@ -290,26 +285,12 @@ export class AppModel {
 
   readonly shells: Signal<ReadonlyMap<string, ShellEntry>> = signal(new Map());
   readonly outputs: Signal<ReadonlyMap<string, OutputState>> = signal(new Map());
-  readonly bodies: Signal<ReadonlyMap<string, BodyState>> = signal(new Map());
-  private bodyReaderKeys = new WeakMap<ConversationWindow, string>();
-  private bodyRouteKeys = new WeakMap<Route, string>();
-  private bodyScopeKey(handle: ThreadHandle, reader: ConversationWindow | undefined, route: Route): string {
-    let owner = this.bodyOwnerKeys.get(handle);
-    if (!owner) { owner = `owner-${++this.nextBodyOwnerKey}`; this.bodyOwnerKeys.set(handle, owner); }
-    let readerKey = reader === undefined ? "readerless" : this.bodyReaderKeys.get(reader);
-    if (reader !== undefined && !readerKey) { readerKey = `reader-${++this.nextBodyOwnerKey}`; this.bodyReaderKeys.set(reader, readerKey); }
-    let routeKey = this.bodyRouteKeys.get(route);
-    if (!routeKey) { routeKey = `route-${++this.nextBodyOwnerKey}`; this.bodyRouteKeys.set(route, routeKey); }
-    return `${owner}:${handle.liveEpoch()}:${readerKey}:${routeKey}`;
-  }
   bodyCacheKey(nodeId: string, itemIdentity?: string): string {
-    const handle = this.handle.value;
-    if (!handle) return `unbound:${nodeId}:${itemIdentity ?? "manual"}`;
-    // Read the canonical epoch signal so empty-to-empty restarts invalidate display.
-    handle.liveEpochSignal.value;
-    return `${this.bodyScopeKey(handle, this.longReader.value, this.route.value)}:${nodeId}:${itemIdentity ?? "manual"}`;
+    return JSON.stringify([nodeId, itemIdentity]);
   }
-  bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
+  bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined {
+    return this.longReader.value?.bodies.get(this.bodyCacheKey(nodeId, itemIdentity));
+  }
   readonly attachmentSection: AttachmentSection;
   readonly artifacts: ArtifactObservation;
   readonly panelTab: Signal<RightPanelTab> = signal("work");
@@ -344,9 +325,7 @@ export class AppModel {
   /** A step's output read, cancelled when its row closes. */
   private outputReads = new Map<string, Cancel>();
   private autoBodyReads = new WeakMap<ThreadHandle, WeakMap<ConversationWindow, string>>();
-  private bodyReadTokens = new Map<string, BodyReadToken>();
-  private bodyOwnerKeys = new WeakMap<ThreadHandle, string>();
-  private nextBodyOwnerKey = 0;
+
 
   readonly senderTitles: SenderTitles;
   private readonly senderPage = signal(0);
@@ -1118,15 +1097,15 @@ export class AppModel {
   }
 
   /** Read one message beyond its excerpt. On request only. */
-  async loadBody(nodeId: string, expected?: { handle?: ThreadHandle; reader?: ConversationWindow; kind: "deferred" | "typed"; identity?: string }): Promise<void> {
+  async loadBody(nodeId: string, expected?: { handle?: ThreadHandle; reader?: ConversationWindow; kind: "deferred" | "typed"; identity?: string }, panel?: { bodies: HistoryBodies; cancel: Cancel }): Promise<void> {
     const handle = expected?.handle ?? this.handle.peek();
     const reader = expected !== undefined && Object.prototype.hasOwnProperty.call(expected, "reader") ? expected.reader : this.longReader.peek();
     const route = this.route.peek();
-    if (!handle) return;
-    const cacheKey = `${this.bodyScopeKey(handle, reader, route)}:${nodeId}:${expected?.identity ?? "manual"}`;
-    const set = (b: BodyState) => {
-      this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, cacheKey, b);
-    };
+    const bodies = panel?.bodies ?? reader?.bodies;
+    if (!handle || !bodies || this.longReader.peek() !== reader) return;
+    const cacheKey = this.bodyCacheKey(nodeId, expected?.identity);
+    const tokens = bodies.reads;
+    const set = (body: BodyState | undefined) => bodies.set(cacheKey, body);
     const autoQualified = () => {
       if (reader === undefined) return false;
       const snapshot = reader.acceptedView.peek();
@@ -1139,13 +1118,13 @@ export class AppModel {
       if (!row || !row.items || row.items.length === 0 || !row.items.every(item => item.kind === "text") || expected.handle !== undefined && !autoQualified()) return;
     }
     // One cache-slot owner; a manual click upgrades that token without a second RPC.
-    const existing = this.bodyReadTokens.get(cacheKey);
+    const existing = tokens.get(cacheKey);
     if (existing !== undefined) {
       if (expected?.handle === undefined) existing.manualAuthorized = true;
       return;
     }
-    const token: BodyReadToken = { manualAuthorized: expected?.handle === undefined };
-    this.bodyReadTokens.set(cacheKey, token);
+    const token = { manualAuthorized: expected?.handle === undefined };
+    tokens.set(cacheKey, token);
     const cancel = this.threadReads;
     const lifetime = handle.liveEpoch();
     const qualified = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
@@ -1161,16 +1140,16 @@ export class AppModel {
     let cursor: string | undefined;
     try {
       for (let page = 0; page < MAX_PAGES; page++) {
-        if (!current() || !qualified() || this.bodyReadTokens.get(cacheKey) !== token) {
-          if (this.bodyReadTokens.get(cacheKey) === token && this.bodies.peek().get(cacheKey)?.loading) {
-            const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next;
+        if (!current() || !qualified() || tokens.get(cacheKey) !== token) {
+          if (tokens.get(cacheKey) === token && bodies.peek(cacheKey)?.loading) {
+            set(undefined);
           }
           return;
         }
-        const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: cancel });
-        if (!current() || !qualified() || this.bodyReadTokens.get(cacheKey) !== token) {
-          if (this.bodyReadTokens.get(cacheKey) === token && this.bodies.peek().get(cacheKey)?.loading) {
-            const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next;
+        const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: panel?.cancel ?? cancel });
+        if (!current() || !qualified() || tokens.get(cacheKey) !== token) {
+          if (tokens.get(cacheKey) === token && bodies.peek(cacheKey)?.loading) {
+            set(undefined);
           }
           return;
         }
@@ -1186,9 +1165,9 @@ export class AppModel {
         cursor = out.value.next_cursor;
         if (cursor === undefined) break;
       }
-      if (current() && qualified() && this.bodyReadTokens.get(cacheKey) === token) set({ text, loading: false, error: undefined });
+      if (current() && qualified() && tokens.get(cacheKey) === token) set({ text, loading: false, error: undefined });
     } finally {
-      if (this.bodyReadTokens.get(cacheKey) === token) this.bodyReadTokens.delete(cacheKey);
+      if (tokens.get(cacheKey) === token) tokens.delete(cacheKey);
     }
   }
 

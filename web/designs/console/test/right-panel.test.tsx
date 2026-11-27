@@ -70,7 +70,36 @@ async function setup(capabilities?: string[], holdStatus=false) {
  return {...f,host,context,prefs,store,stored};
 }
 
+async function setupExposedPanel() {
+  const original = ResizeObserver;
+  vi.stubGlobal('ResizeObserver', class extends original {
+   constructor(private readonly callback: ResizeObserverCallback) { super(callback); }
+   override observe(node: Element) {
+    if (node.matches('[data-panel-root]')) this.callback([], this);
+   }
+  });
+  return setup().finally(() => vi.unstubAllGlobals());
+}
+
 describe('right panel purpose',()=>{
+ it('does not refresh hidden Work labels on a clock tick and catches up when opened', async () => {
+  const f = await setupExposedPanel();
+  const list = f.host.querySelector('[data-panel-list="work"]')!;
+  const at = Date.parse('2026-11-21T00:00:00Z');
+  try {
+   await act(() => { f.model.now.value = at + 5_000; });
+   const visible = list.textContent;
+   await act(() => { f.model.now.value = at + 15_000; });
+   expect(list.textContent).not.toBe(visible);
+   await act(() => { f.context.setPrefs({ panelCollapsed: true }); });
+   const collapsed = list.textContent;
+   await act(() => { f.model.now.value = at + 65_000; });
+   expect(list.textContent).toBe(collapsed);
+   await act(() => { f.context.setPrefs({ panelCollapsed: false }); });
+   expect(list.textContent).not.toBe(collapsed);
+  } finally { f.model.dispose(); }
+ });
+
  it.each([1280,390])('reads definitions on hints and uses exact Activity commands at %i', async width => {
   const original = ResizeObserver;
   let reveal: (() => void) | undefined;
@@ -752,7 +781,7 @@ describe('right panel purpose',()=>{
  });
 
  it('keeps the Activity elapsed time following the clock (#171)',async()=>{
-  const f=await setup();
+  const f=await setupExposedPanel();
   try{
    const subtitle=()=>f.host.querySelector('[data-panel-list="work"] [data-panel-row-id="shell-running"] .panel-list-subtitle')?.textContent;
    act(()=>{f.model.now.value=Date.parse('2026-11-21T00:00:05Z');});
@@ -794,7 +823,7 @@ describe('right panel purpose',()=>{
  });
 
  it('retains the human question opener after Back on desktop', async () => {
-  const f=await setup();
+  const f=await setupExposedPanel();
   try {
    await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="awaiting-reply"]')!.click());
    const panel=f.host.querySelector('#panel-page-awaiting-reply')!;
