@@ -36,8 +36,20 @@ function layoutAtContainerWidth(width:number) {
 let host: HTMLElement | undefined;
 afterEach(() => { if (host) render(null, host); host?.remove(); host = undefined; });
 
-async function setup(capabilities?: string[]) {
- const f=await fixtureModel({route:'conversation',threadId:'lead',lang:'ja',capabilities,configure(db){
+/** Answers every call except `status`, so the first work read stays in flight. */
+async function settleHoldingStatus(t: Parameters<typeof settle>[0], db: Parameters<typeof settle>[1]) {
+ for (let i=0;i<10;i++) {
+  await flush(32);
+  for (const call of t.calls().filter(call=>call.command!=='status'&&!db.answered.has(call.id))) {
+   db.answered.add(call.id);
+   const response=db.answer(call);
+   if (response.ok) t.ok(call.id,response.result); else t.ownerError(call.id,response.code);
+  }
+ }
+}
+
+async function setup(capabilities?: string[], holdStatus=false) {
+ const f=await fixtureModel({route:'conversation',threadId:'lead',lang:'ja',capabilities,settle:!holdStatus,configure(db){
   db.threads={lead:summary('lead')};
   db.details.child=details("child",{title:"Child review Thread"});
   db.details.lead=details('lead',{run_id:'run-1',model:'model-a',effort:'high',connection:'test-connection',cwd:'/fixture/panel',pending_replies:{owed_by:{count:1,exact:true},asked_by:{count:1,exact:true}}});
@@ -53,7 +65,7 @@ async function setup(capabilities?: string[]) {
  const context:DesignContext={model:f.model,prefs,setPrefs:change=>{prefs.value={...prefs.value,...change};savePrefs(store,prefs.value);f.model.lang.value=prefs.value.lang;},designs:DESIGNS,submitToken:async()=>false};
  host=document.createElement('div');document.body.append(host);
  Object.defineProperty(host,'clientWidth',{configurable:true,value:1280});
- await act(async()=>{render(<App context={context}/>,host!);await settle(f.t,f.db);});
+ await act(async()=>{render(<App context={context}/>,host!);await (holdStatus?settleHoldingStatus(f.t,f.db):settle(f.t,f.db));});
  Object.defineProperty(host.querySelector(".app"), "clientWidth", { configurable:true, value:1280 });
  return {...f,host,context,prefs,store,stored};
 }
@@ -186,7 +198,7 @@ describe('right panel purpose',()=>{
  });
 
  it('follows one empty-state table for Running and Pending from the work read',async()=>{
-  const f=await setup();
+  const f=await setup(undefined,true);
   const t=f.model.t.value;
   const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
   const emptyLines=()=>[0,1].map(index=>[...f.host.querySelectorAll('[data-panel-list="work"] section')[index]!.querySelectorAll('p:not(.panel-list-divider-description)')].map(p=>p.textContent));
@@ -209,8 +221,7 @@ describe('right panel purpose',()=>{
   try {
    f.db.work.lead=[];
    // first read in flight, no snapshot: the loading line only
-   (f.model.handle.peek()!.work as {value:unknown}).value={value:undefined,loading:true,stale:false,error:undefined};
-   await act(async()=>{await flush(2);});
+   expect(f.t.calls('status').some(call=>!f.db.answered.has(call.id))).toBe(true);
    expect(emptyLines()).toEqual([[t('common.loading')],[t('common.loading')]]);
    // settled, complete, empty: None
    await act(async()=>{hint();await settle(f.t,f.db);});
@@ -222,13 +233,14 @@ describe('right panel purpose',()=>{
    await answerOthers('status');
    expect(f.t.calls('status').some(call=>!f.db.answered.has(call.id))).toBe(true);
    expect(emptyLines()).toEqual(none);
+   expect(activity()).not.toContain(t('work.stale'));
    // failed refresh over the snapshot: stale notice with the error, never None or Loading
    const realAnswer=f.db.answer.bind(f.db);
-   f.db.answer=call=>call.command==='status'?{ok:false,code:'internal'}:realAnswer(call);
+   f.db.answer=call=>call.command==='status'?{ok:false,code:'internal',message:'fixture status failure'}:realAnswer(call);
    await act(async()=>{await settle(f.t,f.db);});
    expect(emptyLines()).toEqual(quiet);
    expect(activity()).toContain(t('work.stale'));
-   expect(f.host.querySelector('[data-work-stale]')!.textContent!.length).toBeGreaterThan(t('work.stale').length);
+   expect(f.host.querySelector('[data-work-stale]')!.textContent).toContain('fixture status failure');
    expect(activity()).not.toContain(t('common.loading'));
    // partial: rows are all elsewhere, the partial note shows, never None
    f.db.answer=realAnswer;
@@ -301,7 +313,7 @@ describe('right panel purpose',()=>{
    expect(row()).toBe(retained);
    expect(count()).toBe('1');
    expect(row()!.closest('section')!.querySelector('p.muted')).toBeNull();
-   expect(activity()).toContain(text('work.stale'));
+   expect(activity()).not.toContain(text('work.stale'));
    await act(async()=>row()!.querySelector<HTMLButtonElement>('.panel-list-main')!.click());
    const cancel=[...f.host.querySelectorAll<HTMLButtonElement>('[data-panel-detail] button')].find(item=>item.textContent===text('work.cancel'));
    expect(cancel?.disabled).toBe(true);
@@ -312,7 +324,7 @@ describe('right panel purpose',()=>{
    await act(async()=>sheet.querySelector<HTMLButtonElement>('[data-panel-tab="work"]')!.click());
    expect(row()?.textContent).toContain('Pending fixture message');
    expect(count()).toBe('1');
-   expect(activity()).toContain(text('work.stale'));
+   expect(activity()).not.toContain(text('work.stale'));
    expect(row()!.closest('section')!.querySelector('p.muted')).toBeNull();
    await act(async()=>{await settle(f.t,f.db);});
    expect(row()).toBeNull();

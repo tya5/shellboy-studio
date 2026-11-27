@@ -745,7 +745,7 @@ function PanelActivity({ model }: { model: AppModel }) {
       })}{rows.length ? null : workEmpty}</section>;
     })}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
-    {resource?.stale || workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted" data-work-stale="">{t("work.stale")}{resource?.error ? ` ${t("common.readError", { message: resource.error.message })}` : ""}</div> : null}
+    {resource?.stale ? <div class="caption muted" data-work-stale="">{t("work.stale")}{resource?.error ? ` ${t("common.readError", { message: resource.error.message })}` : ""}</div> : null}
     {runStopConfirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("action.stopEverything")} closeLabel={t("thread.deleteCancel")} describedBy="run-stop-description" onClose={() => setRunStopConfirm(undefined)} getReturnFocusTarget={() => runStopConfirm?.opener}>
       <div class="shell-stop-confirmation"><p id="run-stop-description">{t("action.stopEverythingDescription")}</p><Button variant="stop" onClick={() => { const { runId } = runStopConfirm!; setRunStopConfirm(undefined); void model.stopRun(runId); }}>{t("action.stopEverything")}</Button></div>
     </WorkSheet> : null}
