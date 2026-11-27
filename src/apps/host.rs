@@ -619,7 +619,6 @@ impl<O: Owner> AppHost<O> {
 
     /// Resolve the requested Core service within the app's owning Thread, then forward the request.
     async fn backend_call(&self, args: &Value, latest: &Latest) -> Result<Value, ApiFail> {
-        let prepared = super::backend::prepare(args)?;
         let service_name = args
             .get("service_name")
             .and_then(Value::as_str)
@@ -631,6 +630,7 @@ impl<O: Owner> AppHost<O> {
             .acquire()
             .await
             .map_err(|_| ("shutting_down", "The gateway is stopping".to_owned()))?;
+        let prepared = super::backend::prepare(args)?;
 
         // Core accepts any Thread for this endpoint read; AppHost supplies only the artifact owner.
         let endpoint = self

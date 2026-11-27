@@ -3228,6 +3228,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
   self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(body)
 s = http.server.HTTPServer(('127.0.0.1', 0), Handler)
 with open(os.environ['SHELLBOY_SERVICE_ENDPOINT_FILE'], 'w') as f: json.dump({'port': s.server_port, 'token': TOKEN}, f)
+open('ready', 'w').close()
 s.serve_forever()
 "#).unwrap();
     let service = owner
@@ -3283,31 +3284,33 @@ s.serve_forever()
     );
     assert_eq!(app_names.len(), 2, "both artifact pages are registered");
 
-    let call = |name: &str| {
-        state.apps.call(
-            name,
-            "call",
-            json!({"service_name":"tracker","path":"/issues"}),
-        )
-    };
-    let mut live = false;
-    for _ in 0..100 {
-        let result = call(&app_names[0]).await;
-        if result["ok"] == true {
-            live = true;
-            break;
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while !tokio::fs::try_exists(service_dir.join("ready"))
+            .await
+            .unwrap_or(false)
+        {
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+    })
+    .await
+    .expect("service fixture bound its listener and published its endpoint");
+
+    for name in &app_names {
+        let result = state
+            .apps
+            .call(
+                name,
+                "call",
+                json!({"service_name":"tracker","path":"/issues"}),
+            )
+            .await;
+        assert_eq!(result["ok"], true, "{name}: {result}");
+        assert_eq!(
+            result["result"]["body"]["issues"],
+            json!(["one"]),
+            "{name}: {result}"
+        );
     }
-    assert!(
-        live,
-        "tracker service should become available through Studio"
-    );
-    assert_eq!(
-        call(&app_names[1]).await["ok"],
-        true,
-        "second page shares tracker"
-    );
     owner
         .call(
             shellboy::protocol::Command::ServiceStop(
@@ -3317,9 +3320,16 @@ s.serve_forever()
             None,
         )
         .await
-        .unwrap();
+        .expect("service.stop succeeds");
     for name in &app_names {
-        let result = call(name).await;
+        let result = state
+            .apps
+            .call(
+                name,
+                "call",
+                json!({"service_name":"tracker","path":"/issues"}),
+            )
+            .await;
         assert_eq!(result["error"]["code"], "backend_down", "{name}: {result}");
     }
     cancel.cancel();
