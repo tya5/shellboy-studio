@@ -1,8 +1,8 @@
 # Core main preparation (Studio #152 / #151)
 
-Core `60ea26e89c4064860a6f53180e58975cdfc3b02d`, protocol 47 (`docs/reference/protocol.schema.json` `$id` `protocol-v47`). This is a Core main snapshot, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
+Core `71d23106a9bc35a209bebad145e3e09635a5792f`, protocol 48 (`docs/reference/protocol.schema.json` `$id` `protocol-v48`). Cargo.toml and Cargo.lock pin this exact landed Core main commit. It is not a published tag; Studio v0.4.4 remains pinned separately.
 
-**Studio #176 development only:** Cargo pins Core #461 branch commit `410491ede0586a53811188df7e508326719af19a` (still protocol 47 under the next-note rule). Replace this with the proper landed Core release and protocol before landing #176. The gateway reads one `artifact.list` scheme page and resolves the owning Thread titles for that page only.
+**Studio #176:** The gateway reads one `artifact.list` scheme page and resolves the owning Thread titles for that page only, using landed Core #461.
 
 | Core change | Studio adoption |
 | --- | --- |
