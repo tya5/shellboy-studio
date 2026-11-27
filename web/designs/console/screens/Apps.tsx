@@ -60,8 +60,8 @@ function AppList({ context }: { context: DesignContext }) {
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState("");
   // A Thread without a known title is named by its id, which is machine text.
-  const boundNote = (thread: string) => {
-    const title = rows.get(thread)?.summary.title;
+  const boundNote = (thread: string, titleFromOwner?: string) => {
+    const title = titleFromOwner ?? rows.get(thread)?.summary.title;
     return title !== undefined ? t("apps.bound", { title }) : <Rich text={t("apps.bound", { title: `\`${thread.slice(0, 8)}\`` })} />;
   };
   const templates = APP_TEMPLATES.map((x) => ({ id: x.id, title: x.title[model.lang.value], draft: x.draft[model.lang.value] }));
@@ -70,14 +70,13 @@ function AppList({ context }: { context: DesignContext }) {
     <div class="apps-list">
       <div class="head">
         <h1>{t("view.apps")}</h1>
-        <div class="app-list-actions"><IconButton glyph="action.retry" label={t("common.refresh")} disabled={list.loading || list.thread === undefined} onClick={() => list.thread !== undefined && void apps.refresh(list.thread)} /><Button variant="primary" aria-pressed={creating} onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button></div>
+        <div class="app-list-actions"><IconButton glyph="action.retry" label={t("common.refresh")} disabled={list.loading} onClick={() => void apps.refresh(list.thread)} /><Button variant="primary" aria-pressed={creating} onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button></div>
       </div>
       {creating ? <AppRequest key={draft} title={t("apps.createTitle")} requestLabel={t("apps.request")} cwdLabel={t("apps.cwd")} reviewLabel={t("apps.preview")} previewLabel={t("apps.previewLabel")} sendLabel={t("apps.createSend")} prompt={t("apps.prompt")} busy={model.appRequestState.value.kind === "sending"} disabled={model.connection.value !== "connected" || model.appRequestState.value.kind === "unconfirmed"} error={model.appRequestState.value.message ? t("apps.createError", { message: model.appRequestState.value.message }) : undefined} folders={model.appFolders.value} defaultCwd={model.selectedRow.value?.summary.cwd ?? ""} templates={templates} templatesLabel={t("apps.templates")} filterLabel={t("apps.folderFilter")} listLabel={t("apps.folderList")} manualLabel={t("apps.folderManual")} initialDraft={draft} onSend={(text, cwd) => model.createAppRequest(text, cwd)} /> : null}
       {creating && apps.folders.value.truncated ? <Notice>{t("apps.folderTruncated")}</Notice> : null}
       {creating && apps.folders.value.error ? <Notice tone="bad">{t("apps.folderReadError", { message: apps.folders.value.error })}</Notice> : null}
       {failed ? <Notice tone="bad">{t("apps.openFailed", { name: failed.name, message: failed.message })}</Notice> : null}
       {list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : null}
-      {list.thread === undefined ? <p class="muted caption">{t("apps.noThread")}</p> : null}
       {list.loaded && list.apps.length === 0 && list.next === undefined ? <><EmptyState role="empty.apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} variant="ghost" onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
       {list.apps.length > 0 ? (
         <div class="grid">
@@ -87,7 +86,7 @@ function AppList({ context }: { context: DesignContext }) {
               name={a.name}
               href={formatRoute({ view: "apps", appName: a.name })}
               openLabel={t("apps.open")}
-              note={a.thread ? boundNote(a.thread) : t("apps.unbound")}
+              note={a.thread ? boundNote(a.thread, a.threadTitle) : t("apps.unbound")}
             ><AppNames model={model} name={a.name} /></AppCard>
           ))}
         </div>

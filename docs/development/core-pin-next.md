@@ -2,6 +2,8 @@
 
 Core `60ea26e89c4064860a6f53180e58975cdfc3b02d`, protocol 47 (`docs/reference/protocol.schema.json` `$id` `protocol-v47`). This is a Core main snapshot, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
 
+**Studio #176 development only:** Cargo pins Core #461 branch commit `6dc80c5cbfbc2acd0afc7148e85730e08a186282` (still protocol 47 under the next-note rule). Replace this with the proper landed Core release and protocol before landing #176. The gateway reads one `artifact.list` scheme page and resolves the owning Thread titles for that page only.
+
 | Core change | Studio adoption |
 | --- | --- |
 | #445, protocol 47 (Studio #169) | `artifact.read` returns one regular file of an exact artifact version as base64. Studio reads app files and the Possessions preview through it and no longer opens artifact files itself (apps: `docs/design/apps.md`). The browser allowlist denies it: only the gateway reads. |

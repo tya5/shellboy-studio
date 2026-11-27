@@ -635,7 +635,8 @@ export class AppModel {
       effect(() => {
         const route = this.route.value;
         if (route.view !== "apps" || this.connection.value !== "connected") return;
-        this.apps.ensure(this.selectedId.value);
+        const thread = this.lastThread.value;
+        this.apps.ensure(thread, thread === undefined ? this.data.listHint.value : undefined);
         if (route.appName !== undefined) void this.apps.open(route.appName, route.appInstance);
       }),
     );

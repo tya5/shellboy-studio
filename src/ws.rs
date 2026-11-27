@@ -469,7 +469,11 @@ fn apps_call<O: Owner>(
         let result = match name.as_str() {
             "list" => {
                 let cursor = args.as_ref().and_then(|a| a.get("cursor")).and_then(Value::as_str);
-                apps.list(&text("thread"), cursor).await
+                match args.as_ref().and_then(|a| a.get("thread")) {
+                    None => apps.list(None, cursor).await,
+                    Some(Value::String(thread)) => apps.list(Some(thread), cursor).await,
+                    Some(_) => Err(("invalid_args", "App list Thread must be a string".into())),
+                }
             }
             "open" => apps.open(&text("name")).await,
             "instances" => apps.instances(&text("name")).await.map(|items| json!({"items": items})),

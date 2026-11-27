@@ -9,15 +9,16 @@ export interface AppInfo {
   name: string;
   title: string;
   thread: string | undefined;
+  threadTitle: string | undefined;
 }
 
 export interface AppListState {
   loading: boolean;
   loaded: boolean;
-  /** The Thread these apps were read for. */
+  /** The Thread scope, or undefined for all live Threads. */
   thread: string | undefined;
   apps: AppInfo[];
-  /** Core's cursor for the next page of this Thread's artifacts; undefined when all were read. */
+  /** Core's cursor for the next page; undefined when all were read. */
   next: string | undefined;
   /** A Show more read is in flight. */
   loadingMore: boolean;
@@ -62,7 +63,7 @@ const readApp = (v: unknown): AppInfo | undefined => {
   const o = v as Record<string, unknown>;
   const name = str(o.name);
   if (!name) return undefined;
-  return { name, title: str(o.title) ?? name, thread: str(o.thread) };
+  return { name, title: str(o.title) ?? name, thread: str(o.thread), threadTitle: str(o.thread_title) };
 };
 
 const readApps = (value: Record<string, unknown>): AppInfo[] => (Array.isArray(value.apps) ? value.apps.flatMap((a) => readApp(a) ?? []) : []);
@@ -112,23 +113,25 @@ export class AppsModel {
 
   constructor(private readonly ops: Operations) {}
 
-  /** Reads the Thread's apps once per Thread; `refresh` reads again. */
-  ensure(thread: string | undefined): void {
+  private listGeneration = 0;
+  private globalHint: number | undefined;
+
+  /** Read the active scope on entry and reread the global page on an owner list hint. */
+  ensure(thread: string | undefined, hint?: number): void {
     const s = this.list.peek();
-    if (thread === undefined) {
-      if (s.thread !== undefined || s.loaded) this.list.value = { loading: false, loaded: false, thread: undefined, apps: [], next: undefined, loadingMore: false, error: undefined };
-      return;
-    }
-    if (s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
+    const changed = thread === undefined && this.globalHint !== hint;
+    this.globalHint = hint;
+    if (changed || s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
   }
 
   /** Reads the Thread's `shellboy-app:` artifacts through the gateway, so a new one shows at once. */
-  async refresh(thread: string): Promise<void> {
+  async refresh(thread: string | undefined): Promise<void> {
+    const generation = ++this.listGeneration;
     // The list belongs to the Thread it was read for: another Thread's cards never wait under this one.
     const before = this.list.peek();
     this.list.value = before.thread === thread ? { ...before, loading: true, loadingMore: false } : { loading: true, loaded: false, thread, apps: [], next: undefined, loadingMore: false, error: undefined };
     const out = await this.ops.appsList(thread);
-    if (this.list.peek().thread !== thread) return;
+    if (this.listGeneration !== generation) return;
     if (!out.ok) {
       this.list.value = { ...this.list.peek(), loading: false, error: out.error };
       return;
@@ -140,11 +143,12 @@ export class AppsModel {
   async more(): Promise<void> {
     const before = this.list.peek();
     const { thread, next } = before;
-    if (thread === undefined || next === undefined || before.loading || before.loadingMore) return;
+    if (next === undefined || before.loading || before.loadingMore) return;
     this.list.value = { ...before, loadingMore: true, error: undefined };
+    const generation = this.listGeneration;
     const out = await this.ops.appsList(thread, next);
     const now = this.list.peek();
-    if (now.thread !== thread || now.next !== next) return;
+    if (this.listGeneration !== generation || now.thread !== thread || now.next !== next) return;
     if (!out.ok) {
       this.list.value = { ...now, loadingMore: false, error: out.error };
       return;

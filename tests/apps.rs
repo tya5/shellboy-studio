@@ -188,7 +188,9 @@ async fn fixture() -> Fixture {
     let fault = read_fault.clone();
     let (owner, _events) = mock_replies(move |command| match command {
         Command::MessageSend(_) => common::ok_reply(json!({"message_id": "m1"})),
-        Command::ThreadGet(_) => common::ok_reply(json!({"thread_id": "t1", "title": "T"})),
+        Command::ThreadGet(args) => common::ok_reply(
+            json!({"thread_id": args.thread_id, "title": format!("Thread {}", args.thread_id.as_deref().unwrap_or_default())}),
+        ),
         Command::HistoryList(_) => common::ok_reply(json!({"items": []})),
         Command::ThreadList(_) => common::ok_reply(json!({"items": [{"thread_id": "t1"}]})),
         Command::ArtifactGet(args) => match known.lock().unwrap().get(&args.artifact_id) {
@@ -196,11 +198,23 @@ async fn fixture() -> Fixture {
             None => refused(ErrorCode::TargetUnavailable, "no such artifact"),
         },
         Command::ArtifactList(args) => {
+            assert_eq!(
+                args.scheme.as_deref(),
+                args.thread_id.is_none().then_some("shellboy-app")
+            );
             let all: Vec<Value> = known
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|(_, found)| found.thread == args.thread_id)
+                .filter(|(_, found)| {
+                    args.thread_id
+                        .as_ref()
+                        .is_none_or(|thread| found.thread == *thread)
+                        && args
+                            .scheme
+                            .as_ref()
+                            .is_none_or(|scheme| found.uri.starts_with(&format!("{scheme}:")))
+                })
                 .map(|(id, found)| summary(id, found))
                 .collect();
             let from: usize = args.cursor.as_deref().map_or(0, |c| c.parse().unwrap());
@@ -340,11 +354,14 @@ async fn apps_come_from_the_threads_artifacts_and_nothing_else() {
     let f = fixture().await;
     let apps = &f.state.apps;
     assert_eq!(
-        apps.list("t1", None).await.unwrap()["apps"],
+        apps.list(Some("t1"), None).await.unwrap()["apps"],
         json!([]),
         "nothing is bundled"
     );
-    assert_eq!(apps.list("", None).await.unwrap_err().0, "invalid_args");
+    assert_eq!(
+        apps.list(Some(""), None).await.unwrap_err().0,
+        "invalid_args"
+    );
     write_app(&f, "one", "t1", &[PAGE]);
     write_app(&f, "other-thread", "t2", &[PAGE]);
     // Plain artifacts are not apps, whatever their MIME.
@@ -369,7 +386,7 @@ async fn apps_come_from_the_threads_artifacts_and_nothing_else() {
         "shellboy-app:not/absolute".into(),
         None,
     );
-    let list = apps.list("t1", None).await.unwrap();
+    let list = apps.list(Some("t1"), None).await.unwrap();
     let names: Vec<&str> = list["apps"]
         .as_array()
         .unwrap()
@@ -381,7 +398,7 @@ async fn apps_come_from_the_threads_artifacts_and_nothing_else() {
     // A new one shows at once, with no restart and no folder scan.
     write_app(&f, "later", "t1", &[PAGE]);
     assert_eq!(
-        apps.list("t1", None).await.unwrap()["apps"]
+        apps.list(Some("t1"), None).await.unwrap()["apps"]
             .as_array()
             .unwrap()
             .len(),
@@ -410,7 +427,12 @@ async fn apps_beyond_the_first_owner_page_are_reached_by_its_cursor() {
     let mut names = Vec::new();
     let mut cursor: Option<String> = None;
     loop {
-        let page = f.state.apps.list("t1", cursor.as_deref()).await.unwrap();
+        let page = f
+            .state
+            .apps
+            .list(Some("t1"), cursor.as_deref())
+            .await
+            .unwrap();
         names.extend(
             page["apps"]
                 .as_array()
@@ -520,7 +542,7 @@ async fn a_file_html_artifact_is_one_static_page_without_the_api() {
     );
     let apps = &f.state.apps;
     assert_eq!(
-        apps.list("t1", None).await.unwrap()["apps"],
+        apps.list(Some("t1"), None).await.unwrap()["apps"],
         json!([]),
         "Apps lists app folders, not pages"
     );
@@ -802,6 +824,12 @@ async fn the_api_runs_over_the_web_uis_socket() {
         .await
         .unwrap();
     assert_eq!(result(&mut ws, 1).await["apps"][0]["title"], "one");
+    write_app(&f, "two", "other", &[PAGE]);
+    ws.send(send(20, "apps.list", json!({}))).await.unwrap();
+    let page = result(&mut ws, 20).await;
+    assert_eq!(page["apps"][0]["thread_title"], "Thread bound");
+    assert_eq!(page["apps"][1]["thread_title"], "Thread other");
+
     ws.send(send(2, "apps.open", json!({"name":"one"})))
         .await
         .unwrap();

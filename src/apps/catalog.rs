@@ -2,7 +2,7 @@
 //! whose latest version URI uses the `shellboy-app:` scheme; nothing is cached or kept here.
 use serde::Serialize;
 use serde_json::Value;
-use shellboy::protocol::{ArtifactGetArgs, ArtifactListArgs, Command};
+use shellboy::protocol::{ArtifactGetArgs, ArtifactListArgs, Command, ThreadGetArgs};
 use std::path::{Component, Path, PathBuf};
 
 pub const MAX_APPS: usize = 64;
@@ -16,6 +16,8 @@ pub struct AppEntry {
     pub name: String,
     pub title: String,
     pub thread: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_title: Option<String>,
 }
 
 /// The latest saved version of an artifact, as the owner reports it.
@@ -122,7 +124,7 @@ where
 /// for the next page, if any. The person decides how far to read.
 pub async fn list<F, Fut>(
     call: &F,
-    thread: &str,
+    thread: Option<&str>,
     cursor: Option<String>,
 ) -> Result<(Vec<AppEntry>, Option<String>), Value>
 where
@@ -130,12 +132,13 @@ where
     Fut: std::future::Future<Output = Result<Value, Value>>,
 {
     let page = call(Command::ArtifactList(ArtifactListArgs {
-        thread_id: thread.to_owned(),
+        thread_id: thread.map(str::to_owned),
+        scheme: thread.is_none().then(|| "shellboy-app".into()),
         cursor,
         limit: LIST_PAGE,
     }))
     .await?;
-    let apps = page["items"]
+    let mut apps: Vec<AppEntry> = page["items"]
         .as_array()
         .into_iter()
         .flatten()
@@ -145,8 +148,32 @@ where
             name: found.artifact,
             title: found.title,
             thread: found.thread,
+            thread_title: None,
         })
         .collect();
+    if thread.is_none() {
+        // Resolve only distinct owners of this Core page; never enumerate the Thread list.
+        let mut titles = std::collections::BTreeMap::new();
+        for entry in &mut apps {
+            if !titles.contains_key(&entry.thread) {
+                let row = call(Command::ThreadGet(ThreadGetArgs {
+                    thread_id: Some(entry.thread.clone()),
+                    display: true,
+                }))
+                .await?;
+                if row["thread_id"].as_str() != Some(entry.thread.as_str()) {
+                    return Err(
+                        serde_json::json!({"code":"owner_call_failed","message":"Thread title read returned a different Thread"}),
+                    );
+                }
+                titles.insert(
+                    entry.thread.clone(),
+                    row["title"].as_str().map(str::to_owned),
+                );
+            }
+            entry.thread_title = titles[&entry.thread].clone();
+        }
+    }
     Ok((apps, page["next_cursor"].as_str().map(str::to_owned)))
 }
 

@@ -143,9 +143,9 @@ impl<O: Owner> Apps<O> {
             .map_err(owner_fail)
     }
 
-    /// One page of a Thread's apps: its `shellboy-app:` artifacts, read from the owner on each call.
-    pub async fn list(&self, thread: &str, cursor: Option<&str>) -> Result<Value, Fail> {
-        if thread.is_empty() {
+    /// One page of apps, scoped to a Thread when supplied: its `shellboy-app:` artifacts, read from the owner on each call.
+    pub async fn list(&self, thread: Option<&str>, cursor: Option<&str>) -> Result<Value, Fail> {
+        if thread == Some("") {
             return Err((
                 "invalid_args",
                 "Name the Thread whose apps to list".to_owned(),

@@ -88,12 +88,12 @@ describe("AppsModel over the fake transport", () => {
     model.dispose();
   });
 
-  it("reads the selected Thread's apps when the view opens, and asks the gateway for one ticket per open", async () => {
+  it("reads global apps when no Thread was selected, and asks the gateway for one ticket per open", async () => {
     const quiet = await fixtureModel({ route: "inbox" });
     expect(quiet.t.calls("apps.list")).toHaveLength(0);
     const { t, db, model } = await fixtureModel({ route: "apps" });
     expect(t.calls("apps.list")).toHaveLength(1);
-    expect(t.calls("apps.list")[0]!.args).toEqual({ thread: model.selectedId.value });
+    expect(t.calls("apps.list")[0]!.args).toEqual({});
     expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["board", "second"]);
     model.applyRoute({ view: "apps", appName: "board" });
     await settle(t, db);
@@ -103,6 +103,14 @@ describe("AppsModel over the fake transport", () => {
     expect(t.calls("apps.open")).toHaveLength(1);
     expect(model.apps.tabs.value).toHaveLength(1);
     expect(model.apps.tabs.value[0]).toMatchObject({ url: "/a/s1/index.html", thread: "lead", threadState: "ok" });
+  });
+  it("retains the per-Thread list after opening a conversation", async () => {
+    const { t, db, model } = await fixtureModel({ route: "inbox" });
+    model.applyRoute({ view: "conversation", threadId: "lead" });
+    await settle(t, db);
+    model.applyRoute({ view: "apps" });
+    await settle(t, db);
+    expect(t.calls("apps.list").at(-1)?.args).toEqual({ thread: "lead" });
   });
   it("Refresh shows a new app without a restart", async () => {
     const { t, db, model } = await fixtureModel({ route: "apps" });
