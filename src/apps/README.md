@@ -22,7 +22,7 @@ The CLI turns `./kanban` into an absolute folder. The entry is always `index.htm
 
 Studio gets the folder's files through the owner (`artifact.read`), which serves only regular files inside the folder. `data/` is read and written by Studio on the local disk, so an app works where Studio and the folder are on the same machine.
 
-A single HTML file is shared with `shellboy artifact add --uri PATH --mime text/html` instead. Studio shows it as one static page, without `shellboy.*` and without its neighbouring files.
+A single HTML file is shared with `shellboy artifact add --uri PATH --mime text/html` instead. Studio shows it as one static page, without `shellboy.*` and without its neighbouring files. Core does not inherit the MIME type on update, so pass `--mime text/html` on every `shellboy artifact update` of that page too; a version without it is no longer opened as a page.
 
 Hand an app over by copying its folder, then register it again in the other Thread.
 

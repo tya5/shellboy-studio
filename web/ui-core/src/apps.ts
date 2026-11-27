@@ -17,8 +17,10 @@ export interface AppListState {
   /** The Thread these apps were read for. */
   thread: string | undefined;
   apps: AppInfo[];
-  /** The owner had more artifacts than one listing reads. */
-  partial: boolean;
+  /** Core's cursor for the next page of this Thread's artifacts; undefined when all were read. */
+  next: string | undefined;
+  /** A Show more read is in flight. */
+  loadingMore: boolean;
   error: OpError | undefined;
 }
 
@@ -63,6 +65,8 @@ const readApp = (v: unknown): AppInfo | undefined => {
   return { name, title: str(o.title) ?? name, thread: str(o.thread) };
 };
 
+const readApps = (value: Record<string, unknown>): AppInfo[] => (Array.isArray(value.apps) ? value.apps.flatMap((a) => readApp(a) ?? []) : []);
+
 /** A file's address holds the app's file session, which has no place in a message to a Thread. */
 const withoutSession = (text: string): string => text.replace(/https?:\/\/[^\s/]+\/a\/[0-9a-f]{32}\//g, "");
 
@@ -84,7 +88,7 @@ export function errorReportText(app: Pick<OpenApp, "name" | "title">, errors: re
 }
 
 export class AppsModel {
-  readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, thread: undefined, apps: [], partial: false, error: undefined });
+  readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, thread: undefined, apps: [], next: undefined, loadingMore: false, error: undefined });
   readonly tabs: Signal<readonly OpenApp[]> = signal([]);
   readonly instances: Signal<Readonly<Record<string, readonly string[]>>> = signal({});
   readonly openError: Signal<{ name: string; message: string } | undefined> = signal(undefined);
@@ -112,7 +116,7 @@ export class AppsModel {
   ensure(thread: string | undefined): void {
     const s = this.list.peek();
     if (thread === undefined) {
-      if (s.thread !== undefined || s.loaded) this.list.value = { loading: false, loaded: false, thread: undefined, apps: [], partial: false, error: undefined };
+      if (s.thread !== undefined || s.loaded) this.list.value = { loading: false, loaded: false, thread: undefined, apps: [], next: undefined, loadingMore: false, error: undefined };
       return;
     }
     if (s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
@@ -120,15 +124,33 @@ export class AppsModel {
 
   /** Reads the Thread's `shellboy-app:` artifacts through the gateway, so a new one shows at once. */
   async refresh(thread: string): Promise<void> {
-    this.list.value = { ...this.list.peek(), thread, loading: true };
+    // The list belongs to the Thread it was read for: another Thread's cards never wait under this one.
+    const before = this.list.peek();
+    this.list.value = before.thread === thread ? { ...before, loading: true, loadingMore: false } : { loading: true, loaded: false, thread, apps: [], next: undefined, loadingMore: false, error: undefined };
     const out = await this.ops.appsList(thread);
     if (this.list.peek().thread !== thread) return;
     if (!out.ok) {
       this.list.value = { ...this.list.peek(), loading: false, error: out.error };
       return;
     }
-    const apps = Array.isArray(out.value.apps) ? out.value.apps.flatMap((a) => readApp(a) ?? []) : [];
-    this.list.value = { loading: false, loaded: true, thread, apps, partial: out.value.partial === true, error: undefined };
+    this.list.value = { loading: false, loaded: true, thread, apps: readApps(out.value), next: str(out.value.next_cursor), loadingMore: false, error: undefined };
+  }
+
+  /** The next Core page, added after the apps already shown. */
+  async more(): Promise<void> {
+    const before = this.list.peek();
+    const { thread, next } = before;
+    if (thread === undefined || next === undefined || before.loading || before.loadingMore) return;
+    this.list.value = { ...before, loadingMore: true, error: undefined };
+    const out = await this.ops.appsList(thread, next);
+    const now = this.list.peek();
+    if (now.thread !== thread || now.next !== next) return;
+    if (!out.ok) {
+      this.list.value = { ...now, loadingMore: false, error: out.error };
+      return;
+    }
+    const seen = new Set(now.apps.map((a) => a.name));
+    this.list.value = { ...now, loadingMore: false, apps: [...now.apps, ...readApps(out.value).filter((a) => !seen.has(a.name))], next: str(out.value.next_cursor) };
   }
 
   async loadInstances(name: string): Promise<void> {

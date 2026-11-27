@@ -2,7 +2,7 @@
 //! sandboxed iframe with an opaque origin, reaches Shellboy only through the API forwarded by its parent
 //! frame, and never sees the Web UI's token or cookie. See `docs/design/apps.md`.
 //!
-//! Bounds (limits, not performance claims): `catalog::MAX_APPS` listed and hosted; `MAX_SESSIONS` file
+//! Bounds (limits, not performance claims): `catalog::MAX_APPS` hosted (a listing is one Core page of 32 per request); `MAX_SESSIONS` file
 //! sessions, oldest dropped; `RUNS` scripts at once and one per action; owner calls share the bridge's
 //! global semaphore; one hub session per app while `thread.onChange` waits and 30 s after; one lifecycle
 //! task per app while a page waits (data walks only for `data.onChange`). A host whose folder is gone gives up its slot.
@@ -76,6 +76,13 @@ fn owner_fail(error: Value) -> Fail {
     }
 }
 
+/// Why a file could not be read through the owner.
+pub(crate) enum ReadFail {
+    /// The owner has no such file.
+    Missing,
+    Status(StatusCode),
+}
+
 pub struct Apps<O> {
     pub(crate) owner: Arc<O>,
     pub(crate) hub: Arc<Hub>,
@@ -136,18 +143,22 @@ impl<O: Owner> Apps<O> {
             .map_err(owner_fail)
     }
 
-    /// The apps of one Thread: its `shellboy-app:` artifacts, read from the owner on each call.
-    pub async fn list(&self, thread: &str) -> Result<Value, Fail> {
+    /// One page of a Thread's apps: its `shellboy-app:` artifacts, read from the owner on each call.
+    pub async fn list(&self, thread: &str, cursor: Option<&str>) -> Result<Value, Fail> {
         if thread.is_empty() {
             return Err((
                 "invalid_args",
                 "Name the Thread whose apps to list".to_owned(),
             ));
         }
-        let (apps, partial) = catalog::list(&|command| self.owner_value(command), thread)
-            .await
-            .map_err(owner_fail)?;
-        Ok(json!({"apps": apps, "partial": partial}))
+        let (apps, next_cursor) = catalog::list(
+            &|command| self.owner_value(command),
+            thread,
+            cursor.map(str::to_owned),
+        )
+        .await
+        .map_err(owner_fail)?;
+        Ok(json!({"apps": apps, "next_cursor": next_cursor}))
     }
 
     /// The app host for an artifact whose latest version is an app. A host is replaced when the app's
@@ -303,12 +314,9 @@ impl<O: Owner> Apps<O> {
         host::serve_file(self, &opened, method, path).await
     }
 
-    /// The bytes of one file of the opened version: `Ok(None)` if the owner has no such file.
-    async fn read_file(
-        &self,
-        opened: &Opened,
-        path: Option<&str>,
-    ) -> Result<Option<Vec<u8>>, StatusCode> {
+    /// The bytes of one file of the opened version. Only the owner's `target_unavailable` means the file
+    /// is missing; a refusal is a plain 404, and anything else is the gateway's failure.
+    async fn read_file(&self, opened: &Opened, path: Option<&str>) -> Result<Vec<u8>, ReadFail> {
         let read = Command::ArtifactRead(ArtifactReadArgs {
             thread_id: opened.thread.clone(),
             artifact_id: opened.artifact.clone(),
@@ -319,10 +327,14 @@ impl<O: Owner> Apps<O> {
             Ok(content) => content["base64"]
                 .as_str()
                 .and_then(|text| base64::engine::general_purpose::STANDARD.decode(text).ok())
-                .map(Some)
-                .ok_or(StatusCode::BAD_GATEWAY),
-            Err(error) if error["code"] == "input_limit" => Err(StatusCode::PAYLOAD_TOO_LARGE),
-            Err(_) => Ok(None),
+                .ok_or(ReadFail::Status(StatusCode::BAD_GATEWAY)),
+            Err(error) => Err(match error["code"].as_str() {
+                Some("target_unavailable") => ReadFail::Missing,
+                Some("input_limit") => ReadFail::Status(StatusCode::PAYLOAD_TOO_LARGE),
+                Some("invalid_argument") => ReadFail::Status(StatusCode::NOT_FOUND),
+                Some("shutting_down") => ReadFail::Status(StatusCode::SERVICE_UNAVAILABLE),
+                _ => ReadFail::Status(StatusCode::BAD_GATEWAY),
+            }),
         }
     }
 

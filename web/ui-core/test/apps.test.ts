@@ -112,6 +112,36 @@ describe("AppsModel over the fake transport", () => {
     await settle(t, db);
     expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["fresh"]);
   });
+  it("never shows the previous Thread's apps under another Thread", async () => {
+    const { t, db, model } = await fixtureModel({ route: "apps" });
+    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["board", "second"]);
+    const plain = db.answer;
+    db.answer = (c) => (c.command === "apps.list" ? { ok: false, code: "owner_failed" } : plain(c));
+    void model.apps.refresh("elsewhere");
+    expect(model.apps.list.value).toMatchObject({ thread: "elsewhere", apps: [], loading: true });
+    await settle(t, db);
+    expect(model.apps.list.value.apps).toEqual([]);
+    expect(model.apps.list.value.error).toBeDefined();
+  });
+  it("reaches apps beyond the first page through Core's cursor", async () => {
+    const { t, db, model } = await fixtureModel({ route: "apps" });
+    const plain = db.answer;
+    db.answer = (c) => {
+      if (c.command !== "apps.list") return plain(c);
+      const cursor = (c.args as { cursor?: string }).cursor;
+      return cursor === undefined
+        ? { ok: true, result: { apps: [{ name: "a1", title: "A1" }], next_cursor: "page2" } }
+        : { ok: true, result: { apps: [{ name: "a2", title: "A2" }] } };
+    };
+    void model.apps.refresh("lead");
+    await settle(t, db);
+    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["a1"]);
+    expect(model.apps.list.value.next).toBeDefined();
+    void model.apps.more();
+    await settle(t, db);
+    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["a1", "a2"]);
+    expect(model.apps.list.value.next).toBeUndefined();
+  });
   it("a refused open reports it and opens no tab", async () => {
     const { t, db, model } = await fixtureModel({ route: "apps" });
     const plain = db.answer;

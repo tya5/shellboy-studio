@@ -281,6 +281,6 @@ Studio はループバックのまま、別の端末から届くプライベー�
 
 ### アプリ、ガイド、トラブル対応
 
-**アプリ** は Studio のローカル Web アプリ一覧です。操作は Studio が動く端末で実行されるので、使う前にコードと権限を確認してください。`shellboy-studio guide user` と `shellboy-studio guide agent` で Studio を起動せずに同梱ガイドを読めます。起動時には `$SHELLBOY_DATA_DIR/studio/agent-guide.md` と管理対象の Apps README が上書きされます。
+**アプリ** は開いているスレッドの `shellboy-app:` 成果物の一覧です。スレッドがフォルダに作り、`shellboy artifact add --uri shellboy-app:./FOLDER` で登録した Web アプリです。同じアプリはスレッドの所有物からも開けます。HTML ファイルを成果物として登録した場合は、アプリ API なしの単一ページとして開きます。操作は Studio が動く端末で実行されるので、使う前にアプリを確認してください。`shellboy-studio guide user` と `shellboy-studio guide agent` で Studio を起動せずに同梱ガイドを読めます。起動時には `$SHELLBOY_DATA_DIR/studio/agent-guide.md` が上書きされます。アプリ API のガイドは `/_shellboy/guide.md` で配信されます。
 
 Core に接続できない場合は、同じ OS アカウントで起動したか、データディレクトリが一致するか、リリースノートどおりの組み合わせかを確認します。古いプロトコルへの切り替えはありません。不一致を解消するためにデータを初期化したり、作業中のオーナーを無断で再起動したりしないでください。配布物があるだけでは実機検証済みとはいえません。検証範囲はリリースノートを参照してください。

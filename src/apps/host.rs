@@ -3,7 +3,7 @@
 //! over the authenticated `/ws` and alone decides which app a call is for. Its files come from a path
 //! holding an unguessable session (`Apps::file`), because an opaque origin sends no cookies.
 use super::{
-    Apps, ENTRY, Opened,
+    Apps, ENTRY, Opened, ReadFail,
     catalog::{self, Latest},
     run,
 };
@@ -791,9 +791,9 @@ pub(super) async fn serve_file<O: Owner>(
         .read_file(opened, (!opened.page).then_some(relative.as_str()))
         .await;
     let bytes = match read {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => return missing(),
-        Err(status) => return status.into_response(),
+        Ok(bytes) => bytes,
+        Err(ReadFail::Missing) => return missing(),
+        Err(ReadFail::Status(status)) => return status.into_response(),
     };
     let kind = content_type(&rel);
     let body = if kind.starts_with("text/html") && !opened.page {

@@ -1,22 +1,20 @@
 import type { ComponentChildren } from "preact";
 import { Icon } from "../Icon";
 
-/** An app in the list. A broken one stays listed and says why, so its author can see it. */
-export function AppCard({ title, name, note, href, openLabel, problem, children }: { title: string; name: string; note: ComponentChildren; href: string; openLabel: string; problem?: string | undefined; children?: ComponentChildren }) {
+/** An app in the list. */
+export function AppCard({ title, name, note, href, openLabel, children }: { title: string; name: string; note: ComponentChildren; href: string; openLabel: string; children?: ComponentChildren }) {
   return (
-    <div class={problem ? "card err" : "card"}>
+    <div class="card">
       <h2>{title}</h2>
       <div class="mono muted">{name}</div>
-      {problem ? <p class="excerpt">{problem}</p> : <p class="excerpt">{note}</p>}
-      {problem ? null : children}
-      {problem ? null : (
-        <div class="foot">
-          <a class="nav-link go" href={href}>
-            {openLabel}
-            <Icon role="app.open" size="small" />
-          </a>
-        </div>
-      )}
+      <p class="excerpt">{note}</p>
+      {children}
+      <div class="foot">
+        <a class="nav-link go" href={href}>
+          {openLabel}
+          <Icon role="app.open" size="small" />
+        </a>
+      </div>
     </div>
   );
 }

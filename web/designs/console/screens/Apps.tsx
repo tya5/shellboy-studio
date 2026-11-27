@@ -77,7 +77,6 @@ function AppList({ context }: { context: DesignContext }) {
       {creating && apps.folders.value.error ? <Notice tone="bad">{t("apps.folderReadError", { message: apps.folders.value.error })}</Notice> : null}
       {failed ? <Notice tone="bad">{t("apps.openFailed", { name: failed.name, message: failed.message })}</Notice> : null}
       {list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : null}
-      {list.partial ? <Notice>{t("apps.listPartial")}</Notice> : null}
       {list.thread === undefined ? <p class="muted caption">{t("apps.noThread")}</p> : null}
       {list.loaded && list.apps.length === 0 ? <><EmptyState role="empty.apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} variant="ghost" onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
       {list.apps.length > 0 ? (
@@ -93,6 +92,7 @@ function AppList({ context }: { context: DesignContext }) {
           ))}
         </div>
       ) : null}
+      {list.next !== undefined ? <Button variant="ghost" disabled={list.loadingMore} onClick={() => void apps.more()}>{t("apps.more")}</Button> : null}
       <GuideRegistrationView context={context} collapsed />
     </div>
   );

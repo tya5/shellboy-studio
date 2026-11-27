@@ -85,6 +85,8 @@ struct Fixture {
     /// Where the apps' folders are: anywhere the Thread put them.
     apps: PathBuf,
     registry: Registry,
+    /// When set, the fake owner refuses every `artifact.read` with this code.
+    read_fault: Arc<Mutex<Option<ErrorCode>>>,
     addr: std::net::SocketAddr,
     state: AppState<MockOwner>,
     owner: Arc<MockOwner>,
@@ -182,6 +184,8 @@ async fn fixture() -> Fixture {
     let apps = root.join("anywhere");
     let registry: Registry = Arc::new(Mutex::new(BTreeMap::new()));
     let known = registry.clone();
+    let read_fault: Arc<Mutex<Option<ErrorCode>>> = Arc::new(Mutex::new(None));
+    let fault = read_fault.clone();
     let (owner, _events) = mock_replies(move |command| match command {
         Command::MessageSend(_) => common::ok_reply(json!({"message_id": "m1"})),
         Command::ThreadGet(_) => common::ok_reply(json!({"thread_id": "t1", "title": "T"})),
@@ -213,6 +217,10 @@ async fn fixture() -> Fixture {
             }
             common::ok_reply(reply)
         }
+        Command::ArtifactRead(_) if fault.lock().unwrap().is_some() => {
+            let code = fault.lock().unwrap().unwrap();
+            refused(code, "refused")
+        }
         Command::ArtifactRead(args) => match known.lock().unwrap().get(&args.artifact_id) {
             Some(found) if found.version == args.version && found.thread == args.thread_id => {
                 read_artifact(found, args.path.as_deref())
@@ -243,6 +251,7 @@ async fn fixture() -> Fixture {
         root,
         apps,
         registry,
+        read_fault,
         addr,
         state,
         owner,
@@ -331,11 +340,11 @@ async fn apps_come_from_the_threads_artifacts_and_nothing_else() {
     let f = fixture().await;
     let apps = &f.state.apps;
     assert_eq!(
-        apps.list("t1").await.unwrap()["apps"],
+        apps.list("t1", None).await.unwrap()["apps"],
         json!([]),
         "nothing is bundled"
     );
-    assert_eq!(apps.list("").await.unwrap_err().0, "invalid_args");
+    assert_eq!(apps.list("", None).await.unwrap_err().0, "invalid_args");
     write_app(&f, "one", "t1", &[PAGE]);
     write_app(&f, "other-thread", "t2", &[PAGE]);
     // Plain artifacts are not apps, whatever their MIME.
@@ -360,7 +369,7 @@ async fn apps_come_from_the_threads_artifacts_and_nothing_else() {
         "shellboy-app:not/absolute".into(),
         None,
     );
-    let list = apps.list("t1").await.unwrap();
+    let list = apps.list("t1", None).await.unwrap();
     let names: Vec<&str> = list["apps"]
         .as_array()
         .unwrap()
@@ -369,11 +378,10 @@ async fn apps_come_from_the_threads_artifacts_and_nothing_else() {
         .collect();
     assert_eq!(names, ["one"], "only this Thread's shellboy-app: artifacts");
     assert_eq!(list["apps"][0]["thread"], "t1");
-    assert_eq!(list["partial"], false);
     // A new one shows at once, with no restart and no folder scan.
     write_app(&f, "later", "t1", &[PAGE]);
     assert_eq!(
-        apps.list("t1").await.unwrap()["apps"]
+        apps.list("t1", None).await.unwrap()["apps"]
             .as_array()
             .unwrap()
             .len(),
@@ -385,18 +393,11 @@ async fn apps_come_from_the_threads_artifacts_and_nothing_else() {
 }
 
 #[tokio::test]
-async fn a_listing_reads_every_page_up_to_a_bound_and_says_when_it_stopped() {
+async fn apps_beyond_the_first_owner_page_are_reached_by_its_cursor() {
     let f = fixture().await;
     for n in 0..40 {
         write_app(&f, &format!("app{n:02}"), "t1", &[PAGE]);
     }
-    let list = f.state.apps.list("t1").await.unwrap();
-    assert_eq!(
-        list["apps"].as_array().unwrap().len(),
-        40,
-        "more than one owner page of apps"
-    );
-    assert_eq!(list["partial"], false);
     for n in 0..300 {
         f.register(
             &format!("note{n:03}"),
@@ -406,10 +407,28 @@ async fn a_listing_reads_every_page_up_to_a_bound_and_says_when_it_stopped() {
             None,
         );
     }
-    let list = f.state.apps.list("t1").await.unwrap();
+    let mut names = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let page = f.state.apps.list("t1", cursor.as_deref()).await.unwrap();
+        names.extend(
+            page["apps"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| a["name"].as_str().unwrap().to_owned()),
+        );
+        cursor = page["next_cursor"].as_str().map(str::to_owned);
+        if cursor.is_none() {
+            break;
+        }
+    }
+    names.sort();
+    names.dedup();
     assert_eq!(
-        list["partial"], true,
-        "the artifacts past the bound were not searched"
+        names.len(),
+        40,
+        "every app is reachable, however many artifacts come first"
     );
 }
 
@@ -458,6 +477,30 @@ async fn a_new_version_is_shown_by_reopening_and_a_removed_artifact_is_gone() {
 }
 
 #[tokio::test]
+async fn an_owner_error_is_not_shown_as_a_missing_file() {
+    let f = fixture().await;
+    write_app(&f, "one", "t1", &[PAGE]);
+    let url = open(&f, "one").await;
+    let web = f.addr.to_string();
+    let entry = url;
+    let ok = http(&web, "GET", &entry, &[], "").await;
+    assert_eq!(ok.status, 200);
+    *f.read_fault.lock().unwrap() = Some(ErrorCode::IoFailed);
+    let down = http(&web, "GET", &entry, &[], "").await;
+    assert_eq!(down.status, 502);
+    assert!(!down.body.contains("missing"), "{}", down.body);
+    *f.read_fault.lock().unwrap() = Some(ErrorCode::InvalidArgument);
+    let refused = http(&web, "GET", &entry, &[], "").await;
+    assert_eq!(refused.status, 404);
+    assert!(!refused.body.contains("missing"), "{}", refused.body);
+    *f.read_fault.lock().unwrap() = None;
+    std::fs::remove_file(f.apps.join("one/index.html")).unwrap();
+    let gone = http(&web, "GET", &entry, &[], "").await;
+    assert_eq!(gone.status, 404);
+    assert!(gone.body.contains("missing"), "{}", gone.body);
+}
+
+#[tokio::test]
 async fn a_file_html_artifact_is_one_static_page_without_the_api() {
     let f = fixture().await;
     std::fs::create_dir_all(&f.apps).unwrap();
@@ -477,7 +520,7 @@ async fn a_file_html_artifact_is_one_static_page_without_the_api() {
     );
     let apps = &f.state.apps;
     assert_eq!(
-        apps.list("t1").await.unwrap()["apps"],
+        apps.list("t1", None).await.unwrap()["apps"],
         json!([]),
         "Apps lists app folders, not pages"
     );
