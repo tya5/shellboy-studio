@@ -72,7 +72,6 @@ The module-private glyph registry stores factories, not SVG VNodes. Invoke a fac
 | `empty.noThread` | No Thread is selected for Conversation. | `chat` |
 | `empty.conversation` | The selected Conversation has no messages yet. | `chat` |
 | `empty.branches` | No branches are available for the selected Thread. | `branch` |
-| `empty.panelActivity` | Compact empty state of the conversation panel's Activity tab. | `term` |
 | `empty.panelReplies` | Compact empty state of the Reply needed tab. | `reply` |
 | `empty.panelAwaiting` | Compact empty state of the Awaiting reply tab. | `hourglass` |
 | `empty.panelAttachments` | Compact empty state of the Possessions (attachments) tab. | `attachment` |
