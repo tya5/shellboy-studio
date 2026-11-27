@@ -5,7 +5,7 @@ use shellboy_studio::{
     events::PollConfig,
     hub::Hub,
     owner::{IpcOwner, startup_probe},
-    server::{AppsPaths, ServerConfig, Shared, serve},
+    server::{ServerConfig, Shared, serve},
 };
 use std::{io::IsTerminal, net::SocketAddr, path::PathBuf, process::ExitCode, sync::Arc};
 use tokio_util::sync::CancellationToken;
@@ -31,9 +31,6 @@ struct Args {
     /// Skip token/session checks. Only for trusted access; NEVER expose publicly (e.g. Funnel).
     #[arg(long)]
     no_auth: bool,
-    /// Folder of apps (default: `apps` in the owner data directory).
-    #[arg(long)]
-    apps_dir: Option<PathBuf>,
     /// Enable the /debug page (off by default).
     #[arg(long)]
     debug: bool,
@@ -190,7 +187,6 @@ async fn run_bundle_server(
     let state = bridge_state(
         config,
         launch.auth.take().expect("prepared authentication"),
-        None,
         cancel.clone(),
         Some(launch.control.clone()),
     );
@@ -206,16 +202,12 @@ async fn run_bundle_server(
 fn bridge_state(
     config: ServerConfig,
     auth: Auth,
-    apps_dir: Option<PathBuf>,
     cancel: CancellationToken,
     launcher: Option<shellboy_studio::launcher::Control>,
 ) -> shellboy_studio::server::AppState<IpcOwner> {
     let data_dir = &config.data_dir;
     let owner = Arc::new(IpcOwner::new(data_dir.clone()));
-    let apps = AppsPaths {
-        dir: apps_dir.unwrap_or_else(|| data_dir.join("apps")),
-    };
-    let mut state = Shared::with_apps(owner, Hub::new(), auth, config, Some(apps), cancel);
+    let mut state = Shared::with_cancel(owner, Hub::new(), auth, config, cancel);
     Arc::get_mut(&mut state).expect("new server state").launcher = launcher;
     state
 }
@@ -313,7 +305,7 @@ async fn run(args: Args) -> Result<(), String> {
         config_dir,
         debug: args.debug,
     };
-    let state = bridge_state(config, auth, args.apps_dir, cancel.clone(), None);
+    let state = bridge_state(config, auth, cancel.clone(), None);
     if let Err(error) = startup_probe(state.owner.as_ref()).await {
         eprintln!("{}", owner_problem(&state.config.data_dir, &error));
     }

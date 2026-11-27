@@ -1912,7 +1912,7 @@ async fn an_app_message_is_recorded_as_from_the_app() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let cancel = tokio_util::sync::CancellationToken::new();
-    let state = shellboy_studio::server::Shared::with_apps(
+    let state = shellboy_studio::server::Shared::with_cancel(
         owner.clone(),
         shellboy_studio::hub::Hub::new(),
         shellboy_studio::auth::Auth::new("ab".repeat(32)),
@@ -1923,9 +1923,6 @@ async fn an_app_message_is_recorded_as_from_the_app() {
             config_dir: "/temp/config".into(),
             debug: false,
         },
-        Some(shellboy_studio::server::AppsPaths {
-            dir: root.join("apps"),
-        }),
         cancel.clone(),
     );
     tokio::spawn(shellboy_studio::server::serve(
@@ -1948,15 +1945,39 @@ async fn an_app_message_is_recorded_as_from_the_app() {
         .as_str()
         .unwrap()
         .to_owned();
-    let dir = root.join("apps/probe");
+    let dir = root.join("probe");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("app.json"), json!({"thread": thread}).to_string()).unwrap();
     std::fs::write(dir.join("index.html"), "<!doctype html><title>x</title>").unwrap();
+    // The app is an artifact of the Thread: Core's own registry, not a folder Studio scans.
+    let added = shellboy_studio::owner::Owner::call(
+        &*owner,
+        shellboy::protocol::Command::ArtifactAdd(
+            serde_json::from_value(json!({"thread_id": thread, "uri": format!("shellboy-app:{}", dir.display()), "title": "Probe"})).unwrap(),
+        ),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    let artifact = serde_json::to_value(&added).unwrap()["result"]["artifact_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
-    let apps = state.apps.clone().unwrap();
+    let apps = state.apps.clone();
+    let listed = apps.list(&thread).await.unwrap();
+    assert_eq!(listed["apps"][0]["name"], artifact.as_str(), "{listed}");
+    let opened = apps.open(&artifact).await.unwrap();
+    let page = opened["url"].as_str().unwrap().to_owned();
+    let served = http_get(addr, &page).await;
+    assert!(
+        served.contains("<title>x</title>"),
+        "the owner served the entry: {served}"
+    );
     let call = |op: &'static str, args: Value| {
         let apps = apps.clone();
-        async move { apps.call("probe", op, args).await }
+        let artifact = artifact.clone();
+        async move { apps.call(&artifact, op, args).await }
     };
 
     // Exercise the actual Apps API against the pinned owner, not a hand-built DTO.
@@ -1993,7 +2014,7 @@ async fn an_app_message_is_recorded_as_from_the_app() {
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    assert_eq!(sender["label"], "app:probe", "{sender}");
+    assert_eq!(sender["label"], format!("app:{artifact}"), "{sender}");
     assert_ne!(sender["kind"], "human", "{sender}");
 
     // The bound Thread goes: the owner's error reaches the page, and its own data still works.

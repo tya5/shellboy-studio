@@ -56,7 +56,7 @@ export type ClientFrame =
   | { t: "launcher"; action: LauncherAction; instance_id?: string };
 
 export type ServerFrame =
-  | { t: "hello"; bridge_version: string; listen?: string; apps_dir?: string | null; data_dir?: string; owner: OwnerState; desktop?: boolean; core_management?: boolean }
+  | { t: "hello"; bridge_version: string; listen?: string; data_dir?: string; owner: OwnerState; desktop?: boolean; core_management?: boolean }
   | { t: "result"; id: number; response?: OwnerResponse; error?: BridgeError }
   | { t: "changed"; thread_ids: string[]; list: boolean; config_changed: boolean }
   | { t: "live"; thread_id: string; attempt_id: string; input_through_node_id?: string | null; gap: boolean; deltas: { offset: number; reasoning: boolean; text: string }[] }

@@ -4,20 +4,21 @@ import { signal, type Signal } from "@preact/signals-core";
 import { Cancel, type Operations, type OpError } from "../../data/src";
 import { validAppInstance } from "./route";
 
+/** An app is an artifact, so `name` is its artifact ID and `thread` its owner Thread. */
 export interface AppInfo {
   name: string;
   title: string;
-  entry: string;
   thread: string | undefined;
-  problem: string | undefined;
 }
 
 export interface AppListState {
   loading: boolean;
   loaded: boolean;
+  /** The Thread these apps were read for. */
+  thread: string | undefined;
   apps: AppInfo[];
-  dir: string | undefined;
-  guide: string | undefined;
+  /** The owner had more artifacts than one listing reads. */
+  partial: boolean;
   error: OpError | undefined;
 }
 
@@ -59,7 +60,7 @@ const readApp = (v: unknown): AppInfo | undefined => {
   const o = v as Record<string, unknown>;
   const name = str(o.name);
   if (!name) return undefined;
-  return { name, title: str(o.title) ?? name, entry: str(o.entry) ?? "index.html", thread: str(o.thread), problem: str(o.problem) };
+  return { name, title: str(o.title) ?? name, thread: str(o.thread) };
 };
 
 /** A file's address holds the app's file session, which has no place in a message to a Thread. */
@@ -78,12 +79,12 @@ export function readAppMessage(data: unknown): { type: "ready" } | { type: "call
 
 export function errorReportText(app: Pick<OpenApp, "name" | "title">, errors: readonly AppErrorReport[]): string {
   const lines = errors.map((e) => `- ${e.kind}: ${e.message}${e.where ? ` (${e.where})` : ""}`);
-  const text = `The app ${app.title} (folder apps/${app.name}) reported errors. Please look into them:\n${lines.join("\n")}`;
+  const text = `The app ${app.title} (artifact ${app.name}) reported errors. Please look into them:\n${lines.join("\n")}`;
   return text.length > MAX_REPORT_CHARS ? text.slice(0, MAX_REPORT_CHARS) : text;
 }
 
 export class AppsModel {
-  readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, apps: [], dir: undefined, guide: undefined, error: undefined });
+  readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, thread: undefined, apps: [], partial: false, error: undefined });
   readonly tabs: Signal<readonly OpenApp[]> = signal([]);
   readonly instances: Signal<Readonly<Record<string, readonly string[]>>> = signal({});
   readonly openError: Signal<{ name: string; message: string } | undefined> = signal(undefined);
@@ -107,21 +108,27 @@ export class AppsModel {
 
   constructor(private readonly ops: Operations) {}
 
-  ensure(): void {
+  /** Reads the Thread's apps once per Thread; `refresh` reads again. */
+  ensure(thread: string | undefined): void {
     const s = this.list.peek();
-    if (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost")) void this.refresh();
+    if (thread === undefined) {
+      if (s.thread !== undefined || s.loaded) this.list.value = { loading: false, loaded: false, thread: undefined, apps: [], partial: false, error: undefined };
+      return;
+    }
+    if (s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
   }
 
-  /** Reads the folder through the gateway, so a new app shows without a restart. */
-  async refresh(): Promise<void> {
-    this.list.value = { ...this.list.peek(), loading: true };
-    const out = await this.ops.appsList();
+  /** Reads the Thread's `shellboy-app:` artifacts through the gateway, so a new one shows at once. */
+  async refresh(thread: string): Promise<void> {
+    this.list.value = { ...this.list.peek(), thread, loading: true };
+    const out = await this.ops.appsList(thread);
+    if (this.list.peek().thread !== thread) return;
     if (!out.ok) {
       this.list.value = { ...this.list.peek(), loading: false, error: out.error };
       return;
     }
     const apps = Array.isArray(out.value.apps) ? out.value.apps.flatMap((a) => readApp(a) ?? []) : [];
-    this.list.value = { loading: false, loaded: true, apps, dir: str(out.value.dir), guide: str(out.value.guide), error: undefined };
+    this.list.value = { loading: false, loaded: true, thread, apps, partial: out.value.partial === true, error: undefined };
   }
 
   async loadInstances(name: string): Promise<void> {

@@ -1,24 +1,30 @@
 # Making an app
 
-This is the Apps reference for the Studio agent guide at `$SHELLBOY_DATA_DIR/studio/agent-guide.md`. Read that guide first for the workflow.
+This is the Apps reference for the Studio agent guide. Studio serves it at `/_shellboy/guide.md` on its own port, beside `/_shellboy/api.js`, so it always matches the running API.
 
-This file is written by shellboy-studio each time it starts; edits here are lost. Every folder beside it is an app. The gateway finds new folders without a restart, and the person opens them under Apps in the Web UI.
-
-When someone says "make this an app", create a folder here. The folder's name is the app's ID: lowercase letters, digits, `-` and `_`, up to 40 characters.
+An app is a Thread artifact whose URI uses the `shellboy-app:` scheme. You write the app in a folder anywhere you like and register the folder; there is no apps directory and no manifest. Studio finds apps with `artifact.list`, and the person opens them from the Thread's Possessions or under Apps in the Web UI.
 
 ## Layout
 
 ```text
-<this folder>/<name>/
-  app.json    {"name": "Title people see", "entry": "index.html", "thread": "THREAD_ID"}
+kanban/
   index.html  plain HTML and JS; there is no build step
   data/       the app's own files, also yours to read and edit from the Thread
-  actions/    optional scripts the app can run
 ```
 
-`entry` defaults to `index.html`. `thread` is the Thread this app talks to by default; use your own: `echo "$SHELLBOY_THREAD_ID"`. It can be left out, and then calls must name a Thread.
+Register the folder once, from your own working directory, in your own Thread:
 
-Hand an app to someone by copying its folder. They should change `thread`, which names a Thread on your machine.
+```sh
+shellboy artifact add --thread "$SHELLBOY_THREAD_ID" --uri shellboy-app:./kanban --title Kanban
+```
+
+The CLI turns `./kanban` into an absolute folder. The entry is always `index.html`. The Thread that owns the artifact is the app's bound Thread; forks and rewinds carry the app as Core copies artifacts. After a change, `shellboy artifact update --artifact A --uri shellboy-app:./kanban` publishes a new version reference; the person reloads the tab to see it.
+
+Studio gets the folder's files through the owner (`artifact.read`), which serves only regular files inside the folder. `data/` is read and written by Studio on the local disk, so an app works where Studio and the folder are on the same machine.
+
+A single HTML file is shared with `shellboy artifact add --uri PATH --mime text/html` instead. Studio shows it as one static page, without `shellboy.*` and without its neighbouring files.
+
+Hand an app over by copying its folder, then register it again in the other Thread.
 
 ## Rules
 
@@ -53,7 +59,7 @@ shell. List results are paginated; follow `next_cursor` only when needed.
 `thread.get` gives configuration and current Run/Turn IDs; `state` is on each
 `threads.list` item, not guaranteed on `thread.get`.
 
-A bound Thread that was archived still works. If it was deleted, `thread.*` calls reject and the rest of the app keeps working, so show that rather than failing.
+The bound Thread is the artifact's owner Thread. An archived one still works. Deleting the Thread deletes the artifact record, so the app no longer opens.
 
 ## actions/
 
@@ -113,10 +119,10 @@ form.onsubmit = () => shellboy.thread.send(JSON.stringify({ answer: input.value 
 
 ```sh
 # In the Thread's shell: write the next state. Write to a temp name and rename, so the page never reads half a file.
-cat > "$SHELLBOY_DATA_DIR/apps/lesson/data/.next" <<'JSON'
+cat > lesson/data/.next <<'JSON'
 {"step": "question", "text": "Which of these is a stable sort?", "choices": ["merge", "quick"]}
 JSON
-mv "$SHELLBOY_DATA_DIR/apps/lesson/data/.next" "$SHELLBOY_DATA_DIR/apps/lesson/data/state.json"
+mv lesson/data/.next lesson/data/state.json
 ```
 
 **How the Thread knows the app sent it.** A message from `thread.send` is saved with the sender label `app:<name>`, not as from a person. You can read it with `shellboy history list --thread "$SHELLBOY_THREAD_ID"` (`provenance.sender.label`) or `shellboy message get --message ID`. It isn't in the text you are given, though: your input shows only the message. So have the page say what it is, for instance by sending JSON such as `{"from": "lesson", "answer": "merge"}`, and check the label if it matters who sent it. A person using the normal conversation is saved with the label `web`, and marked as human.

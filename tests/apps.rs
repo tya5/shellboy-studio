@@ -1,18 +1,20 @@
 //! The gateway's app hosting over real listeners, with a scripted owner. Every app here is a throwaway
 //! written into a temp folder by the test; the product ships none.
 mod common;
+use base64::Engine;
 use common::*;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use shellboy::protocol::Command;
+use shellboy::protocol::{ApiError, Command, ErrorCode};
 use shellboy_studio::{
     auth::Auth,
     hub::Hub,
-    server::{AppState, AppsPaths, ServerConfig, Shared, serve},
+    server::{AppState, ServerConfig, Shared, serve},
 };
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -66,9 +68,23 @@ async fn raw(addr: &str, request: String) -> u16 {
         .unwrap()
 }
 
+/// What the fake owner knows of an artifact: its Thread and its latest version.
+#[derive(Clone)]
+struct Registered {
+    thread: String,
+    title: String,
+    uri: String,
+    mime: Option<String>,
+    version: i64,
+}
+
+type Registry = Arc<Mutex<BTreeMap<String, Registered>>>;
+
 struct Fixture {
     root: PathBuf,
+    /// Where the apps' folders are: anywhere the Thread put them.
     apps: PathBuf,
+    registry: Registry,
     addr: std::net::SocketAddr,
     state: AppState<MockOwner>,
     owner: Arc<MockOwner>,
@@ -82,15 +98,39 @@ impl Drop for Fixture {
     }
 }
 
-fn write_app(apps: &Path, name: &str, manifest: &str, files: &[(&str, &str)]) {
-    let dir = apps.join(name);
+impl Fixture {
+    fn register(&self, id: &str, thread: &str, title: &str, uri: String, mime: Option<&str>) {
+        let mut registry = self.registry.lock().unwrap();
+        let version = registry.get(id).map_or(1, |known| known.version + 1);
+        registry.insert(
+            id.to_owned(),
+            Registered {
+                thread: thread.to_owned(),
+                title: title.to_owned(),
+                uri,
+                mime: mime.map(str::to_owned),
+                version,
+            },
+        );
+    }
+}
+
+/// An app: a folder with files, registered as a `shellboy-app:` artifact of `thread` whose ID is `name`.
+fn write_app(f: &Fixture, name: &str, thread: &str, files: &[(&str, &str)]) {
+    let dir = f.apps.join(name);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("app.json"), manifest).unwrap();
     for (file, text) in files {
         let path = dir.join(file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, text).unwrap();
     }
+    f.register(
+        name,
+        thread,
+        name,
+        format!("shellboy-app:{}", dir.display()),
+        None,
+    );
 }
 
 const PAGE: (&str, &str) = (
@@ -98,20 +138,93 @@ const PAGE: (&str, &str) = (
     "<!doctype html><html><head><title>t</title></head><body>hello</body></html>",
 );
 
+fn summary(id: &str, known: &Registered) -> Value {
+    json!({"artifact_id": id, "thread_id": known.thread, "created_at": "now", "updated_at": "now",
+        "latest": {"version": known.version, "uri": known.uri, "title": known.title, "mime": known.mime, "created_at": "now"}})
+}
+
+fn refused(code: ErrorCode, message: &str) -> Option<common::Reply> {
+    Some(Err(ApiError::new(code, message)))
+}
+
+/// What Core does with `artifact.read`, as far as these tests need it: a `shellboy-app:` folder serves
+/// regular files by relative path and refuses paths and links that leave it; any other URI is one file.
+fn read_artifact(known: &Registered, path: Option<&str>) -> Option<common::Reply> {
+    let source = if let Some(folder) = known.uri.strip_prefix("shellboy-app:") {
+        let Some(path) = path else {
+            return refused(ErrorCode::InvalidArgument, "path_required");
+        };
+        let root = match Path::new(folder).canonicalize() {
+            Ok(root) => root,
+            Err(_) => return refused(ErrorCode::TargetUnavailable, "file_unavailable"),
+        };
+        match root.join(path).canonicalize() {
+            Ok(full) if full.starts_with(&root) => full,
+            Ok(_) => return refused(ErrorCode::InvalidArgument, "path_outside_folder"),
+            Err(_) => return refused(ErrorCode::TargetUnavailable, "file_unavailable"),
+        }
+    } else if path.is_some() {
+        return refused(ErrorCode::InvalidArgument, "path_not_allowed");
+    } else {
+        PathBuf::from(&known.uri)
+    };
+    match std::fs::read(source) {
+        Ok(bytes) => common::ok_reply(json!({
+            "artifact_id": "x", "version": known.version, "raw_bytes": bytes.len(),
+            "base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+        })),
+        Err(_) => refused(ErrorCode::TargetUnavailable, "file_unavailable"),
+    }
+}
+
 async fn fixture() -> Fixture {
     let root = std::env::temp_dir().join(format!("shellboy-studio-apps-{}", uuid::Uuid::new_v4()));
-    let apps = root.join("apps");
-    let (owner, _events) = mock(|command| match command {
-        Command::MessageSend(_) => Some(json!({"message_id": "m1"})),
-        Command::ThreadGet(_) => Some(json!({"thread_id": "t1", "title": "T"})),
-        Command::HistoryList(_) => Some(json!({"items": []})),
-        Command::ThreadList(_) => Some(json!({"items": [{"thread_id": "t1"}]})),
-        _ => Some(json!({})),
+    let apps = root.join("anywhere");
+    let registry: Registry = Arc::new(Mutex::new(BTreeMap::new()));
+    let known = registry.clone();
+    let (owner, _events) = mock_replies(move |command| match command {
+        Command::MessageSend(_) => common::ok_reply(json!({"message_id": "m1"})),
+        Command::ThreadGet(_) => common::ok_reply(json!({"thread_id": "t1", "title": "T"})),
+        Command::HistoryList(_) => common::ok_reply(json!({"items": []})),
+        Command::ThreadList(_) => common::ok_reply(json!({"items": [{"thread_id": "t1"}]})),
+        Command::ArtifactGet(args) => match known.lock().unwrap().get(&args.artifact_id) {
+            Some(found) => common::ok_reply(summary(&args.artifact_id, found)),
+            None => refused(ErrorCode::TargetUnavailable, "no such artifact"),
+        },
+        Command::ArtifactList(args) => {
+            let all: Vec<Value> = known
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, found)| found.thread == args.thread_id)
+                .map(|(id, found)| summary(id, found))
+                .collect();
+            let from: usize = args.cursor.as_deref().map_or(0, |c| c.parse().unwrap());
+            let page: Vec<Value> = all
+                .iter()
+                .skip(from)
+                .take(args.limit as usize)
+                .cloned()
+                .collect();
+            let end = from + page.len();
+            let mut reply = json!({"items": page, "limit": args.limit});
+            if end < all.len() {
+                reply["next_cursor"] = json!(end.to_string());
+            }
+            common::ok_reply(reply)
+        }
+        Command::ArtifactRead(args) => match known.lock().unwrap().get(&args.artifact_id) {
+            Some(found) if found.version == args.version && found.thread == args.thread_id => {
+                read_artifact(found, args.path.as_deref())
+            }
+            _ => refused(ErrorCode::TargetUnavailable, "no such version"),
+        },
+        _ => common::ok_reply(json!({})),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let cancel = CancellationToken::new();
-    let state = Shared::with_apps(
+    let state = Shared::with_cancel(
         owner.clone(),
         Hub::new(),
         Auth::new("ab".repeat(32)),
@@ -122,7 +235,6 @@ async fn fixture() -> Fixture {
             config_dir: "/temp/config".into(),
             debug: false,
         },
-        Some(AppsPaths { dir: apps.clone() }),
         cancel.clone(),
     );
     std::mem::forget(_events);
@@ -130,6 +242,7 @@ async fn fixture() -> Fixture {
     Fixture {
         root,
         apps,
+        registry,
         addr,
         state,
         owner,
@@ -139,7 +252,7 @@ async fn fixture() -> Fixture {
 
 /// An opened app's file URL, as a path.
 async fn open(f: &Fixture, name: &str) -> String {
-    let out = f.state.apps.as_ref().unwrap().open(name).await.unwrap();
+    let out = f.state.apps.open(name).await.unwrap();
     let url = out["url"].as_str().unwrap().to_owned();
     assert!(
         url.starts_with("/a/"),
@@ -150,14 +263,14 @@ async fn open(f: &Fixture, name: &str) -> String {
 
 /// What the parent frame does for a page: names the app and forwards the call.
 async fn call(f: &Fixture, name: &str, op: &str, args: Value) -> Value {
-    f.state.apps.as_ref().unwrap().call(name, op, args).await
+    f.state.apps.call(name, op, args).await
 }
 
 #[tokio::test]
 async fn instance_wait_ignores_other_instance_changes() {
     let f = fixture().await;
-    write_app(&f.apps, "one", "{}", &[PAGE]);
-    let apps = f.state.apps.as_ref().unwrap().clone();
+    write_app(&f, "one", "t1", &[PAGE]);
+    let apps = f.state.apps.clone();
     let initial = apps
         .call_instance("one", "data.wait", json!({}), Some("alpha"))
         .await;
@@ -198,14 +311,13 @@ async fn instance_wait_ignores_other_instance_changes() {
 #[tokio::test]
 async fn instance_registry_is_bounded_validated_and_survives_host_recreation() {
     let f = fixture().await;
-    write_app(&f.apps, "one", "{}", &[PAGE]);
-    let apps = f.state.apps.as_ref().unwrap();
+    write_app(&f, "one", "t1", &[PAGE]);
+    let apps = &f.state.apps;
     assert!(apps.add_instance("one", "../bad").await.is_err());
     assert!(apps.add_instance("one", "alpha").await.is_ok());
     assert!(apps.add_instance("one", "alpha").await.is_ok());
     assert_eq!(apps.instances("one").await.unwrap(), vec!["alpha"]);
     let other = shellboy_studio::apps::Apps::new(
-        f.apps.clone(),
         f.owner.clone(),
         shellboy_studio::hub::Hub::new(),
         std::sync::Arc::new(tokio::sync::Semaphore::new(8)),
@@ -215,86 +327,200 @@ async fn instance_registry_is_bounded_validated_and_survives_host_recreation() {
 }
 
 #[tokio::test]
-async fn finds_apps_without_a_restart_and_writes_only_the_guide() {
+async fn apps_come_from_the_threads_artifacts_and_nothing_else() {
     let f = fixture().await;
-    let apps = f.state.apps.as_ref().unwrap();
-    let guide = std::fs::read_to_string(f.apps.join("README.md")).unwrap();
-    assert!(guide.contains("shellboy.data.read"));
-    assert!(
-        !guide.to_lowercase().contains("todo"),
-        "the guide names no product"
-    );
+    let apps = &f.state.apps;
     assert_eq!(
-        apps.list().await.unwrap()["apps"],
+        apps.list("t1").await.unwrap()["apps"],
         json!([]),
         "nothing is bundled"
     );
-    assert_eq!(
-        std::fs::read_dir(&f.apps).unwrap().count(),
-        1,
-        "only the guide"
+    assert_eq!(apps.list("").await.unwrap_err().0, "invalid_args");
+    write_app(&f, "one", "t1", &[PAGE]);
+    write_app(&f, "other-thread", "t2", &[PAGE]);
+    // Plain artifacts are not apps, whatever their MIME.
+    f.register(
+        "report",
+        "t1",
+        "Report",
+        "/tmp/report.md".into(),
+        Some("text/markdown"),
     );
-
-    write_app(&f.apps, "one", r#"{"name":"First","thread":"t1"}"#, &[PAGE]);
-    write_app(&f.apps, "bad-json", "{nope", &[PAGE]);
-    write_app(&f.apps, "no-entry", r#"{"entry":"gone.html"}"#, &[]);
-    write_app(&f.apps, "escape", r#"{"entry":"../one/index.html"}"#, &[]);
-    std::fs::create_dir_all(f.apps.join("no-manifest")).unwrap();
-    std::fs::create_dir_all(f.apps.join("Bad Name")).unwrap();
-    let list = apps.list().await.unwrap();
+    f.register(
+        "site",
+        "t1",
+        "Site",
+        "https://example.invalid/".into(),
+        Some("text/html"),
+    );
+    f.register(
+        "relative",
+        "t1",
+        "Relative",
+        "shellboy-app:not/absolute".into(),
+        None,
+    );
+    let list = apps.list("t1").await.unwrap();
     let names: Vec<&str> = list["apps"]
         .as_array()
         .unwrap()
         .iter()
         .map(|a| a["name"].as_str().unwrap())
         .collect();
+    assert_eq!(names, ["one"], "only this Thread's shellboy-app: artifacts");
+    assert_eq!(list["apps"][0]["thread"], "t1");
+    assert_eq!(list["partial"], false);
+    // A new one shows at once, with no restart and no folder scan.
+    write_app(&f, "later", "t1", &[PAGE]);
     assert_eq!(
-        names,
-        ["bad-json", "escape", "no-entry", "no-manifest", "one"]
-    );
-    let of = |n: &str| {
-        list["apps"]
+        apps.list("t1").await.unwrap()["apps"]
             .as_array()
             .unwrap()
-            .iter()
-            .find(|a| a["name"] == n)
-            .unwrap()
-            .clone()
-    };
-    assert_eq!(of("one")["title"], "First");
-    assert!(of("one")["problem"].is_null());
-    assert!(
-        of("bad-json")["problem"]
-            .as_str()
-            .unwrap()
-            .contains("app.json")
+            .len(),
+        2
     );
-    assert!(
-        of("no-entry")["problem"]
-            .as_str()
-            .unwrap()
-            .contains("gone.html")
-    );
-    assert!(of("escape")["problem"].as_str().unwrap().contains("inside"));
-    assert!(
-        of("no-manifest")["problem"]
-            .as_str()
-            .unwrap()
-            .contains("missing")
-    );
-    let refused = apps.open("bad-json").await.unwrap_err();
-    assert_eq!(refused.0, "app_broken");
     assert_eq!(apps.open("nothing").await.unwrap_err().0, "app_not_found");
-    assert_eq!(apps.open("../one").await.unwrap_err().0, "app_not_found");
+    assert_eq!(apps.open("report").await.unwrap_err().0, "not_an_app");
+    assert_eq!(apps.open("site").await.unwrap_err().0, "not_an_app");
+}
+
+#[tokio::test]
+async fn a_listing_reads_every_page_up_to_a_bound_and_says_when_it_stopped() {
+    let f = fixture().await;
+    for n in 0..40 {
+        write_app(&f, &format!("app{n:02}"), "t1", &[PAGE]);
+    }
+    let list = f.state.apps.list("t1").await.unwrap();
+    assert_eq!(
+        list["apps"].as_array().unwrap().len(),
+        40,
+        "more than one owner page of apps"
+    );
+    assert_eq!(list["partial"], false);
+    for n in 0..300 {
+        f.register(
+            &format!("note{n:03}"),
+            "t1",
+            "Note",
+            "/tmp/n.txt".into(),
+            None,
+        );
+    }
+    let list = f.state.apps.list("t1").await.unwrap();
+    assert_eq!(
+        list["partial"], true,
+        "the artifacts past the bound were not searched"
+    );
+}
+
+#[tokio::test]
+async fn a_new_version_is_shown_by_reopening_and_a_removed_artifact_is_gone() {
+    let f = fixture().await;
+    write_app(&f, "one", "t1", &[PAGE]);
+    open(&f, "one").await;
+    // The Thread publishes the same app from another folder: a new version of the artifact.
+    let moved = f.apps.join("moved");
+    std::fs::create_dir_all(moved.join("data")).unwrap();
+    std::fs::write(
+        moved.join("index.html"),
+        "<html><head></head><body>new folder</body></html>",
+    )
+    .unwrap();
+    f.register(
+        "one",
+        "t1",
+        "One",
+        format!("shellboy-app:{}", moved.display()),
+        None,
+    );
+    let web = f.addr.to_string();
+    let after = open(&f, "one").await;
+    assert!(
+        http(&web, "GET", &after, &[], "")
+            .await
+            .body
+            .contains("new folder")
+    );
+    assert_eq!(
+        call(&f, "one", "data.write", json!({"path":"k","text":"v"})).await["ok"],
+        true
+    );
+    assert!(
+        moved.join("data/k").exists(),
+        "data/ follows the app's current folder"
+    );
+    f.registry.lock().unwrap().remove("one");
+    assert_eq!(
+        call(&f, "one", "data.read", json!({"path":"k"})).await["error"]["code"],
+        "app_not_found"
+    );
+    assert_eq!(http(&web, "GET", &after, &[], "").await.status, 404);
+}
+
+#[tokio::test]
+async fn a_file_html_artifact_is_one_static_page_without_the_api() {
+    let f = fixture().await;
+    std::fs::create_dir_all(&f.apps).unwrap();
+    let page = f.apps.join("report.html");
+    std::fs::write(
+        &page,
+        "<html><head></head><body>static report</body></html>",
+    )
+    .unwrap();
+    std::fs::write(f.apps.join("secret.txt"), "neighbour").unwrap();
+    f.register(
+        "report",
+        "t1",
+        "Report",
+        page.display().to_string(),
+        Some("text/html; charset=utf-8"),
+    );
+    let apps = &f.state.apps;
+    assert_eq!(
+        apps.list("t1").await.unwrap()["apps"],
+        json!([]),
+        "Apps lists app folders, not pages"
+    );
+    let opened = apps.open("report").await.unwrap();
+    let url = opened["url"].as_str().unwrap().to_owned();
+    let web = f.addr.to_string();
+    let reply = http(&web, "GET", &url, &[], "").await;
+    assert_eq!(reply.status, 200, "{}", reply.headers);
+    assert!(reply.body.contains("static report"));
+    assert!(
+        !reply.body.contains("api.js"),
+        "no app API in a static page"
+    );
+    let headers = reply.headers.to_ascii_lowercase();
+    assert!(
+        headers.contains("content-security-policy: sandbox "),
+        "{headers}"
+    );
+    assert!(!headers.contains("allow-same-origin"));
+    let base = url.trim_end_matches("index.html");
+    for neighbour in ["secret.txt", "../secret.txt", "report.html"] {
+        assert_eq!(
+            http(&web, "GET", &format!("{base}{neighbour}"), &[], "")
+                .await
+                .status,
+            404,
+            "{neighbour}"
+        );
+    }
+    assert_eq!(
+        call(&f, "report", "data.read", json!({"path":"k"})).await["error"]["code"],
+        "not_an_app",
+        "a page has no app API"
+    );
 }
 
 #[tokio::test]
 async fn files_need_the_session_in_their_path_and_are_always_sandboxed() {
     let f = fixture().await;
     write_app(
-        &f.apps,
+        &f,
         "one",
-        r#"{"thread":"t1"}"#,
+        "t1",
         &[
             PAGE,
             ("actions/secret.sh", "echo hi"),
@@ -422,8 +648,8 @@ async fn files_need_the_session_in_their_path_and_are_always_sandboxed() {
 #[tokio::test]
 async fn an_app_page_cant_reach_the_web_ui() {
     let f = fixture().await;
-    write_app(&f.apps, "one", "{}", &[PAGE]);
-    write_app(&f.apps, "two", "{}", &[PAGE]);
+    write_app(&f, "one", "t1", &[PAGE]);
+    write_app(&f, "two", "t1", &[PAGE]);
     let web = f.addr.to_string();
     // A sandboxed page's requests carry `Origin: null`.
     let session = login(f.addr, &f.state).await;
@@ -493,12 +719,7 @@ async fn an_app_page_cant_reach_the_web_ui() {
 #[tokio::test]
 async fn the_api_runs_over_the_web_uis_socket() {
     let f = fixture().await;
-    write_app(
-        &f.apps,
-        "one",
-        r#"{"name":"First","thread":"bound"}"#,
-        &[PAGE],
-    );
+    write_app(&f, "one", "bound", &[PAGE]);
     let cookie = login(f.addr, &f.state).await;
     let mut request = format!("ws://{}/ws", f.addr).into_client_request().unwrap();
     request
@@ -536,8 +757,10 @@ async fn the_api_runs_over_the_web_uis_socket() {
                 .into(),
         )
     };
-    ws.send(send(1, "apps.list", json!({}))).await.unwrap();
-    assert_eq!(result(&mut ws, 1).await["apps"][0]["title"], "First");
+    ws.send(send(1, "apps.list", json!({"thread":"bound"})))
+        .await
+        .unwrap();
+    assert_eq!(result(&mut ws, 1).await["apps"][0]["title"], "one");
     ws.send(send(2, "apps.open", json!({"name":"one"})))
         .await
         .unwrap();
@@ -581,7 +804,9 @@ async fn the_api_runs_over_the_web_uis_socket() {
         .await
         .unwrap();
     }
-    ws.send(send(5, "apps.list", json!({}))).await.unwrap();
+    ws.send(send(5, "apps.list", json!({"thread":"bound"})))
+        .await
+        .unwrap();
     assert_eq!(result(&mut ws, 5).await["apps"][0]["name"], "one");
     for id in 10..16u64 {
         ws.send(Message::Text(
@@ -595,7 +820,7 @@ async fn the_api_runs_over_the_web_uis_socket() {
 #[tokio::test]
 async fn data_detects_concurrent_writes_and_stays_inside() {
     let f = fixture().await;
-    write_app(&f.apps, "one", "{}", &[PAGE]);
+    write_app(&f, "one", "t1", &[PAGE]);
     assert_eq!(
         call(&f, "one", "data.read", json!({"path":"a/b.json"})).await["result"],
         json!({"exists":false,"text":null,"hash":null})
@@ -706,8 +931,7 @@ async fn data_detects_concurrent_writes_and_stays_inside() {
 #[tokio::test]
 async fn messages_are_recorded_as_from_the_app_not_a_person() {
     let f = fixture().await;
-    write_app(&f.apps, "one", r#"{"thread":"bound"}"#, &[PAGE]);
-    write_app(&f.apps, "free", "{}", &[PAGE]);
+    write_app(&f, "one", "bound", &[PAGE]);
     assert_eq!(
         call(&f, "one", "app.info", json!({})).await["result"]["thread"],
         "bound"
@@ -764,13 +988,9 @@ async fn messages_are_recorded_as_from_the_app_not_a_person() {
         "unknown_call"
     );
     assert_eq!(
-        call(&f, "free", "thread.send", json!({"text":"x"})).await["error"]["code"],
-        "no_bound_thread"
-    );
-    assert_eq!(
         call(
             &f,
-            "free",
+            "one",
             "data.write",
             json!({"path":"k","text":"still works"})
         )
@@ -782,8 +1002,8 @@ async fn messages_are_recorded_as_from_the_app_not_a_person() {
 #[tokio::test]
 async fn on_change_uses_the_shared_hints() {
     let f = fixture().await;
-    write_app(&f.apps, "one", r#"{"thread":"bound"}"#, &[PAGE]);
-    let apps = f.state.apps.clone().unwrap();
+    write_app(&f, "one", "bound", &[PAGE]);
+    let apps = f.state.apps.clone();
     let waiting = tokio::spawn(async move { apps.call("one", "events.wait", json!({})).await });
     let hub = f.state.hub.clone();
     let before = hub.session_count();
@@ -810,9 +1030,9 @@ async fn on_change_uses_the_shared_hints() {
 async fn run_has_limits_and_its_source_stays_private() {
     let f = fixture().await;
     write_app(
-        &f.apps,
+        &f,
         "one",
-        "{}",
+        "t1",
         &[
             PAGE,
             (
@@ -833,7 +1053,7 @@ async fn run_has_limits_and_its_source_stays_private() {
     let r = &out["result"];
     assert_eq!(r["exit_code"], 3, "{out}");
     assert_eq!(r["stdout"].as_str().unwrap().trim(), "{\"days\":7} one");
-    assert!(r["stderr"].as_str().unwrap().contains("/apps/one"));
+    assert!(r["stderr"].as_str().unwrap().contains("/anywhere/one"));
     assert_eq!(r["timed_out"], false);
     let slow = call(&f, "one", "run", json!({"action":"slow","timeout_ms":200})).await;
     assert_eq!(slow["result"]["timed_out"], true);
@@ -932,9 +1152,9 @@ async fn run_kills_what_the_script_started() {
     let start =
         |fifo: &str| format!("exec 3>data/{fifo}; sleep 300 & echo started >&3; exec 3>&-;");
     write_app(
-        &f.apps,
+        &f,
         "one",
-        "{}",
+        "t1",
         &[
             PAGE,
             ("actions/leave.sh", &format!("{} echo done", start("leave"))),
@@ -953,7 +1173,7 @@ async fn run_kills_what_the_script_started() {
     helper.gone("script exit").await;
 
     let mut helper = Helper::watch(&data.join("hang"));
-    let apps = f.state.apps.clone().unwrap();
+    let apps = f.state.apps.clone();
     let hung = tokio::spawn(async move {
         apps.call("one", "run", json!({"action":"hang","timeout_ms":5000}))
             .await
@@ -964,7 +1184,7 @@ async fn run_kills_what_the_script_started() {
     helper.gone("timeout").await;
 
     let mut helper = Helper::watch(&data.join("close"));
-    let apps = f.state.apps.clone().unwrap();
+    let apps = f.state.apps.clone();
     let page =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
     helper.started("closed page").await;
@@ -1083,9 +1303,9 @@ async fn run_kills_what_the_script_started() {
         )
     };
     write_app(
-        &f.apps,
+        &f,
         "one",
-        "{}",
+        "t1",
         &[
             PAGE,
             ("scripts/leave.txt", &script("leave")),
@@ -1113,7 +1333,7 @@ async fn run_kills_what_the_script_started() {
     );
 
     let mut helper = Helper::watch("leave");
-    let apps = f.state.apps.clone().unwrap();
+    let apps = f.state.apps.clone();
     let left =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"leave"})).await });
     // Readiness wins when both are ready; an action that ends without reporting says how it ended.
@@ -1129,7 +1349,7 @@ async fn run_kills_what_the_script_started() {
     helper.gone("script exit").await;
 
     let mut helper = Helper::watch("hang");
-    let apps = f.state.apps.clone().unwrap();
+    let apps = f.state.apps.clone();
     let hung = tokio::spawn(async move {
         apps.call("one", "run", json!({"action":"hang","timeout_ms":15000}))
             .await
@@ -1146,7 +1366,7 @@ async fn run_kills_what_the_script_started() {
     helper.gone("timeout").await;
 
     let mut helper = Helper::watch("close");
-    let apps = f.state.apps.clone().unwrap();
+    let apps = f.state.apps.clone();
     let page =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
     // Readiness wins when both are ready; an action that ends without reporting says how it ended.
@@ -1162,52 +1382,36 @@ async fn run_kills_what_the_script_started() {
 }
 
 #[tokio::test]
-async fn a_removed_app_gives_up_its_slot() {
+async fn hosts_are_bounded_and_unused_ones_make_room() {
     let f = fixture().await;
     let max = shellboy_studio::apps::catalog::MAX_APPS;
     for n in 0..max {
-        write_app(&f.apps, &format!("app{n}"), "{}", &[PAGE]);
+        write_app(&f, &format!("app{n}"), "t1", &[PAGE]);
         assert_eq!(
             call(&f, &format!("app{n}"), "app.info", json!({})).await["ok"],
             true
         );
     }
-    write_app(&f.apps, "late", "{}", &[PAGE]);
-    assert_eq!(
-        call(&f, "late", "app.info", json!({})).await["error"]["code"],
-        "too_many_apps"
-    );
-    // Replaced by a file, with no call after it: the slot is found free when one is needed.
-    std::fs::remove_dir_all(f.apps.join("app0")).unwrap();
-    std::fs::write(f.apps.join("app0"), "not a folder").unwrap();
+    // None of them is in use, so a new one takes a slot instead of being refused.
+    write_app(&f, "late", "t1", &[PAGE]);
     assert_eq!(call(&f, "late", "app.info", json!({})).await["ok"], true);
-    write_app(&f.apps, "later", "{}", &[PAGE]);
-    std::fs::remove_dir_all(f.apps.join("app1")).unwrap();
-    assert_eq!(
-        call(&f, "app1", "app.info", json!({})).await["error"]["code"],
-        "app_not_found"
-    );
-    assert_eq!(call(&f, "later", "app.info", json!({})).await["ok"], true);
 }
 
 #[tokio::test]
 async fn watchers_stop_with_the_bridge() {
     let f = fixture().await;
-    write_app(&f.apps, "one", "{}", &[PAGE]);
+    write_app(&f, "one", "t1", &[PAGE]);
     assert_eq!(call(&f, "one", "data.wait", json!({})).await["ok"], true);
     f.cancel.cancel();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        f.state.apps.as_ref().unwrap().stopped(),
-    )
-    .await
-    .expect("the watcher ends with the bridge");
+    tokio::time::timeout(Duration::from_secs(5), f.state.apps.stopped())
+        .await
+        .expect("the watcher ends with the bridge");
 }
 
 #[tokio::test]
 async fn data_changes_from_outside_reach_the_page_through_one_watcher() {
     let f = fixture().await;
-    write_app(&f.apps, "one", "{}", &[PAGE, ("data/start.txt", "x")]);
+    write_app(&f, "one", "t1", &[PAGE, ("data/start.txt", "x")]);
     let first = call(&f, "one", "data.wait", json!({})).await;
     let mut version = first["result"]["version"].clone();
     assert_eq!(
@@ -1217,7 +1421,7 @@ async fn data_changes_from_outside_reach_the_page_through_one_watcher() {
     // A Thread's shell writing, not the API. One sample each, on loopback: a record, not a bound.
     let mut samples = Vec::new();
     for (n, file) in ["a.json", "sub/b.json", "a.json"].iter().enumerate() {
-        let (apps, v) = (f.state.apps.clone().unwrap(), version.clone());
+        let (apps, v) = (f.state.apps.clone(), version.clone());
         let waiting =
             tokio::spawn(async move { apps.call("one", "data.wait", json!({"version": v})).await });
         tokio::time::sleep(Duration::from_millis(40)).await;
@@ -1264,16 +1468,16 @@ async fn data_changes_from_outside_reach_the_page_through_one_watcher() {
 async fn the_same_action_never_overlaps_and_inherits_the_gateways_environment() {
     let f = fixture().await;
     write_app(
-        &f.apps,
+        &f,
         "one",
-        "{}",
+        "t1",
         &[
             PAGE,
             ("actions/slow.sh", "sleep 1; echo done"),
             ("actions/other.sh", "echo \"$HOME\""),
         ],
     );
-    let apps = f.state.apps.clone().unwrap();
+    let apps = f.state.apps.clone();
     let first =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"slow"})).await });
     tokio::time::sleep(Duration::from_millis(200)).await;

@@ -653,9 +653,9 @@ export class Operations {
   bridgeMemory(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("bridge.memory", {}, outcomeDecoder(decodeRecord), undefined, read);
   }
-  /** The gateway's own: apps found in the apps folder. Doesn't reach the owner. */
-  appsList(): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("apps.list", {}, outcomeDecoder(decodeRecord));
+  /** The gateway's own: the `shellboy-app:` artifacts of one Thread, read through the owner. */
+  appsList(thread: string): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("apps.list", { thread }, outcomeDecoder(decodeRecord));
   }
   appsInstances(name: string): Promise<Outcome<Record<string, unknown>>> {
     return this.run("apps.instances", { name }, outcomeDecoder(decodeRecord));

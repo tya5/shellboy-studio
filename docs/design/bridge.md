@@ -30,7 +30,7 @@ Open the printed URL once; the app exchanges the token the same way. For the deb
 (default `127.0.0.1:8751`), `--data-dir` (default: `SHELLBOY_DATA_DIR`, then the OS
 default, resolved by Shellboy's own `resolve_cli_data_dir`), `--config-dir` (token
 location, default the OS config directory plus `shellboy-studio`), `--allow-host NAME`
-(repeatable), `--apps-dir` (default `apps` in the data directory, `apps.md`), `--debug`. Apps are served on this same port, under `/a/`.
+(repeatable), `--debug`. Apps are Thread artifacts (`apps.md`) and are served on this same port, under `/a/`.
 
 ## Desktop startup registration
 

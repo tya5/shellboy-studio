@@ -15,10 +15,12 @@ use axum::{
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
+use base64::Engine;
+use catalog::{Kind, Latest};
 use serde_json::{Value, json};
+use shellboy::protocol::{ArtifactReadArgs, Command};
 use std::{
     collections::{HashMap, VecDeque},
-    path::PathBuf,
     sync::{Arc, Mutex},
 };
 use tokio::sync::Semaphore;
@@ -30,6 +32,8 @@ const GUIDE: &str = include_str!("README.md");
 const RUNS: usize = 4;
 const MAX_SESSIONS: usize = 256;
 const MAX_INSTANCES: usize = 128;
+/// The only file of a static page, and the entry of an app.
+const ENTRY: &str = "index.html";
 
 /// A portable data directory component. Keep aligned with the Web route parser.
 pub fn valid_instance_name(name: &str) -> bool {
@@ -47,39 +51,52 @@ pub fn app_url(session: &str, entry: &str) -> String {
     format!("/a/{session}/{entry}")
 }
 
+/// What a file session serves: one exact saved version of one artifact, fixed when the session was
+/// minted. Reopening or reloading reads the latest version again.
+#[derive(Clone)]
+struct Opened {
+    thread: String,
+    artifact: String,
+    version: i64,
+    /// A static page: only `ENTRY`, with no app API and no neighbouring files.
+    page: bool,
+}
+
+type Fail = (&'static str, String);
+
+/// An owner error as an app failure. An artifact the owner does not know is an app that is not there.
+fn owner_fail(error: Value) -> Fail {
+    let message = error["message"]
+        .as_str()
+        .unwrap_or("The owner refused")
+        .to_owned();
+    match error["code"].as_str() {
+        Some("target_unavailable") => ("app_not_found", message),
+        _ => ("owner_failed", message),
+    }
+}
+
 pub struct Apps<O> {
-    pub dir: PathBuf,
     pub(crate) owner: Arc<O>,
     pub(crate) hub: Arc<Hub>,
     pub(crate) global: Arc<Semaphore>,
     pub(crate) runs: Semaphore,
     hosts: tokio::sync::Mutex<HashMap<String, Arc<AppHost<O>>>>,
     instance_writes: tokio::sync::Mutex<()>,
-    /// Which app a file session belongs to. In memory: a restart ends them, and the Web UI opens again.
-    sessions: Mutex<VecDeque<(String, String)>>,
+    /// Which version a file session serves. In memory: a restart ends them, and the Web UI opens again.
+    sessions: Mutex<VecDeque<(String, Opened)>>,
     tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
     cancel: CancellationToken,
 }
 
 impl<O: Owner> Apps<O> {
     pub fn new(
-        dir: PathBuf,
         owner: Arc<O>,
         hub: Arc<Hub>,
         global: Arc<Semaphore>,
         cancel: CancellationToken,
     ) -> Arc<Self> {
-        // The guide a model reads. Rewritten each start, so it matches this gateway's API.
-        if let Err(e) =
-            std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("README.md"), GUIDE))
-        {
-            crate::diagnostics::line(&format!(
-                "shellboy-studio: cannot write the apps guide in {}: {e}",
-                dir.display()
-            ));
-        }
         Arc::new(Self {
-            dir,
             owner,
             hub,
             global,
@@ -92,51 +109,78 @@ impl<O: Owner> Apps<O> {
         })
     }
 
-    pub async fn list(&self) -> Result<Value, String> {
-        let apps = catalog::list(&self.dir).await?;
-        Ok(json!({"dir": self.dir, "guide": self.dir.join("README.md"), "apps": apps}))
-    }
-
-    async fn host(self: &Arc<Self>, name: &str) -> Result<Arc<AppHost<O>>, (&'static str, String)> {
-        let Some(entry) = catalog::read_entry(&self.dir, name).await else {
-            // Its folder is gone: so is its slot.
-            self.hosts.lock().await.remove(name);
-            return Err(("app_not_found", format!("No app named {name}")));
-        };
-        if let Some(problem) = entry.problem {
-            return Err(("app_broken", problem));
-        }
-        let mut hosts = self.hosts.lock().await;
-        if let Some(h) = hosts.get(name) {
-            return Ok(h.clone());
-        }
-        if hosts.len() >= catalog::MAX_APPS {
-            // Slots of apps whose folders were removed since they were opened.
-            let mut gone = Vec::new();
-            for other in hosts.keys() {
-                if !catalog::is_app_dir(&self.dir, other).await {
-                    gone.push(other.clone());
+    /// One owner read or call, under the bridge's shared call bound.
+    pub(crate) async fn owner_value(&self, command: Command) -> Result<Value, Value> {
+        let _permit = self
+            .global
+            .acquire()
+            .await
+            .map_err(|_| json!({"code":"shutting_down","message":"The gateway is stopping"}))?;
+        match self.owner.call(command, None, None).await {
+            Ok(response) => {
+                let value = serde_json::to_value(&response).unwrap_or(Value::Null);
+                if value["ok"] == true {
+                    Ok(value["result"].clone())
+                } else {
+                    Err(value["error"].clone())
                 }
             }
-            for other in gone {
-                hosts.remove(&other);
+            Err(api) => Err(serde_json::to_value(&api)
+                .unwrap_or(json!({"code":"owner_call_failed","message":api.message}))),
+        }
+    }
+
+    async fn latest(&self, name: &str) -> Result<Latest, Fail> {
+        catalog::latest(&|command| self.owner_value(command), name)
+            .await
+            .map_err(owner_fail)
+    }
+
+    /// The apps of one Thread: its `shellboy-app:` artifacts, read from the owner on each call.
+    pub async fn list(&self, thread: &str) -> Result<Value, Fail> {
+        if thread.is_empty() {
+            return Err((
+                "invalid_args",
+                "Name the Thread whose apps to list".to_owned(),
+            ));
+        }
+        let (apps, partial) = catalog::list(&|command| self.owner_value(command), thread)
+            .await
+            .map_err(owner_fail)?;
+        Ok(json!({"apps": apps, "partial": partial}))
+    }
+
+    /// The app host for an artifact whose latest version is an app. A host is replaced when the app's
+    /// folder changed, and an unused one is dropped when the table is full.
+    async fn host(self: &Arc<Self>, name: &str) -> Result<(Arc<AppHost<O>>, Latest), Fail> {
+        let latest = self.latest(name).await?;
+        let Some(Kind::App(folder)) = latest.kind() else {
+            return Err((
+                "not_an_app",
+                format!("{name} is not a shellboy-app: artifact"),
+            ));
+        };
+        let mut hosts = self.hosts.lock().await;
+        if let Some(h) = hosts.get(name)
+            && h.dir == folder
+        {
+            return Ok((h.clone(), latest));
+        }
+        if !hosts.contains_key(name) && hosts.len() >= catalog::MAX_APPS {
+            hosts.retain(|_, host| Arc::strong_count(host) > 1);
+            if hosts.len() >= catalog::MAX_APPS {
+                return Err(("too_many_apps", "Too many apps are open".to_owned()));
             }
         }
-        if hosts.len() >= catalog::MAX_APPS {
-            return Err(("too_many_apps", "Too many apps are open".to_owned()));
-        }
-        let host = AppHost::new(name.to_owned(), self.dir.join(name), self.clone());
+        let host = AppHost::new(name.to_owned(), folder, self.clone());
         hosts.insert(name.to_owned(), host.clone());
-        Ok(host)
+        Ok((host, latest))
     }
 
     /// Persist a bounded list independently of app data; names are never paths supplied verbatim.
-    pub async fn instances(
-        self: &Arc<Self>,
-        name: &str,
-    ) -> Result<Vec<String>, (&'static str, String)> {
-        self.host(name).await?;
-        let path = self.dir.join(".instances").join(format!("{name}.json"));
+    pub async fn instances(self: &Arc<Self>, name: &str) -> Result<Vec<String>, Fail> {
+        let (host, _) = self.host(name).await?;
+        let path = host.dir.join(".instances.json");
         use tokio::io::AsyncReadExt;
         let file = match tokio::fs::File::open(path).await {
             Ok(file) => file,
@@ -159,11 +203,7 @@ impl<O: Owner> Apps<O> {
         Ok(names)
     }
 
-    pub async fn add_instance(
-        self: &Arc<Self>,
-        name: &str,
-        instance: &str,
-    ) -> Result<Value, (&'static str, String)> {
+    pub async fn add_instance(self: &Arc<Self>, name: &str, instance: &str) -> Result<Value, Fail> {
         if !valid_instance_name(instance) {
             return Err(("invalid_instance", "Invalid instance name".into()));
         }
@@ -175,12 +215,9 @@ impl<O: Owner> Apps<O> {
             }
             names.push(instance.to_owned());
             names.sort();
-            let dir = self.dir.join(".instances");
-            tokio::fs::create_dir_all(&dir)
-                .await
-                .map_err(|e| ("io_failed", e.to_string()))?;
-            let path = dir.join(format!("{name}.json"));
-            let tmp = dir.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
+            let (host, _) = self.host(name).await?;
+            let path = host.dir.join(".instances.json");
+            let tmp = host.dir.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
             let bytes = serde_json::to_vec(&names).map_err(|e| ("io_failed", e.to_string()))?;
             tokio::fs::write(&tmp, bytes)
                 .await
@@ -193,22 +230,41 @@ impl<O: Owner> Apps<O> {
         Ok(json!({"items": names}))
     }
 
-    /// A relative URL that serves the app: a fresh session in the path.
-    pub async fn open(self: &Arc<Self>, name: &str) -> Result<Value, (&'static str, String)> {
-        self.host(name).await?;
-        let entry = catalog::read_entry(&self.dir, name)
-            .await
-            .ok_or(("app_not_found", format!("No app named {name}")))?;
+    /// A relative URL that serves the artifact's latest version: a fresh session in the path. An app
+    /// gets a host (and the API); a `text/html` artifact of any other kind is one static page.
+    pub async fn open(self: &Arc<Self>, name: &str) -> Result<Value, Fail> {
+        let latest = self.latest(name).await?;
+        let page = match latest.kind() {
+            Some(Kind::App(_)) => {
+                self.host(name).await?;
+                false
+            }
+            Some(Kind::Page) => true,
+            None => {
+                return Err((
+                    "not_an_app",
+                    format!("{name} is neither a shellboy-app: folder nor an HTML page"),
+                ));
+            }
+        };
         let session = uuid::Uuid::new_v4().simple().to_string();
         {
             let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
             while sessions.len() >= MAX_SESSIONS {
                 sessions.pop_front();
             }
-            sessions.push_back((session.clone(), name.to_owned()));
+            sessions.push_back((
+                session.clone(),
+                Opened {
+                    thread: latest.thread.clone(),
+                    artifact: latest.artifact.clone(),
+                    version: latest.version,
+                    page,
+                },
+            ));
         }
         Ok(
-            json!({"name": name, "url": app_url(&session, &entry.entry), "thread": entry.thread, "title": entry.title}),
+            json!({"name": name, "url": app_url(&session, ENTRY), "thread": latest.thread, "title": latest.title, "page": page}),
         )
     }
 
@@ -225,28 +281,62 @@ impl<O: Owner> Apps<O> {
         instance: Option<&str>,
     ) -> Value {
         match self.host(name).await {
-            Ok(host) => host.call(op, args, instance).await,
+            Ok((host, latest)) => host.call(op, args, instance, &latest).await,
             Err((code, message)) => {
                 json!({"ok": false, "error": {"code": code, "message": message}})
             }
         }
     }
 
+    /// One file of an opened version, read through the owner.
     pub async fn file(self: &Arc<Self>, session: &str, path: &str, method: &Method) -> Response {
-        let name = {
+        let opened = {
             let sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
             sessions
                 .iter()
                 .find(|(s, _)| s == session)
-                .map(|(_, n)| n.clone())
+                .map(|(_, opened)| opened.clone())
         };
-        let Some(name) = name else {
+        let Some(opened) = opened else {
             return StatusCode::NOT_FOUND.into_response();
         };
-        match self.host(&name).await {
-            Ok(host) => host.file(method, path).await,
-            Err(_) => StatusCode::NOT_FOUND.into_response(),
+        host::serve_file(self, &opened, method, path).await
+    }
+
+    /// The bytes of one file of the opened version: `Ok(None)` if the owner has no such file.
+    async fn read_file(
+        &self,
+        opened: &Opened,
+        path: Option<&str>,
+    ) -> Result<Option<Vec<u8>>, StatusCode> {
+        let read = Command::ArtifactRead(ArtifactReadArgs {
+            thread_id: opened.thread.clone(),
+            artifact_id: opened.artifact.clone(),
+            version: opened.version,
+            path: path.map(str::to_owned),
+        });
+        match self.owner_value(read).await {
+            Ok(content) => content["base64"]
+                .as_str()
+                .and_then(|text| base64::engine::general_purpose::STANDARD.decode(text).ok())
+                .map(Some)
+                .ok_or(StatusCode::BAD_GATEWAY),
+            Err(error) if error["code"] == "input_limit" => Err(StatusCode::PAYLOAD_TOO_LARGE),
+            Err(_) => Ok(None),
         }
+    }
+
+    /// The guide a model reads, served beside `api.js`, so it always matches this gateway's API.
+    pub fn guide() -> Response {
+        (
+            [
+                (header::CONTENT_TYPE, "text/markdown; charset=utf-8"),
+                (header::CACHE_CONTROL, "no-cache"),
+                (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            ],
+            GUIDE,
+        )
+            .into_response()
     }
 
     pub fn api_js() -> Response {

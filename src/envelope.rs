@@ -80,7 +80,6 @@ pub enum ServerFrame {
     Hello {
         bridge_version: &'static str,
         listen: String,
-        apps_dir: Option<String>,
         data_dir: String,
         owner: OwnerState,
         #[serde(skip_serializing_if = "Option::is_none")]

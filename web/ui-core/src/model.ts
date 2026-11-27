@@ -659,7 +659,7 @@ export class AppModel {
       effect(() => {
         const route = this.route.value;
         if (route.view !== "apps" || this.connection.value !== "connected") return;
-        this.apps.ensure();
+        this.apps.ensure(this.selectedId.value);
         if (route.appName !== undefined) void this.apps.open(route.appName, route.appInstance);
       }),
     );

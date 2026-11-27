@@ -25,9 +25,9 @@ describe("messages from an app's page", () => {
     const long = readAppMessage({ shellboy: true, type: "error", message: "m".repeat(5000) });
     expect(long?.type === "error" && long.message.length).toBe(2000);
   });
-  it("the report names the app and its folder", () => {
+  it("the report names the app and its artifact", () => {
     const text = errorReportText({ name: "board", title: "Board" }, [{ kind: "load", message: "gone.js", where: undefined }]);
-    expect(text).toContain("apps/board");
+    expect(text).toContain("artifact board");
     expect(text).toContain("load: gone.js");
     expect(errorReportText({ name: "b", title: "B" }, [{ kind: "k", message: "m".repeat(9000), where: undefined }]).length).toBe(8000);
   });
@@ -88,13 +88,13 @@ describe("AppsModel over the fake transport", () => {
     model.dispose();
   });
 
-  it("reads nothing until the view opens, and asks the gateway for one ticket per open", async () => {
+  it("reads the selected Thread's apps when the view opens, and asks the gateway for one ticket per open", async () => {
     const quiet = await fixtureModel({ route: "inbox" });
     expect(quiet.t.calls("apps.list")).toHaveLength(0);
     const { t, db, model } = await fixtureModel({ route: "apps" });
     expect(t.calls("apps.list")).toHaveLength(1);
-    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["board", "half"]);
-    expect(model.apps.list.value.apps[1]!.problem).toContain("app.json");
+    expect(t.calls("apps.list")[0]!.args).toEqual({ thread: model.selectedId.value });
+    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["board", "second"]);
     model.applyRoute({ view: "apps", appName: "board" });
     await settle(t, db);
     model.applyRoute({ view: "inbox" });
@@ -108,14 +108,14 @@ describe("AppsModel over the fake transport", () => {
     const { t, db, model } = await fixtureModel({ route: "apps" });
     const plain = db.answer;
     db.answer = (c) => (c.command === "apps.list" ? { ok: true, result: { apps: [{ name: "fresh", title: "Fresh" }] } } : plain(c));
-    void model.apps.refresh();
+    void model.apps.refresh("lead");
     await settle(t, db);
     expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["fresh"]);
   });
   it("a refused open reports it and opens no tab", async () => {
     const { t, db, model } = await fixtureModel({ route: "apps" });
     const plain = db.answer;
-    db.answer = (c) => (c.command === "apps.open" ? { ok: false, code: "app_broken" } : plain(c));
+    db.answer = (c) => (c.command === "apps.open" ? { ok: false, code: "not_an_app" } : plain(c));
     void model.apps.open("half");
     await settle(t, db);
     expect(model.apps.tabs.value).toHaveLength(0);
