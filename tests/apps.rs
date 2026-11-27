@@ -78,6 +78,13 @@ struct Registered {
     version: i64,
 }
 
+#[derive(Clone)]
+struct TestService {
+    thread: String,
+    name: String,
+    endpoint: Option<(u16, String)>,
+}
+
 type Registry = Arc<Mutex<BTreeMap<String, Registered>>>;
 
 struct Fixture {
@@ -87,6 +94,7 @@ struct Fixture {
     registry: Registry,
     /// When set, the fake owner refuses every `artifact.read` with this code.
     read_fault: Arc<Mutex<Option<ErrorCode>>>,
+    services: Arc<Mutex<BTreeMap<String, TestService>>>,
     addr: std::net::SocketAddr,
     state: AppState<MockOwner>,
     owner: Arc<MockOwner>,
@@ -112,6 +120,19 @@ impl Fixture {
                 uri,
                 mime: mime.map(str::to_owned),
                 version,
+            },
+        );
+    }
+}
+
+impl Fixture {
+    fn service(&self, id: &str, thread: &str, name: &str, endpoint: Option<(u16, &str)>) {
+        self.services.lock().unwrap().insert(
+            id.to_owned(),
+            TestService {
+                thread: thread.to_owned(),
+                name: name.to_owned(),
+                endpoint: endpoint.map(|(port, token)| (port, token.to_owned())),
             },
         );
     }
@@ -186,11 +207,43 @@ async fn fixture() -> Fixture {
     let known = registry.clone();
     let read_fault: Arc<Mutex<Option<ErrorCode>>> = Arc::new(Mutex::new(None));
     let fault = read_fault.clone();
+    let services: Arc<Mutex<BTreeMap<String, TestService>>> = Arc::new(Mutex::new(BTreeMap::new()));
+    let known_services = services.clone();
     let (owner, _events) = mock_replies(move |command| match command {
         Command::MessageSend(_) => common::ok_reply(json!({"message_id": "m1"})),
         Command::ThreadGet(_) => common::ok_reply(json!({"thread_id": "t1", "title": "T"})),
         Command::HistoryList(_) => common::ok_reply(json!({"items": []})),
         Command::ThreadList(_) => common::ok_reply(json!({"items": [{"thread_id": "t1"}]})),
+        Command::ServiceEndpoint(args) => {
+            let services = known_services.lock().unwrap();
+            let service = match (
+                args.service_id.as_deref(),
+                args.thread_id.as_deref(),
+                args.name.as_deref(),
+            ) {
+                (Some(id), None, None) => services.get(id).cloned(),
+                (None, Some(thread), Some(name)) => services
+                    .values()
+                    .find(|service| service.thread == thread && service.name == name)
+                    .cloned(),
+                _ => None,
+            };
+            match service {
+                Some(service) => match service.endpoint {
+                    Some((port, token)) => common::ok_reply(json!({"port":port,"token":token})),
+                    None => Some(Err(ApiError::new(
+                        ErrorCode::InvalidState,
+                        "Service endpoint is unavailable",
+                    )
+                    .details(json!({"reason":"service_not_running"})))),
+                },
+                None => Some(Err(ApiError::new(
+                    ErrorCode::TargetUnavailable,
+                    "Service not found",
+                )
+                .details(json!({"reason":"service_not_found"})))),
+            }
+        }
         Command::ArtifactGet(args) => match known.lock().unwrap().get(&args.artifact_id) {
             Some(found) => common::ok_reply(summary(&args.artifact_id, found)),
             None => refused(ErrorCode::TargetUnavailable, "no such artifact"),
@@ -252,6 +305,7 @@ async fn fixture() -> Fixture {
         apps,
         registry,
         read_fault,
+        services,
         addr,
         state,
         owner,
@@ -1202,14 +1256,6 @@ async fn fake_backend(token: &str) -> (u16, Arc<Mutex<Vec<String>>>) {
     (port, seen)
 }
 
-fn write_endpoint(f: &Fixture, app: &str, port: u16, token: &str) {
-    std::fs::write(
-        f.apps.join(app).join(".app.endpoint"),
-        json!({"port": port, "token": token}).to_string(),
-    )
-    .unwrap();
-}
-
 /// One call as the Web UI's socket carries it: `apps.call` over `/ws`.
 async fn ws_app_call(f: &Fixture, name: &str, op: &str, args: Value) -> Value {
     let cookie = login(f.addr, &f.state).await;
@@ -1244,85 +1290,150 @@ async fn ws_app_call(f: &Fixture, name: &str, op: &str, args: Value) -> Value {
 }
 
 #[tokio::test]
-async fn call_reaches_only_the_apps_own_backend_with_its_token() {
+async fn named_services_are_shared_by_pages_and_composed_by_one_page() {
+    let f = fixture().await;
+    write_app(&f, "board", "t1", &[PAGE]);
+    write_app(&f, "report", "t1", &[PAGE]);
+    write_app(&f, "dashboard", "t1", &[PAGE]);
+    let (tracker_port, tracker_seen) = fake_backend("tracker-token").await;
+    let (calendar_port, calendar_seen) = fake_backend("calendar-token").await;
+    let (other_port, other_seen) = fake_backend("other-thread-token").await;
+    f.service(
+        "tracker-a",
+        "t1",
+        "tracker",
+        Some((tracker_port, "tracker-token")),
+    );
+    f.service(
+        "calendar-a",
+        "t1",
+        "calendar",
+        Some((calendar_port, "calendar-token")),
+    );
+    f.service(
+        "tracker-b",
+        "t2",
+        "tracker",
+        Some((other_port, "other-thread-token")),
+    );
+
+    for page in ["board", "report"] {
+        let out = ws_app_call(
+            &f,
+            page,
+            "call",
+            json!({"service_name":"tracker","path":"/issues","body":{"page":page}}),
+        )
+        .await;
+        assert_eq!(out["ok"], true, "{page}: {out}");
+        assert_eq!(out["result"]["status"], 200);
+    }
+    let combined = ws_app_call(
+        &f,
+        "dashboard",
+        "call",
+        json!({"service_name":"tracker","path":"/issues"}),
+    )
+    .await;
+    assert_eq!(combined["ok"], true, "{combined}");
+    let combined = ws_app_call(
+        &f,
+        "dashboard",
+        "call",
+        json!({"service_name":"calendar","path":"/events"}),
+    )
+    .await;
+    assert_eq!(combined["ok"], true, "{combined}");
+    assert_eq!(tracker_seen.lock().unwrap().len(), 3);
+    assert_eq!(calendar_seen.lock().unwrap().len(), 1);
+    assert!(
+        other_seen.lock().unwrap().is_empty(),
+        "same-name service in another Thread is not selected"
+    );
+
+    // The caller cannot redirect resolution to Thread t2 by adding a Thread field.
+    let redirected = ws_app_call(
+        &f,
+        "board",
+        "call",
+        json!({"service_name":"tracker","thread_id":"t2","path":"/issues"}),
+    )
+    .await;
+    assert_eq!(redirected["ok"], true, "{redirected}");
+    assert_eq!(tracker_seen.lock().unwrap().len(), 4);
+    assert!(other_seen.lock().unwrap().is_empty());
+
+    // A stale endpoint token remains a typed backend_refused error.
+    f.service(
+        "tracker-a",
+        "t1",
+        "tracker",
+        Some((tracker_port, "stale-token")),
+    );
+    let refused = ws_app_call(
+        &f,
+        "board",
+        "call",
+        json!({"service_name":"tracker","path":"/issues"}),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], "backend_refused", "{refused}");
+    f.service(
+        "tracker-a",
+        "t1",
+        "tracker",
+        Some((tracker_port, "tracker-token")),
+    );
+
+    for bad in ["//elsewhere/x", "api", "/a b", "/x#y"] {
+        let out = ws_app_call(
+            &f,
+            "board",
+            "call",
+            json!({"service_name":"tracker","path":bad}),
+        )
+        .await;
+        assert_eq!(out["error"]["code"], "invalid_path", "{bad}: {out}");
+    }
+
+    // Stopping one shared service makes both pages observe backend_down.
+    f.service("tracker-a", "t1", "tracker", None);
+    for page in ["board", "report"] {
+        let out = ws_app_call(
+            &f,
+            page,
+            "call",
+            json!({"service_name":"tracker","path":"/issues"}),
+        )
+        .await;
+        assert_eq!(out["error"]["code"], "backend_down", "{page}: {out}");
+    }
+}
+
+#[tokio::test]
+async fn a_page_cannot_reach_another_threads_service_with_the_same_name() {
     let f = fixture().await;
     write_app(&f, "one", "t1", &[PAGE]);
-    write_app(&f, "two", "t1", &[PAGE]);
-    let (port_one, seen_one) = fake_backend("token-one").await;
-    let (port_two, seen_two) = fake_backend("token-two").await;
-    write_endpoint(&f, "one", port_one, "token-one");
-    write_endpoint(&f, "two", port_two, "token-two");
+    let (other_port, other_seen) = fake_backend("thread-two-token").await;
+    f.service(
+        "tracker-t2",
+        "t2",
+        "tracker",
+        Some((other_port, "thread-two-token")),
+    );
+
     let out = ws_app_call(
         &f,
         "one",
         "call",
-        json!({"path":"/api/board","body":{"move":"card-1"}}),
+        json!({"service_name":"tracker","thread_id":"t2","path":"/secret"}),
     )
     .await;
-    assert_eq!(out["ok"], true, "{out}");
-    assert_eq!(out["result"]["status"], 200);
-    let echoed: Value =
-        serde_json::from_str(out["result"]["body"]["got"].as_str().unwrap()).unwrap();
-    assert_eq!(echoed, json!({"move":"card-1"}));
-    let seen = seen_one.lock().unwrap().clone();
-    assert_eq!(seen.len(), 1);
-    assert!(seen[0].starts_with("POST /api/board "), "{}", seen[0]);
-    assert!(
-        seen_two.lock().unwrap().is_empty(),
-        "another app's backend is never reached"
-    );
-    // A path that is not a path on the backend is refused before anything is sent.
-    for bad in ["//elsewhere/x", "api", "/a b", "/x#y"] {
-        let out = ws_app_call(&f, "one", "call", json!({"path": bad})).await;
-        assert_eq!(out["error"]["code"], "invalid_path", "{bad}: {out}");
-    }
-    assert_eq!(seen_one.lock().unwrap().len(), 1);
-}
-
-#[tokio::test]
-async fn call_gives_typed_errors_when_the_backend_is_missing_down_or_refuses() {
-    let f = fixture().await;
-    write_app(&f, "one", "t1", &[PAGE]);
-    let code = |out: Value| out["error"]["code"].as_str().unwrap_or("").to_owned();
-    // No endpoint file: the service is not running.
-    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
-    assert_eq!(code(out), "no_backend");
-    // A file that is not an endpoint.
-    std::fs::write(f.apps.join("one/.app.endpoint"), "not json").unwrap();
-    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
-    assert_eq!(code(out), "backend_endpoint_unreadable");
-    // An endpoint whose service is down: the port was taken and released.
-    let (port, _) = fake_backend("t").await;
-    let closed = {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        l.local_addr().unwrap().port()
-    };
-    assert_ne!(port, closed);
-    write_endpoint(&f, "one", closed, "t");
-    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
-    assert_eq!(code(out), "backend_down");
-    // A backend that refuses the token (for instance after a restart with a new one).
-    write_endpoint(&f, "one", port, "stale");
-    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
-    assert_eq!(code(out), "backend_refused");
-    // The fresh endpoint works again without anything being restarted here.
-    write_endpoint(&f, "one", port, "t");
-    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
-    assert_eq!(out["ok"], true, "{out}");
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn an_endpoint_file_that_leaves_the_folder_is_not_used() {
-    let f = fixture().await;
-    write_app(&f, "one", "t1", &[PAGE]);
-    let (port, seen) = fake_backend("t").await;
-    let outside = f.root.join("outside.endpoint");
-    std::fs::write(&outside, json!({"port": port, "token": "t"}).to_string()).unwrap();
-    std::os::unix::fs::symlink(&outside, f.apps.join("one/.app.endpoint")).unwrap();
-    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
     assert_eq!(out["error"]["code"], "no_backend", "{out}");
-    assert!(seen.lock().unwrap().is_empty());
+    assert!(
+        other_seen.lock().unwrap().is_empty(),
+        "the other Thread's service is never contacted"
+    );
 }
 
 #[tokio::test]
@@ -1334,30 +1445,29 @@ async fn the_page_is_never_served_a_hidden_file() {
         "t1",
         &[
             PAGE,
-            (".app.endpoint.tmp", "secret-token"),
-            (".hidden/inner.txt", "secret-token"),
+            (".env", "hidden-secret"),
+            (".git/config", "hidden-secret"),
+            (".hidden/inner.txt", "hidden-secret"),
             ("sub/ok.txt", "plain"),
         ],
     );
-    write_endpoint(&f, "one", 1, "secret-token");
     let base = open(&f, "one")
         .await
         .trim_end_matches("index.html")
         .to_owned();
     let web = f.addr.to_string();
     for path in [
-        ".app.endpoint",
-        "./.app.endpoint",
-        "%2E/.app.endpoint",
-        "sub/../.app.endpoint",
-        ".APP.ENDPOINT",
-        ".app.endpoint.",
-        ".app.endpoint.tmp",
+        ".env",
+        "./.env",
+        "%2E/.env",
+        "sub/../.env",
+        ".GIT/config",
+        ".git/config",
         ".hidden/inner.txt",
     ] {
         let reply = http(&web, "GET", &format!("{base}{path}"), &[], "").await;
         assert_eq!(reply.status, 404, "{path}");
-        assert!(!reply.body.contains("secret-token"), "{path}");
+        assert!(!reply.body.contains("hidden-secret"), "{path}");
     }
     let ok = http(&web, "GET", &format!("{base}./sub/ok.txt"), &[], "").await;
     assert_eq!((ok.status, ok.body.as_str()), (200, "plain"));

@@ -1,63 +1,35 @@
-//! `shellboy.call(path, body)`: one plain HTTP request to the app's own backend. The backend is a Core
-//! service the app's Thread started in the app's folder; it listens on 127.0.0.1 and writes
-//! `{port, token}` to `.app.endpoint` there at each start. Studio reads that file for every call (no
-//! cached port, so a restarted backend is found), sends the token, and forwards nothing outside the
-//! app's own folder. No retry and no polling: a failure is the answer.
+//! `shellboy.call(serviceName, path, body)`: resolve a named service of the app's owning Thread
+//! through Core, then forward one HTTP request with its current token. No retry or polling: failures
+//! are returned to the page.
 use super::host::{ApiFail, MAX_DATA, WAIT};
 use serde_json::{Value, json};
+use shellboy::protocol::ServiceEndpoint;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-pub(super) const ENDPOINT: &str = ".app.endpoint";
-
-struct Endpoint {
-    port: u16,
-    token: String,
-}
 
 fn visible(text: &str) -> bool {
     !text.is_empty() && text.bytes().all(|b| (0x21..=0x7e).contains(&b))
 }
 
-async fn read_endpoint(file: Option<std::path::PathBuf>) -> Result<Endpoint, ApiFail> {
-    let unreadable = |why: String| ("backend_endpoint_unreadable", why);
-    let Some(file) = file else {
-        return Err((
-            "no_backend",
-            format!("This app has no {ENDPOINT}: its service is not running"),
-        ));
-    };
-    let mut bytes = Vec::new();
-    let opened = tokio::fs::File::open(&file)
-        .await
-        .map_err(|e| unreadable(format!("{ENDPOINT} can't be opened: {e}")))?;
-    opened
-        .take(MAX_DATA as u64 + 1)
-        .read_to_end(&mut bytes)
-        .await
-        .map_err(|e| unreadable(format!("{ENDPOINT} can't be read: {e}")))?;
-    if bytes.len() > MAX_DATA {
-        return Err(unreadable(format!("{ENDPOINT} is too large")));
-    }
-    let value: Value = serde_json::from_slice(&bytes)
-        .map_err(|_| unreadable(format!("{ENDPOINT} is not JSON {{port, token}}")))?;
-    let port = value["port"]
-        .as_u64()
-        .and_then(|p| u16::try_from(p).ok())
-        .filter(|p| *p != 0);
-    let token = value["token"].as_str().filter(|t| visible(t));
-    match (port, token) {
-        (Some(port), Some(token)) => Ok(Endpoint {
-            port,
-            token: token.to_owned(),
-        }),
-        _ => Err(unreadable(format!(
-            "{ENDPOINT} needs a port and a printable token"
-        ))),
+pub(super) fn endpoint_error(error: Value) -> ApiFail {
+    let reason = error["details"]["reason"].as_str().unwrap_or_default();
+    match reason {
+        "service_not_found" => ("no_backend", "The named service does not exist".to_owned()),
+        "service_not_running" | "service_endpoint_unavailable" => (
+            "backend_down",
+            "The named service is not running or has not published its endpoint".to_owned(),
+        ),
+        _ => (
+            "backend_failed",
+            error["message"]
+                .as_str()
+                .unwrap_or("Core could not resolve the named service")
+                .to_owned(),
+        ),
     }
 }
 
-/// `file` is the endpoint file inside the app's folder, or `None` when there is none.
-pub(super) async fn call(file: Option<std::path::PathBuf>, args: &Value) -> Result<Value, ApiFail> {
+/// Forward one request to the exact endpoint returned by Core for the selected service.
+pub(super) async fn call(endpoint: ServiceEndpoint, args: &Value) -> Result<Value, ApiFail> {
     let path = args.get("path").and_then(Value::as_str).unwrap_or_default();
     if !path.starts_with('/') || path.starts_with("//") || path.contains('#') || !visible(path) {
         return Err((
@@ -72,7 +44,12 @@ pub(super) async fn call(file: Option<std::path::PathBuf>, args: &Value) -> Resu
     if body.len() > MAX_DATA {
         return Err(("too_large", "The request body is over 8 MiB".to_owned()));
     }
-    let endpoint = read_endpoint(file).await?;
+    if endpoint.port == 0 || !visible(&endpoint.token) {
+        return Err((
+            "backend_failed",
+            "Core returned an invalid service endpoint".to_owned(),
+        ));
+    }
     let mut request = format!(
         "POST {path} HTTP/1.0\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nConnection: close\r\nContent-Length: {}\r\n",
         endpoint.port,

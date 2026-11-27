@@ -34,7 +34,7 @@ An app is a Thread artifact whose latest version URI is `shellboy-app:` plus an 
 <any folder>/
   index.html  the entry, always
   data/       the app's own files, shared with its Thread
-  .app.endpoint  {port, token} of the app's backend service, written by that service (owner-only; not served)
+  named service  resolved by Core within the artifact's owning Thread
 ```
 
 Gateway API for an app. The bound Thread is the default target; an app may name another Thread.
@@ -46,7 +46,7 @@ Gateway API for an app. The bound Thread is the default target; an app may name 
 | `thread.send(text, thread?)` | Message a Thread, recorded as coming from the app |
 | `thread.messages(thread?)`, `threads.list()` | Read conversations and the Thread list |
 | `thread.onChange(fn)` | Change hints from the shared `events wait` |
-| `call(path, body?)` | One HTTP request to the app's own backend service; returns `{status, body}` |
+| `call(serviceName, path, body?)` | One HTTP request to a named service of the artifact's owning Thread; returns `{status, body}` |
 
 ## What was built
 
@@ -72,7 +72,8 @@ What an opaque origin costs, and how each is handled:
 
 **`data.onChange`.** One lifecycle task per app, in the gateway, however many pages are open. It runs while a page waits and 30 s after, then ends with nothing left behind. Native file events would add a dependency and platform differences, so it is a stat walk of `data/` every second, a fixed interval: at most 4096 entries, 8 folders deep, on the blocking pool, not following links. Pages long-poll one call (`data.wait`), so a tab has no polling loop of its own, and a change made between two waits isn't lost, because the version moves. A file changed to the same size within the file system's time resolution would be missed. Measured in Chrome on the temp owner with the earlier 200 ms interval, from `writeFileSync` in another process to the page's callback, 10 samples: 16, 29, 36, 44, 75, 79, 85, 172, 175, 190 ms (macOS, debug build, a nearly empty `data/`). These are observations, and the interval is what drives them; they haven't been measured again at 1 s (#171).
 
-**`call`.** The backend is a Core service the app's Thread started with `shellboy service add --thread T --cwd APP_FOLDER --command ...`. It listens on 127.0.0.1 on a free port it chooses and writes `{port, token}` (a fresh token per start) to `.app.endpoint` in the app folder with owner-only permissions. For each call Studio reads that file (no cached port, so a restart is found), sends `POST path` to 127.0.0.1:port with `Authorization: Bearer <token>` and the JSON body, over HTTP/1.0 with close, and returns `{status, body}` (body is parsed JSON for a JSON answer, else text). The file is looked up only inside the app's own folder (a link out of it counts as missing), so an app can never reach another app's backend, and the page is never served a hidden file: the file gate normalises the path once (no `.` components, no `..`, Windows trailing dots and spaces trimmed), refuses any component starting with `.` (`.app.endpoint` and its temp file, `.instances.json`, `.git`, `.env`) and passes that same path to `artifact.read`. Typed errors, with no retry and no polling: `no_backend` (no file), `backend_endpoint_unreadable`, `backend_down` (connection refused), `backend_refused` (401/403: the token is stale), `backend_timeout` (25 s, the same wait bound as the long polls), `backend_failed`, `too_large` (request body or whole response over 8 MiB, the `data/` bound), `invalid_path`. Other HTTP statuses are the backend's own answer and come back as results. At most 4 calls at once. Studio has no service management, port allocation or registry; Core knows nothing about it. Credentials stay with the service's environment, never in the folder. A forked Thread copies the artifact but not the service, so the backend stays with the original Thread and both share `data/`.
+**`call`.** `shellboy.call(serviceName, path, body)` resolves a named Core service only among the services owned by the artifact's Thread (there is no cross-Thread target), then forwards `POST path` to that service's current Core-published endpoint with its token. The endpoint is private runtime state supplied by Core through `SHELLBOY_SERVICE_ENDPOINT_FILE`, never stored in the artifact folder or exposed to the page. A service can serve multiple artifacts; one page may combine multiple services and the services remain unaware of each other. Calls return `{status, body}` (JSON parsed when the response has a JSON content type, otherwise text). Typed errors remain (`no_backend` for an unknown name, `backend_down`, `backend_refused`, `backend_timeout`, `backend_failed`, `too_large`, `invalid_path`); other HTTP statuses return as results. No retry and no polling. The existing file gate still rejects every hidden path component (`.env`, `.git`, and others).
+
 
 **Web UI.** Apps is in the left navigation, and under More on a phone. The pane has tabs on top; an open app's iframe stays mounted while other tabs or views show, so moving back to the Web UI loses nothing. `#/apps/<name>` keeps the choice. The Web UI CSP gains `frame-src 'self'`.
 

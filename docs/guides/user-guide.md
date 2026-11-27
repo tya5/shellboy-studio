@@ -151,18 +151,18 @@ Keep default authentication for normal use. Explicit `--no-auth` is for disposab
  Thread (owns the whole app; builds and changes both halves)
    |
    +-- artifact  = the frontend: a folder (shellboy-app:), versioned, opens in Apps
-   |                 |  shellboy.call(path, body)        shellboy.data.*
+   |                 |  shellboy.call(name, path, body) shellboy.data.*
    |                 v                                   |
-   +-- service   = the backend: a program Shellboy runs   |
-   |                 listens on 127.0.0.1, token in .app.endpoint
-   |                 its output stays readable in the Thread's shell list
+   +-- service   = a named Core service of this Thread  |
+   |                 Core resolves its private endpoint |
+   |                 output stays in the Thread's shell list
    |                                                     |
-   +-- data/     = shared state in the app folder <------+  (page, service and Thread all read it)
+   +-- data/     = shared state in the app folder <------+  (page and Thread share it; a service may use it when configured)
 ```
 
-The page cannot start anything itself: when it needs a backend it calls it with `shellboy.call`, and Studio forwards the call only to that app's own service. A forked or rewound Thread gets the page, not the service; both Threads then share the folder's `data/`. If the service fails, the Thread is notified. Example: ask a Thread "watch my issue tracker and show me a board". It writes the board page, starts a service that polls the tracker and writes `data/issues.json`, and the page redraws whenever that file changes. Your tracker login stays outside the folder, written by you.
+The page cannot start a service itself. It calls a named service of the artifact's owning Thread: `shellboy.call("tracker", "/issues")`; Studio asks Core to resolve that name within the same Thread and forwards the request with its token. One service can serve multiple pages: for example, `board.html` and `report.html` can both call `tracker`. A single dashboard can combine independent services, for example calling both `tracker` and `calendar` and arranging their results; the services do not call or know about each other. Ask a Thread "watch my issue tracker and show me a board" to create the page, add a named service with `shellboy service add --name tracker ...`, and have it serve tracker requests; the page can also redraw from its own `data/` when its files change. Your tracker login stays outside the artifact folder. A stopped service makes calls report that the backend is down, while the page remains available.
 
-To share an app, copy its folder (git or zip). It carries a README with the install steps (register the artifact, add the service), the credentials it needs (never inside the folder) and the questions the Thread should ask you about preferences. Ask a Thread to follow that README to install it. The folder's `.gitignore` excludes `data/` and `.app.endpoint`.
+To share an app, copy its folder (git or zip). It carries a README with the install steps (register the artifact and add named services to the same Thread), the credentials it needs (never inside the folder) and the questions the Thread should ask you about preferences. Ask a Thread to follow that README to install it. The folder's `.gitignore` excludes `data/`.
 
 
 If Studio cannot reach Core, check that Core is running under the same OS account, the data directories match, and both binaries match the release pairing. Studio does not downgrade the protocol. Do not reset data or restart an owner running work just to clear a mismatch. Follow the release notes for verification limits; the presence of an archive is not proof of a physical-device test.
@@ -309,18 +309,18 @@ Studio はループバックのまま、別の端末から届くプライベー�
  スレッド（アプリ全体の所有者。両方の半分を作り、変更する）
    |
    +-- 成果物   = フロントエンド: フォルダ（shellboy-app:）。版管理され、アプリ画面で開く
-   |                 |  shellboy.call(path, body)        shellboy.data.*
+   |                 |  shellboy.call(name, path, body) shellboy.data.*
    |                 v                                   |
-   +-- サービス = バックエンド: Shellboy が動かすプログラム  |
-   |                 127.0.0.1 で待ち受け、トークンは .app.endpoint
+   +-- サービス = 同じスレッドが所有する名前付き Core サービス |
+   |                 Core が非公開の接続先を解決する       |
    |                 出力はスレッドのシェル一覧から読める    |
    |                                                     |
    +-- data/    = アプリフォルダ内の共有状態 <-------------+（ページ・サービス・スレッドが読む）
 ```
 
-ページ自身は何も起動できません。バックエンドが必要なときは `shellboy.call` で呼び、Studio はそのアプリ自身のサービスにだけ転送します。フォークや巻き戻しで増えたスレッドにはページが付いてきますが、サービスは付いてきません。両方のスレッドがフォルダの `data/` を共有します。サービスが失敗するとスレッドに通知されます。例: スレッドに「課題トラッカーを監視してボードで見せて」と頼むと、ボードのページを作り、トラッカーを定期的に読んで `data/issues.json` に書くサービスを起動し、ページはそのファイルが変わるたびに描き直します。トラッカーのログイン情報はフォルダの外に、あなたが置きます。
+ページはサービスを起動しません。成果物を所有するスレッドの名前付きサービスを `shellboy.call("tracker", "/issues")` のように呼びます。Studio は Core に同じスレッド内で名前を解決させ、サービスのトークンを使って転送します。1つのサービスを複数のページで共有できます。たとえば `board.html` と `report.html` がどちらも `tracker` を呼びます。1つのダッシュボードから複数の独立したサービス（例: `tracker` と `calendar`）を呼び出して組み合わせることもできます。サービス同士は呼び合わず、互いを知りません。スレッドに「課題トラッカーを監視してボードで見せて」と頼むと、ページと `shellboy service add --name tracker ...` で追加するサービスを作り、`data/` を更新できます。ファイルが変わるとページが再描画します。ログイン情報は成果物フォルダの外に置きます。サービスが止まってもページは開けますが、呼び出しはバックエンド停止を返します。
 
-アプリを配るにはフォルダをコピー（git か zip）します。フォルダの README に、インストール手順（成果物の登録とサービスの追加）、必要な認証情報（フォルダの中には置かない）、スレッドが好みを尋ねる質問を書きます。インストールはスレッドにその README を実行してもらいます。フォルダの `.gitignore` は `data/` と `.app.endpoint` を除外します。
+アプリを配るにはフォルダをコピー（git か zip）します。フォルダの README に、インストール手順（成果物の登録と同じスレッドへの名前付きサービスの追加）、必要な認証情報（フォルダの中には置かない）、スレッドが好みを尋ねる質問を書きます。インストールはスレッドにその README を実行してもらいます。フォルダの `.gitignore` は `data/` を除外します。
 
 
 Core に接続できない場合は、同じ OS アカウントで起動したか、データディレクトリが一致するか、リリースノートどおりの組み合わせかを確認します。古いプロトコルへの切り替えはありません。不一致を解消するためにデータを初期化したり、作業中のオーナーを無断で再起動したりしないでください。配布物があるだけでは実機検証済みとはいえません。検証範囲はリリースノートを参照してください。

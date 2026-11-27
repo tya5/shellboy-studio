@@ -99,7 +99,7 @@
       },
     },
     threads: { list: (options) => call("threads.list", options) },
-    call: (path, body) => call("call", body === undefined ? { path } : { path, body }),
+    call: (serviceName, path, body) => call("call", body === undefined ? { service_name: serviceName, path } : { service_name: serviceName, path, body }),
   };
   shellboy.ready = call("app.info").then((info) => { shellboy.app = info; shellboy.instance = info.instance ?? null; return info; });
   shellboy.ready.catch(() => {});

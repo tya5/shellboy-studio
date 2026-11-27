@@ -617,16 +617,35 @@ impl<O: Owner> AppHost<O> {
         )
     }
 
-    /// The app's own backend only: the endpoint file is looked up inside this app's folder.
-    async fn backend_call(&self, args: &Value) -> Result<Value, ApiFail> {
+    /// Resolve the requested Core service within the app's owning Thread, then forward the request.
+    async fn backend_call(&self, args: &Value, latest: &Latest) -> Result<Value, ApiFail> {
+        let service_name = args
+            .get("service_name")
+            .and_then(Value::as_str)
+            .filter(|name| !name.is_empty())
+            .ok_or(("invalid_args", "serviceName is required".to_owned()))?;
         let _permit = self
             .apps
             .calls
             .acquire()
             .await
             .map_err(|_| ("shutting_down", "The gateway is stopping".to_owned()))?;
-        let file = self.inside(Path::new(super::backend::ENDPOINT)).await;
-        super::backend::call(file, args).await
+
+        // Core accepts any Thread for this endpoint read; AppHost supplies only the artifact owner.
+        let endpoint = self
+            .owner_call(json!({
+                "command":"service.endpoint",
+                "args":{"thread_id":latest.thread.clone(),"name":service_name}
+            }))
+            .await
+            .map_err(super::backend::endpoint_error)?;
+        let endpoint = serde_json::from_value(endpoint).map_err(|_| {
+            (
+                "backend_failed",
+                "Core returned an invalid service endpoint".to_owned(),
+            )
+        })?;
+        super::backend::call(endpoint, args).await
     }
 
     async fn dispatch(
@@ -646,7 +665,7 @@ impl<O: Owner> AppHost<O> {
             "data.list" => self.data_list(&args).await.map_err(fail),
             "events.wait" => self.events_wait(&args, latest).await.map_err(fail),
             "data.wait" => self.data_wait(&args, instance).await.map_err(fail),
-            "call" => self.backend_call(&args).await.map_err(fail),
+            "call" => self.backend_call(&args, latest).await.map_err(fail),
             "thread.send" => {
                 let thread = self.bound(&args, latest);
                 let text = args.get("text").and_then(Value::as_str).unwrap_or_default();
@@ -739,7 +758,7 @@ pub(super) async fn serve_file<O: Owner>(
         return missing();
     };
     // One normalised path decides and is the one read: no '.' components, no '..', and no hidden
-    // component (`.app.endpoint` with its token, `.instances.json`, `.git`, `.env`). Windows ignores
+    // component (`.instances.json`, `.git`, `.env`). Windows ignores
     // trailing dots and spaces in a name, so those are trimmed before the test.
     let names: Vec<String> = rel
         .components()
