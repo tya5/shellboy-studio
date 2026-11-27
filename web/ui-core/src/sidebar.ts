@@ -58,23 +58,26 @@ function groupsFor(items: readonly ThreadSummary[], pinIds: ReadonlySet<string>,
 
 /**
  * `items` holds every row a band may show (listed, archived and the owner's pinned rows); `pinIds` is
- * the owner's pinned set (`thread.list` with the `pin` tag), the only source of Pins membership.
+ * the owner's pinned set (`thread.list` with the `pin` tag), the only source of Pins membership;
+ * archived rows are dropped from Pins and All (see `unarchived`).
  * `allItems` and `archivedItems` are the owner's All and Archive reads, each its own tree, in Core order.
  */
 export function sidebarGroups(items: readonly ThreadSummary[], pinIds: readonly string[], selected?: string, flat = false, allItems: readonly ThreadSummary[] = items, archivedItems: readonly ThreadSummary[] = []): SidebarGroup[] {
   const pinSet = new Set(pinIds);
+  // The one row rule: a Thread Core reports as archived is shown only in Archive, never in Pinned or All (nor as their children).
+  const unarchived = (rows: readonly ThreadSummary[]) => rows.filter(item => !item.archived_at);
   // Newest first, like Core's created order; a missing or unparseable time sorts last.
   const created = (item: ThreadSummary) => {
     const time = item.created_at ? Date.parse(item.created_at) : Number.NaN;
     return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
   };
-  const pinnedItems = [...items].sort((a, b) => {
+  const pinnedItems = unarchived(items).sort((a, b) => {
     const aCreated = created(a), bCreated = created(b);
     return aCreated === bCreated ? b.thread_id.localeCompare(a.thread_id) : bCreated - aCreated;
   });
   const pinned = groupsFor(pinnedItems, pinSet, selected, flat, []).find(group => group.key === "pins");
   // Build the All tree from its own membership so hidden pin-only parents cannot affect depth or totals.
-  const all = groupsFor(allItems, new Set(), selected, flat, allItems).find(group => group.key === "all")!;
+  const all = groupsFor(unarchived(allItems), new Set(), selected, flat, unarchived(allItems)).find(group => group.key === "all")!;
   // Archive is built the same way: archived children under their archived parent; an archived child of a listed parent is a root.
   const archive = groupsFor(archivedItems, new Set(), selected, flat, archivedItems, "archive").find(group => group.key === "archive")!;
   return [...(pinned?.rows.length ? [pinned] : []), all, ...(archive.rows.length ? [archive] : [])];
