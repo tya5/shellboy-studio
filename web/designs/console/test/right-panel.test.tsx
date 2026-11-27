@@ -13,6 +13,7 @@ import type { DesignContext, Prefs } from '../../../ui-core/src';
 import { DESIGNS } from '../../registry';
 import { loadPrefs, savePrefs, type PrefStore } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
+import { ClockElapsed } from '../screens/clock-display';
 
 const layoutCss=readFileSync('designs/console/system/layout.css','utf8').replace(/\/\*[\s\S]*?\*\//g,'');
 /** layout.css as a browser applies it in a container of `width`; happy-dom does not evaluate container queries. */
@@ -85,25 +86,31 @@ describe('right panel purpose',()=>{
  it('does not refresh hidden Work labels on a clock tick and catches up when opened', async () => {
   const f = await setupExposedPanel();
   const work = f.host.querySelector('[data-panel-list="work"]')!;
+  const at = Date.parse('2026-11-21T00:00:00Z');
+  const row = work.querySelector('[data-panel-row-id="shell-running"]')!;
   let renders = 0;
   const previous = options.diffed;
   options.diffed = vnode => {
    previous?.(vnode);
-   const node = (vnode as typeof vnode & { __e?: Node }).__e;
-   if (typeof vnode.type === 'function' && node && work.contains(node)) renders++;
+   const props = vnode.props as Partial<Parameters<typeof ClockElapsed>[0]>;
+   // Conversation status also shows this shell, but it does not use the keyed panel subtitle.
+   if (vnode.type === ClockElapsed && vnode.key === "elapsed" && props.started === at && props.clock === f.model.now) renders++;
   };
-  const at = Date.parse('2026-11-21T00:00:00Z');
   try {
    await act(() => { f.model.now.value = at + 5_000; });
+   const before = row.textContent;
    renders = 0;
    await act(() => { f.model.now.value = at + 15_000; });
    expect(renders).toBeGreaterThan(0);
+   expect(row.textContent).not.toBe(before);
+   const visible = row.textContent;
    await act(() => { f.context.setPrefs({ panelCollapsed: true }); });
    renders = 0;
    await act(() => { f.model.now.value = at + 65_000; });
    expect(renders).toBe(0);
    await act(() => { f.context.setPrefs({ panelCollapsed: false }); });
    expect(renders).toBeGreaterThan(0);
+   expect(row.textContent).not.toBe(visible);
   } finally { options.diffed = previous; f.model.dispose(); }
  });
 

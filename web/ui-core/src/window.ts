@@ -101,7 +101,6 @@ type PreparedConversationPublication = { retiring?: ReadonlySet<string>; replace
 export class ConversationWindow {
   readonly bodies = new HistoryBodies(64);
   private reader: WindowReader;
-  private readonly disposal = new Set<() => void>();
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
   private buckets = new Map<number, Bucket>();
   private heights = new Heights();
@@ -379,12 +378,6 @@ export class ConversationWindow {
     this.pump();
   }
 
-  onDispose(release: () => void): () => void {
-    if (this.disposed) { release(); return () => {}; }
-    this.disposal.add(release);
-    return () => { this.disposal.delete(release); };
-  }
-
   /** Retire the reader and its borrowers before any late callback can use the old view. */
   dispose(): void {
     if (this.disposed) return;
@@ -408,8 +401,6 @@ export class ConversationWindow {
       this.stopTimer?.();
       this.stopTimer = undefined;
       this.cancelAll();
-      for (const release of this.disposal) release();
-      this.disposal.clear();
     });
   }
 

@@ -86,11 +86,10 @@ describe("AppModel over the fake transport", () => {
     try {
       const reader = model.longReader.peek()!;
       expect(reader.acceptedView.peek().rows.length).toBeGreaterThan(0);
-      reader.dispose();
-      expect(model.longReader.peek()).not.toBe(reader);
+      model.navigate({ view: "analytics" });
+      expect(model.longReader.peek()).toBeUndefined();
       expect(reader.acceptedView.peek().rows).toEqual([]);
       expect(reader.rangeItems()).toEqual([]);
-      model.navigate({ view: "analytics" });
       model.openThread("lead");
       await settle(t, db);
       expect(model.longReader.peek()).not.toBe(reader);

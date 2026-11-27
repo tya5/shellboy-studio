@@ -803,7 +803,13 @@ export class AppModel {
 
   /** Drop the strong reference to accepted rows whenever the conversation reader leaves. */
   private releaseConversationReader(): void {
-    this.longReader.peek()?.dispose();
+    const reader = this.longReader.peek();
+    batch(() => {
+      this.readerThread = undefined;
+      this.shellScan = undefined;
+      this.longReader.value = undefined;
+      reader?.dispose();
+    });
   }
 
   /** One reader per open Thread while the Conversation shows and the owner has the positional read. */
@@ -822,12 +828,6 @@ export class AppModel {
       reader.bindCurrentThread(h);
       reader.bindConversationInput((snapshot, replacement, retiring) => this.captureWindowConversation(reader, h, snapshot, replacement, retiring),
         snapshot => this.applyCommittedOwnRegion(reader, h, snapshot));
-      reader.onDispose(() => {
-        if (this.longReader.peek() !== reader) return;
-        this.readerThread = undefined;
-        this.shellScan = undefined;
-        this.longReader.value = undefined;
-      });
       this.longReader.value = reader;
       reader.refreshConversationInput(reader.acceptedView.peek());
     }

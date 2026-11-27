@@ -179,17 +179,17 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const observed = useRef(new Set<Element>());
   const frame = useRef<number | undefined>(undefined);
   const latest = useRef<{ sync: () => void; port: ScrollViewPort<object> }>();
-  latest.current = { sync, port };
   const cancelFrame = () => {
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     frame.current = undefined;
   };
-  useLayoutEffect(() => win.onDispose(() => {
+  // Navigation retires this binding. Invalidate scroll work even without ResizeObserver.
+  useLayoutEffect(() => () => {
     latest.current = undefined;
     active.current = undefined;
     cancelFrame();
     writer.current.cancel();
-  }), [win]);
+  }, [win]);
   useLayoutEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
     let observing = true;
@@ -209,9 +209,6 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     for (const node of mounted.current.keys()) observer.observe(node);
     return () => {
       observing = false;
-      latest.current = undefined;
-      active.current = undefined;
-      cancelFrame();
       observer.disconnect();
       observed.current.clear();
       resize.current = undefined;
@@ -220,6 +217,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   useLayoutEffect(() => {
     // A rendered generation already has its own sync; do not drain old RO work.
     cancelFrame();
+    latest.current = { sync, port };
     sync();
     const box = el.current;
     const observer = resize.current;
