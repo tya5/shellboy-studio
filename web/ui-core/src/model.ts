@@ -285,11 +285,8 @@ export class AppModel {
 
   readonly shells: Signal<ReadonlyMap<string, ShellEntry>> = signal(new Map());
   readonly outputs: Signal<ReadonlyMap<string, OutputState>> = signal(new Map());
-  bodyCacheKey(nodeId: string, itemIdentity?: string): string {
-    return JSON.stringify([nodeId, itemIdentity]);
-  }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined {
-    return this.longReader.value?.bodies.get(this.bodyCacheKey(nodeId, itemIdentity));
+    return this.longReader.value?.bodies.get(nodeId, itemIdentity);
   }
   readonly attachmentSection: AttachmentSection;
   readonly artifacts: ArtifactObservation;
@@ -1101,15 +1098,16 @@ export class AppModel {
   }
 
   /** Read one message beyond its excerpt. On request only. */
-  async loadBody(nodeId: string, expected?: { handle?: ThreadHandle; reader?: ConversationWindow; kind: "deferred" | "typed"; identity?: string }, panel?: { bodies: HistoryBodies; cancel: Cancel }): Promise<void> {
+  async loadBody(nodeId: string, expected?: { handle?: ThreadHandle; reader?: ConversationWindow; kind: "deferred" | "typed"; identity?: string }, panel?: HistoryBodies): Promise<void> {
     const handle = expected?.handle ?? this.handle.peek();
     const reader = expected !== undefined && Object.prototype.hasOwnProperty.call(expected, "reader") ? expected.reader : this.longReader.peek();
     const route = this.route.peek();
-    const bodies = panel?.bodies ?? reader?.bodies;
+    const bodies = panel ?? reader?.bodies;
     if (!handle || !bodies || this.longReader.peek() !== reader) return;
-    const cacheKey = this.bodyCacheKey(nodeId, expected?.identity);
+    const cacheKey = HistoryBodies.key(nodeId, expected?.identity);
+    const position = { nodeId, ordinal: panel ? undefined : reader?.acceptedView.peek().rows.find(row => row.node_id === nodeId)?.selection?.ordinal };
     const tokens = bodies.reads;
-    const set = (body: BodyState | undefined) => bodies.set(cacheKey, body);
+    const set = (body: BodyState | undefined) => bodies.set(cacheKey, position, body);
     const autoQualified = () => {
       if (reader === undefined) return false;
       const snapshot = reader.acceptedView.peek();
@@ -1127,12 +1125,11 @@ export class AppModel {
       if (expected?.handle === undefined) existing.manualAuthorized = true;
       return;
     }
-    const token = { manualAuthorized: expected?.handle === undefined, cancel: new Cancel() };
+    const token = { position, manualAuthorized: expected?.handle === undefined, cancel: new Cancel() };
     tokens.set(cacheKey, token);
     const cancel = this.threadReads;
     const lifetime = handle.liveEpoch();
-    const forget = cancel.add(() => token.cancel.cancel());
-    const forgetPanel = panel?.cancel.add(() => token.cancel.cancel());
+    const forget = panel ? undefined : cancel.add(() => token.cancel.cancel());
     const qualified = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
       && (expected === undefined || (reader !== undefined
@@ -1173,8 +1170,7 @@ export class AppModel {
       }
       if (current() && qualified() && tokens.get(cacheKey) === token) set({ text, loading: false, error: undefined });
     } finally {
-      forget();
-      forgetPanel?.();
+      forget?.();
       if (tokens.get(cacheKey) === token) tokens.delete(cacheKey);
     }
   }

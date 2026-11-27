@@ -2,7 +2,7 @@ import { pendingReply } from "../../../data/test/harness";
 // @vitest-environment happy-dom
 import '@preact/signals';
 import { signal } from '@preact/signals-core';
-import { render } from 'preact';
+import { options, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 // @ts-ignore -- node built-in, no Node types in the browser build
@@ -13,7 +13,6 @@ import type { DesignContext, Prefs } from '../../../ui-core/src';
 import { DESIGNS } from '../../registry';
 import { loadPrefs, savePrefs, type PrefStore } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
-import * as clockDisplays from '../screens/clock-display';
 
 const layoutCss=readFileSync('designs/console/system/layout.css','utf8').replace(/\/\*[\s\S]*?\*\//g,'');
 /** layout.css as a browser applies it in a container of `width`; happy-dom does not evaluate container queries. */
@@ -84,21 +83,28 @@ async function setupExposedPanel() {
 
 describe('right panel purpose',()=>{
  it('does not refresh hidden Work labels on a clock tick and catches up when opened', async () => {
-  const renders = vi.spyOn(clockDisplays, 'PanelElapsed');
   const f = await setupExposedPanel();
+  const work = f.host.querySelector('[data-panel-list="work"]')!;
+  let renders = 0;
+  const previous = options.diffed;
+  options.diffed = vnode => {
+   previous?.(vnode);
+   const node = (vnode as typeof vnode & { __e?: Node }).__e;
+   if (typeof vnode.type === 'function' && node && work.contains(node)) renders++;
+  };
   const at = Date.parse('2026-11-21T00:00:00Z');
   try {
    await act(() => { f.model.now.value = at + 5_000; });
-   renders.mockClear();
+   renders = 0;
    await act(() => { f.model.now.value = at + 15_000; });
-   expect(renders).toHaveBeenCalled();
+   expect(renders).toBeGreaterThan(0);
    await act(() => { f.context.setPrefs({ panelCollapsed: true }); });
-   renders.mockClear();
+   renders = 0;
    await act(() => { f.model.now.value = at + 65_000; });
-   expect(renders).not.toHaveBeenCalled();
+   expect(renders).toBe(0);
    await act(() => { f.context.setPrefs({ panelCollapsed: false }); });
-   expect(renders).toHaveBeenCalled();
-  } finally { renders.mockRestore(); f.model.dispose(); }
+   expect(renders).toBeGreaterThan(0);
+  } finally { options.diffed = previous; f.model.dispose(); }
  });
 
  it.each([1280,390])('reads definitions on hints and uses exact Activity commands at %i', async width => {

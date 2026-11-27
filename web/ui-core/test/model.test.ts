@@ -130,14 +130,13 @@ describe("AppModel over the fake transport", () => {
     const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
     try {
       const reader = model.longReader.peek()!;
-      const key = model.bodyCacheKey("savedassistant");
       const pending = model.loadBody("savedassistant");
       await flush();
       t.ok(t.calls("history.read").at(-1)!.id, { node_id: "savedassistant", kind: "assistant_response", text: "expanded body" });
       await pending;
       expect(model.bodyState("savedassistant")?.text).toBe("expanded body");
       model.navigate({ view: "analytics" });
-      expect(reader.bodies.get(key)).toBeUndefined();
+      expect(reader.bodies.get("savedassistant")).toBeUndefined();
     } finally { model.dispose(); }
   });
 
@@ -148,7 +147,6 @@ describe("AppModel over the fake transport", () => {
     }});
     try {
       const pending = model.loadBody("savedassistant");
-      const bodyKey = model.bodyCacheKey("savedassistant");
       const reader = model.longReader.peek()!;
       await flush();
       const call = t.calls("history.read").at(-1);
@@ -157,7 +155,7 @@ describe("AppModel over the fake transport", () => {
       model.navigate({ view: "analytics" });
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "late full body" });
       await pending;
-      expect(reader.bodies.get(bodyKey)?.text).toBeUndefined();
+      expect(reader.bodies.get("savedassistant")?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 
@@ -170,14 +168,13 @@ describe("AppModel over the fake transport", () => {
       const call = t.calls("history.read").at(-1);
       expect(call).toBeDefined();
       expect(call!.args).toMatchObject({ node_id: "savedassistant" });
-      const bodyKey = model.bodyCacheKey("savedassistant");
       const reader = model.longReader.peek()!;
-      expect(reader.bodies.get(bodyKey)).toMatchObject({ loading: true, text: undefined });
+      expect(reader.bodies.get("savedassistant")).toMatchObject({ loading: true, text: undefined });
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "successful but stale" });
       model.navigate({ view: "analytics" });
       expect(model.route.peek()).not.toBe(beforeRoute);
       await pending;
-      expect(reader.bodies.get(bodyKey)?.text).toBeUndefined();
+      expect(reader.bodies.get("savedassistant")?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 
@@ -253,7 +250,6 @@ describe("AppModel over the fake transport", () => {
       await flush();
       const first = t.calls("history.read").at(-1);
       expect(first).toBeDefined();
-      const key = model.bodyCacheKey("body-node", "answer");
       const reader = model.longReader.peek()!;
       const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
@@ -262,7 +258,7 @@ describe("AppModel over the fake transport", () => {
       model.navigate({ view: "analytics" });
       await firstRead; await duplicate;
       expect(t.calls("history.read")).toHaveLength(1);
-      expect(reader.bodies.get(key)?.text).toBeUndefined();
+      expect(reader.bodies.get("body-node", "answer")?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 
@@ -276,7 +272,6 @@ describe("AppModel over the fake transport", () => {
       await flush();
       const first = t.calls("history.read").at(-1);
       expect(first).toBeDefined();
-      const key = model.bodyCacheKey("body-node", "answer");
       const reader = model.longReader.peek()!;
       const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();

@@ -521,13 +521,10 @@ export class ConversationWindow {
     return published;
   }
 
-  private commitSelectedPublication(candidate: PreparedConversationPublication, buckets: Map<number, Bucket>, expected: WindowAcceptedSnapshot, capability: AcceptedCapability, geometry: () => void): boolean {
+  private commitSelectedPublication(candidate: PreparedConversationPublication, buckets: Map<number, Bucket>, positions: ReadonlyMap<string, number>, expected: WindowAcceptedSnapshot, capability: AcceptedCapability, geometry: () => void): boolean {
     if (this.disposed || capability !== this.acceptedView.currentCapability || !this.acceptedView.isCurrent(expected)) return false;
     return this.commitAccepted(candidate, () => {
-      const retained = new Set([...buckets.values()].flatMap(bucket => bucket.items.flatMap(row => row?.node_id ? [row.node_id] : [])));
-      for (const bucket of this.buckets.values()) for (const row of bucket.items) {
-        if (row?.node_id && !retained.has(row.node_id)) this.bodies.retire(row.node_id);
-      }
+      this.bodies.reconcile(position => positions.get(position.nodeId));
       this.buckets = buckets;
       this.total = candidate.publication.snapshot.total;
       this.revision = candidate.publication.snapshot.revision;
@@ -658,8 +655,13 @@ export class ConversationWindow {
       }
       // Validate and compose from the one bounded plain capture, then retain those exact rows.
       const selected=Object.freeze(rows);
-      if(selected.length!==Math.max(0,lastOrdinal-firstOrdinal+1)||new Set(selected.map(row=>row.node_id)).size!==selected.length
-        ||selected.some((row,index)=>!row.node_id||row.selection?.ordinal!==firstOrdinal+index))return;
+      if (selected.length !== Math.max(0, lastOrdinal - firstOrdinal + 1)) return;
+      const positions = new Map<string, number>();
+      for (const [index, row] of selected.entries()) {
+        const ordinal = firstOrdinal + index;
+        if (!row.node_id || positions.has(row.node_id) || row.selection?.ordinal !== ordinal) return;
+        positions.set(row.node_id, ordinal);
+      }
       const commitExpected=owner;
       const generation=this.nextAcceptedGeneration();
       const snapshot=this.snapshotForSelection({generation,epoch,rows:selected,range:selected.length?{first:firstOrdinal,last:lastOrdinal}:undefined,
@@ -691,7 +693,7 @@ export class ConversationWindow {
         ? { ordinal: ordinalOf(recovered)!, nodeId: recovered.node_id, offset: anchor && "offset" in anchor ? anchor.offset : 0 }
         : nearest === undefined ? undefined : { ordinal: nearest, nodeId: selected[nearest - firstOrdinal]?.node_id, offset: 0 };
       if(!readOwnerCurrent()||this.acceptedView.peek()!==commitExpected||this.acceptedGeneration!==generation||capability!==this.acceptedView.currentCapability)return;
-      if(!this.commitSelectedPublication(staged,replacement,commitExpected,capability,()=>{
+      if(!this.commitSelectedPublication(staged,replacement,positions,commitExpected,capability,()=>{
         this.heights=nextHeights; this.tailKnown=nextTailKnown; this.lastAnchor=nextLastAnchor;
         this.scrollRequest = follow ? Number.MAX_SAFE_INTEGER : rewrite && nextLastAnchor ? this.scrollFor(nextLastAnchor) : old.scroll;
         if (rewrite && !follow && this.scrollRequest !== undefined) this.viewTop = this.scrollRequest;
@@ -893,18 +895,20 @@ export class ConversationWindow {
       for (let slot = limit; slot < held.items.length; slot++) {
         const row = held.items[slot];
         if (row !== undefined) held.filled--;
-        if (row?.node_id) this.bodies.retire(row.node_id);
         held.items[slot] = undefined;
       }
     }
     for (const i of this.heights.h.keys()) if (i >= total) this.heights.clear(i);
+    this.reconcileBodyPositions();
+  }
+
+  private reconcileBodyPositions(): void {
+    this.bodies.reconcile(({ nodeId, ordinal }) => ordinal !== undefined && this.itemAt(ordinal)?.node_id === nodeId ? ordinal : undefined);
   }
 
   /** Eviction discards both content and its measurements. */
   private dropBucket(b: number): void {
-    const held = this.buckets.get(b);
     this.buckets.delete(b);
-    for (const row of held?.items ?? []) if (row?.node_id) this.bodies.retire(row.node_id);
     this.wanted.delete(b);
     this.failed.delete(b);
     this.inflight.get(b)?.cancel.cancel();
@@ -933,13 +937,13 @@ export class ConversationWindow {
         const previous = held.items[slot];
         if (previous === undefined) held.filled++;
         const merged = mergeHistoryItem(previous, item);
-        if (previous?.node_id && previous.node_id !== merged.node_id) this.bodies.retire(previous.node_id);
         held.items[slot] = merged;
         if (item.node_id !== undefined && (this.tailKnown === undefined || o >= this.tailKnown.ordinal)) this.tailKnown = { ordinal: o, nodeId: item.node_id };
       }
       return true;
     }, false);
     batch(() => {
+      this.reconcileBodyPositions();
       this.status.value = "ready";
       this.error.value = undefined;
       this.bump(capability, true, undefined, adopted);

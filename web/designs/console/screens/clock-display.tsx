@@ -35,15 +35,6 @@ export function useClockPane() {
   return { ref, visible: node !== null && visible };
 }
 
-type ElapsedProps = { clock: ReadonlySignal<number>; started: number };
-function useElapsed({ clock, started }: ElapsedProps) {
-  return useClockText(clock, now => formatDuration(Math.max(0, now - started)), [started]);
-}
-
-export function ClockElapsed(props: ElapsedProps) {
-  return <>{useElapsed(props)}</>;
-}
-
-export function PanelElapsed(props: ElapsedProps) {
-  return <>{useElapsed(props)}</>;
+export function ClockElapsed({ clock, started }: { clock: ReadonlySignal<number>; started: number }) {
+  return <>{useClockText(clock, now => formatDuration(Math.max(0, now - started)), [started])}</>;
 }
