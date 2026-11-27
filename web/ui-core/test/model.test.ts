@@ -81,6 +81,34 @@ describe("AppModel over the fake transport", () => {
     expect(model.context.value).toEqual({ inputTokens: 41200, threshold: 200000, state: "normal", fill: 41200 * 100 / 200000 });
   });
 
+  it("releases a fetched body and cancels a read when scrolling retires their rows", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+      owner.history.lead = Array.from({ length: 2_000 }, (_, ordinal) => ({ node_id: `row-${ordinal}`, kind: "user_message", selection: { ordinal } }));
+    }});
+    try {
+      const reader = model.longReader.peek()!;
+      const first = model.loadBody("row-1999");
+      await flush();
+      const complete = t.calls("history.read").at(-1)!;
+      db.answered.add(complete.id);
+      t.ok(complete.id, { node_id: "row-1999", kind: "user_message", text: "expanded body" });
+      await first;
+      expect(model.bodyState("row-1999")?.text).toBe("expanded body");
+      const pending = model.loadBody("row-1998");
+      await flush();
+      const held = t.calls("history.read").at(-1)!;
+      db.answered.add(held.id);
+      for (let page = 0; page < 20 && reader.isLoaded(1999); page++) {
+        reader.requestOlder();
+        await settle(t, db);
+      }
+      expect(reader.isLoaded(1999)).toBe(false);
+      expect(model.bodyState("row-1999")?.text).toBeUndefined();
+      expect(t.cancels()).toContain(held.id);
+      await pending;
+    } finally { model.dispose(); }
+  });
+
   it("releases a fetched body when its conversation window exits", async () => {
     const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
     try {

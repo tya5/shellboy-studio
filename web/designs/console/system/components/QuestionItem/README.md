@@ -9,4 +9,6 @@ One question in the Awaiting you list: Thread title, age and the question. The c
 
 Styles are colocated in `system/components/QuestionItem/style.css`.
 
+The `age` slot is noninteractive metadata. A live child owns its own clock subscription; the row does not subscribe.
+
 Styles: style.css in this directory

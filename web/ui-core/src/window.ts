@@ -500,6 +500,10 @@ export class ConversationWindow {
   private commitSelectedPublication(candidate: PreparedConversationPublication, buckets: Map<number, Bucket>, expected: WindowAcceptedSnapshot, capability: AcceptedCapability, geometry: () => void): boolean {
     if (this.disposed || capability !== this.acceptedView.currentCapability || !this.acceptedView.isCurrent(expected)) return false;
     return this.commitAccepted(candidate, () => {
+      const retained = new Set([...buckets.values()].flatMap(bucket => bucket.items.flatMap(row => row?.node_id ? [row.node_id] : [])));
+      for (const bucket of this.buckets.values()) for (const row of bucket.items) {
+        if (row?.node_id && !retained.has(row.node_id)) this.bodies.retire(row.node_id);
+      }
       this.buckets = buckets;
       this.total = candidate.publication.snapshot.total;
       this.revision = candidate.publication.snapshot.revision;
@@ -863,7 +867,9 @@ export class ConversationWindow {
       const first = b * WINDOW_NODES;
       const limit = Math.max(0, total - first);
       for (let slot = limit; slot < held.items.length; slot++) {
-        if (held.items[slot] !== undefined) held.filled--;
+        const row = held.items[slot];
+        if (row !== undefined) held.filled--;
+        if (row?.node_id) this.bodies.retire(row.node_id);
         held.items[slot] = undefined;
       }
     }
@@ -874,6 +880,7 @@ export class ConversationWindow {
   private dropBucket(b: number): void {
     const held = this.buckets.get(b);
     this.buckets.delete(b);
+    for (const row of held?.items ?? []) if (row?.node_id) this.bodies.retire(row.node_id);
     this.wanted.delete(b);
     this.failed.delete(b);
     this.inflight.get(b)?.cancel.cancel();
@@ -899,8 +906,11 @@ export class ConversationWindow {
           }
         }
         const slot = o % WINDOW_NODES;
-        if (held.items[slot] === undefined) held.filled++;
-        held.items[slot] = mergeHistoryItem(held.items[slot], item);
+        const previous = held.items[slot];
+        if (previous === undefined) held.filled++;
+        const merged = mergeHistoryItem(previous, item);
+        if (previous?.node_id && previous.node_id !== merged.node_id) this.bodies.retire(previous.node_id);
+        held.items[slot] = merged;
         if (item.node_id !== undefined && (this.tailKnown === undefined || o >= this.tailKnown.ordinal)) this.tailKnown = { ordinal: o, nodeId: item.node_id };
       }
       return true;
