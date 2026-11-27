@@ -566,7 +566,6 @@ async fn files_need_the_session_in_their_path_and_are_always_sandboxed() {
         "t1",
         &[
             PAGE,
-            ("actions/secret.sh", "echo hi"),
             ("data/a.txt", "x"),
             ("sub/app.js", "1"),
             ("evil.svg", "<svg onload='alert(1)'/>"),
@@ -622,7 +621,6 @@ async fn files_need_the_session_in_their_path_and_are_always_sandboxed() {
         ("data/a.txt", 200),
         ("evil.svg", 200),
         ("gone.js", 404),
-        ("actions/secret.sh", 404),
     ] {
         let reply = http(&web, "GET", &format!("{base}{path}"), &[], "").await;
         assert_eq!(reply.status, status, "{path}");
@@ -1068,362 +1066,6 @@ async fn on_change_uses_the_shared_hints() {
     );
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn run_has_limits_and_its_source_stays_private() {
-    let f = fixture().await;
-    write_app(
-        &f,
-        "one",
-        "t1",
-        &[
-            PAGE,
-            (
-                "actions/echo.sh",
-                "cat; echo \" $SHELLBOY_APP_NAME\"; pwd >&2; exit 3",
-            ),
-            ("actions/slow.sh", "sleep 30"),
-            (
-                "actions/big.sh",
-                "dd if=/dev/zero bs=1024 count=2048 2>/dev/null | tr '\\0' 'x'",
-            ),
-            ("actions/twin.sh", "true"),
-            ("actions/twin.py", "pass"),
-            ("actions/plain.txt", "not executable"),
-        ],
-    );
-    let out = call(&f, "one", "run", json!({"action":"echo","args":{"days":7}})).await;
-    let r = &out["result"];
-    assert_eq!(r["exit_code"], 3, "{out}");
-    assert_eq!(r["stdout"].as_str().unwrap().trim(), "{\"days\":7} one");
-    assert!(r["stderr"].as_str().unwrap().contains("/anywhere/one"));
-    assert_eq!(r["timed_out"], false);
-    let slow = call(&f, "one", "run", json!({"action":"slow","timeout_ms":200})).await;
-    assert_eq!(slow["result"]["timed_out"], true);
-    assert!(slow["result"]["duration_ms"].as_u64().unwrap() < 5000);
-    let big = call(&f, "one", "run", json!({"action":"big"})).await;
-    assert_eq!(big["result"]["stdout_truncated"], true);
-    assert_eq!(big["result"]["stdout"].as_str().unwrap().len(), 1024 * 1024);
-    assert_eq!(
-        call(&f, "one", "run", json!({"action":"twin"})).await["error"]["code"],
-        "ambiguous_action"
-    );
-    assert_eq!(
-        call(&f, "one", "run", json!({"action":"twin.sh"})).await["result"]["exit_code"],
-        0
-    );
-    assert_eq!(
-        call(&f, "one", "run", json!({"action":"nope"})).await["error"]["code"],
-        "no_action"
-    );
-    for bad in ["../x", "/bin/sh", "a/b", ".hidden", ""] {
-        assert_eq!(
-            call(&f, "one", "run", json!({"action":bad})).await["error"]["code"],
-            "invalid_action",
-            "{bad}"
-        );
-    }
-    assert_eq!(
-        call(&f, "one", "run", json!({"action":"plain.txt"})).await["error"]["code"],
-        "run_failed"
-    );
-}
-
-/// A failure bound for the process tests, not a pass condition.
-const WATCHDOG: Duration = Duration::from_secs(30);
-
-/// Watches a helper an action starts. The action opens the FIFO, starts the helper (which inherits it),
-/// writes `started` and closes its own copy; so `started` arrives once the helper exists, and the read
-/// ends only when every holder, the helper included, has exited. Plain threads: a stuck open must not
-/// hold up the runtime's shutdown.
-#[cfg(unix)]
-struct Helper {
-    started: tokio::sync::oneshot::Receiver<()>,
-    gone: tokio::sync::oneshot::Receiver<()>,
-}
-
-#[cfg(unix)]
-impl Helper {
-    fn watch(path: &Path) -> Self {
-        use std::{io::BufRead, os::unix::ffi::OsStrExt};
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
-        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
-        let (started, started_rx) = tokio::sync::oneshot::channel();
-        let (gone, gone_rx) = tokio::sync::oneshot::channel();
-        let path = path.to_owned();
-        std::thread::spawn(move || {
-            let mut fifo = std::io::BufReader::new(std::fs::File::open(&path).unwrap());
-            let mut line = String::new();
-            let mut started = Some(started);
-            while fifo.read_line(&mut line).unwrap() > 0 {
-                if line == "started\n"
-                    && let Some(started) = started.take()
-                {
-                    let _ = started.send(());
-                }
-                line.clear();
-            }
-            let _ = gone.send(());
-        });
-        Self {
-            started: started_rx,
-            gone: gone_rx,
-        }
-    }
-
-    async fn started(&mut self, case: &str) {
-        tokio::time::timeout(WATCHDOG, &mut self.started)
-            .await
-            .unwrap_or_else(|_| panic!("{case}: the helper never started"))
-            .unwrap();
-    }
-
-    async fn gone(self, case: &str) {
-        tokio::time::timeout(WATCHDOG, self.gone)
-            .await
-            .unwrap_or_else(|_| panic!("{case}: the helper outlived the action"))
-            .unwrap();
-    }
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn run_kills_what_the_script_started() {
-    let f = fixture().await;
-    // `sleep` is the helper; it also keeps the script's stdout open after the script exits.
-    let start =
-        |fifo: &str| format!("exec 3>data/{fifo}; sleep 300 & echo started >&3; exec 3>&-;");
-    write_app(
-        &f,
-        "one",
-        "t1",
-        &[
-            PAGE,
-            ("actions/leave.sh", &format!("{} echo done", start("leave"))),
-            ("actions/hang.sh", &format!("{} wait", start("hang"))),
-            ("actions/close.sh", &format!("{} wait", start("close"))),
-        ],
-    );
-    let data = f.apps.join("one/data");
-
-    let mut helper = Helper::watch(&data.join("leave"));
-    let left = call(&f, "one", "run", json!({"action":"leave"})).await;
-    assert_eq!(left["result"]["timed_out"], false, "{left}");
-    assert_eq!(left["result"]["exit_code"], 0, "{left}");
-    assert_eq!(left["result"]["stdout"].as_str().unwrap().trim(), "done");
-    helper.started("script exit").await;
-    helper.gone("script exit").await;
-
-    let mut helper = Helper::watch(&data.join("hang"));
-    let apps = f.state.apps.clone();
-    let hung = tokio::spawn(async move {
-        apps.call("one", "run", json!({"action":"hang","timeout_ms":5000}))
-            .await
-    });
-    helper.started("timeout").await;
-    let hung = hung.await.unwrap();
-    assert_eq!(hung["result"]["timed_out"], true, "{hung}");
-    helper.gone("timeout").await;
-
-    let mut helper = Helper::watch(&data.join("close"));
-    let apps = f.state.apps.clone();
-    let page =
-        tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
-    helper.started("closed page").await;
-    page.abort();
-    let _ = page.await;
-    helper.gone("closed page").await;
-}
-
-/// Watches a helper a PowerShell action starts. The action starts the helper, sends its process ID over
-/// a named pipe and waits for the reply. The test opens the helper's handle and publishes it before
-/// replying, so the handle names that same process whatever happens after, and `gone` waits on it.
-#[cfg(windows)]
-struct Helper {
-    started: tokio::sync::oneshot::Receiver<Process>,
-    process: Option<Process>,
-}
-
-/// An open process handle (as an integer, so it can cross into the blocking wait), closed on drop.
-#[cfg(windows)]
-struct Process(usize);
-
-#[cfg(windows)]
-impl Drop for Process {
-    fn drop(&mut self) {
-        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0 as _) };
-    }
-}
-
-#[cfg(windows)]
-impl Helper {
-    fn pipe(case: &str) -> String {
-        format!("shellboy-studio-test-{}-{case}", std::process::id())
-    }
-
-    fn watch(case: &str) -> Self {
-        use tokio::io::AsyncBufReadExt;
-        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE};
-        let server = tokio::net::windows::named_pipe::ServerOptions::new()
-            .first_pipe_instance(true)
-            .create(format!(r"\\.\pipe\{}", Self::pipe(case)))
-            .unwrap();
-        let (started, started_rx) = tokio::sync::oneshot::channel();
-        let case = case.to_owned();
-        tokio::spawn(async move {
-            server.connect().await.unwrap();
-            let mut pipe = tokio::io::BufReader::new(server);
-            let mut line = String::new();
-            pipe.read_line(&mut line).await.unwrap();
-            let pid: u32 = line.trim().parse().unwrap();
-            let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
-            assert!(
-                !handle.is_null(),
-                "{case}: couldn't open the helper {pid}: {}",
-                std::io::Error::last_os_error()
-            );
-            // Readiness is published with the handle before the action is acknowledged, so an action
-            // that has finished has already been reported ready.
-            let _ = started.send(Process(handle as usize));
-            pipe.get_mut().write_all(b"ok\n").await.unwrap();
-        });
-        Self {
-            started: started_rx,
-            process: None,
-        }
-    }
-
-    async fn started(&mut self, case: &str) {
-        let process = tokio::time::timeout(WATCHDOG, &mut self.started)
-            .await
-            .unwrap_or_else(|_| panic!("{case}: the helper never started"))
-            .unwrap();
-        self.process = Some(process);
-    }
-
-    async fn gone(self, case: &str) {
-        use windows_sys::Win32::{
-            Foundation::WAIT_OBJECT_0, System::Threading::WaitForSingleObject,
-        };
-        let process = self.process.expect("started first");
-        let waited = tokio::task::spawn_blocking(move || unsafe {
-            WaitForSingleObject(process.0 as _, WATCHDOG.as_millis() as u32)
-        })
-        .await
-        .unwrap();
-        assert_eq!(
-            waited, WAIT_OBJECT_0,
-            "{case}: the helper outlived the action"
-        );
-    }
-}
-
-/// The Job path: a helper started by a PowerShell action is gone once the call returns, whether the
-/// script exited, hit the time limit or its page went away.
-#[cfg(windows)]
-#[tokio::test]
-async fn run_kills_what_the_script_started() {
-    let f = fixture().await;
-    // `.cmd` actions run under any PowerShell policy: the script text is not a file PowerShell is asked to
-    // run, so cmd hands it to `-Command`. The action is still started by the production Job path.
-    let script = |case: &str| {
-        format!(
-            "$p = Start-Process -FilePath powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -WindowStyle Hidden\r\n\
-             $c = New-Object System.IO.Pipes.NamedPipeClientStream '.', '{}', ([System.IO.Pipes.PipeDirection]::InOut)\r\n\
-             $c.Connect(30000)\r\n\
-             $w = New-Object System.IO.StreamWriter $c\r\n\
-             $w.AutoFlush = $true\r\n\
-             $w.WriteLine($p.Id)\r\n\
-             $null = (New-Object System.IO.StreamReader $c).ReadLine()\r\n\
-             $c.Dispose()\r\n",
-            Helper::pipe(case)
-        )
-    };
-    let start = |case: &str| {
-        format!(
-            "@powershell -NoProfile -Command \"& ([scriptblock]::Create((Get-Content -Raw scripts/{case}.txt)))\"\r\n"
-        )
-    };
-    write_app(
-        &f,
-        "one",
-        "t1",
-        &[
-            PAGE,
-            ("scripts/leave.txt", &script("leave")),
-            ("scripts/hang.txt", &script("hang")),
-            ("scripts/close.txt", &script("close")),
-            (
-                "actions/leave.cmd",
-                &format!("{}@echo done\r\n", start("leave")),
-            ),
-            (
-                "actions/hang.cmd",
-                &format!(
-                    "{}@powershell -NoProfile -Command \"Start-Sleep 300\"\r\n",
-                    start("hang")
-                ),
-            ),
-            (
-                "actions/close.cmd",
-                &format!(
-                    "{}@powershell -NoProfile -Command \"Start-Sleep 300\"\r\n",
-                    start("close")
-                ),
-            ),
-        ],
-    );
-
-    let mut helper = Helper::watch("leave");
-    let apps = f.state.apps.clone();
-    let left =
-        tokio::spawn(async move { apps.call("one", "run", json!({"action":"leave"})).await });
-    // Readiness wins when both are ready; an action that ends without reporting says how it ended.
-    let mut left = left;
-    tokio::select! {
-        biased;
-        () = helper.started("script exit") => {}
-        ended = &mut left => panic!("script exit: the action ended before the helper started: {ended:?}"),
-    }
-    let left = left.await.unwrap();
-    assert_eq!(left["result"]["timed_out"], false, "{left}");
-    assert_eq!(left["result"]["exit_code"], 0, "{left}");
-    helper.gone("script exit").await;
-
-    let mut helper = Helper::watch("hang");
-    let apps = f.state.apps.clone();
-    let hung = tokio::spawn(async move {
-        apps.call("one", "run", json!({"action":"hang","timeout_ms":15000}))
-            .await
-    });
-    // Readiness wins when both are ready; an action that ends without reporting says how it ended.
-    let mut hung = hung;
-    tokio::select! {
-        biased;
-        () = helper.started("timeout") => {}
-        ended = &mut hung => panic!("timeout: the action ended before the helper started: {ended:?}"),
-    }
-    let hung = hung.await.unwrap();
-    assert_eq!(hung["result"]["timed_out"], true, "{hung}");
-    helper.gone("timeout").await;
-
-    let mut helper = Helper::watch("close");
-    let apps = f.state.apps.clone();
-    let page =
-        tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
-    // Readiness wins when both are ready; an action that ends without reporting says how it ended.
-    let mut page = page;
-    tokio::select! {
-        biased;
-        () = helper.started("closed page") => {}
-        ended = &mut page => panic!("closed page: the action ended before the helper started: {ended:?}"),
-    }
-    page.abort();
-    let _ = page.await;
-    helper.gone("closed page").await;
-}
-
 #[tokio::test]
 async fn hosts_are_bounded_and_unused_ones_make_room() {
     let f = fixture().await;
@@ -1506,47 +1148,194 @@ async fn data_changes_from_outside_reach_the_page_through_one_watcher() {
     );
 }
 
-#[cfg(unix)]
+/// A stand-in for an app's backend service: listens on 127.0.0.1, answers JSON when the request carries
+/// `token` and 401 otherwise, and records every request it saw.
+async fn fake_backend(token: &str) -> (u16, Arc<Mutex<Vec<String>>>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let want = format!("Bearer {token}");
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut raw = Vec::new();
+            let mut chunk = [0u8; 4096];
+            let (head, body) = loop {
+                let n = stream.read(&mut chunk).await.unwrap_or(0);
+                raw.extend_from_slice(&chunk[..n]);
+                let text = String::from_utf8_lossy(&raw).into_owned();
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let length = head
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
+                        .unwrap_or(0);
+                    if body.len() >= length || n == 0 {
+                        break (head.to_owned(), body.to_owned());
+                    }
+                } else if n == 0 {
+                    break (text, String::new());
+                }
+            };
+            log.lock().unwrap().push(format!("{head}\r\n\r\n{body}"));
+            let allowed = head
+                .lines()
+                .any(|l| l.eq_ignore_ascii_case(&format!("authorization: {want}")));
+            let reply = if allowed {
+                let out = json!({"got": body}).to_string();
+                format!(
+                    "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{out}",
+                    out.len()
+                )
+            } else {
+                "HTTP/1.0 401 Unauthorized\r\nContent-Length: 0\r\n\r\n".to_owned()
+            };
+            let _ = stream.write_all(reply.as_bytes()).await;
+        }
+    });
+    (port, seen)
+}
+
+fn write_endpoint(f: &Fixture, app: &str, port: u16, token: &str) {
+    std::fs::write(
+        f.apps.join(app).join(".app.endpoint"),
+        json!({"port": port, "token": token}).to_string(),
+    )
+    .unwrap();
+}
+
+/// One call as the Web UI's socket carries it: `apps.call` over `/ws`.
+async fn ws_app_call(f: &Fixture, name: &str, op: &str, args: Value) -> Value {
+    let cookie = login(f.addr, &f.state).await;
+    let mut request = format!("ws://{}/ws", f.addr).into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{}", f.addr).parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (mut ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    ws.send(Message::Text(
+        json!({"t":"call","id":1,"command":"apps.call","args":{"name":name,"op":op,"args":args}})
+            .to_string()
+            .into(),
+    ))
+    .await
+    .unwrap();
+    loop {
+        let message = tokio::time::timeout(Duration::from_secs(10), ws.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        if let Message::Text(text) = message {
+            let v: Value = serde_json::from_str(text.as_str()).unwrap();
+            if v["t"] == "result" && v["id"] == 1 {
+                return v["response"]["result"].clone();
+            }
+        }
+    }
+}
+
 #[tokio::test]
-async fn the_same_action_never_overlaps_and_inherits_the_gateways_environment() {
+async fn call_reaches_only_the_apps_own_backend_with_its_token() {
     let f = fixture().await;
-    write_app(
+    write_app(&f, "one", "t1", &[PAGE]);
+    write_app(&f, "two", "t1", &[PAGE]);
+    let (port_one, seen_one) = fake_backend("token-one").await;
+    let (port_two, seen_two) = fake_backend("token-two").await;
+    write_endpoint(&f, "one", port_one, "token-one");
+    write_endpoint(&f, "two", port_two, "token-two");
+    let out = ws_app_call(
         &f,
         "one",
-        "t1",
-        &[
-            PAGE,
-            ("actions/slow.sh", "sleep 1; echo done"),
-            ("actions/other.sh", "echo \"$HOME\""),
-        ],
+        "call",
+        json!({"path":"/api/board","body":{"move":"card-1"}}),
+    )
+    .await;
+    assert_eq!(out["ok"], true, "{out}");
+    assert_eq!(out["result"]["status"], 200);
+    let echoed: Value =
+        serde_json::from_str(out["result"]["body"]["got"].as_str().unwrap()).unwrap();
+    assert_eq!(echoed, json!({"move":"card-1"}));
+    let seen = seen_one.lock().unwrap().clone();
+    assert_eq!(seen.len(), 1);
+    assert!(seen[0].starts_with("POST /api/board "), "{}", seen[0]);
+    assert!(
+        seen_two.lock().unwrap().is_empty(),
+        "another app's backend is never reached"
     );
-    let apps = f.state.apps.clone();
-    let first =
-        tokio::spawn(async move { apps.call("one", "run", json!({"action":"slow"})).await });
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    let second = call(&f, "one", "run", json!({"action":"slow"})).await;
-    assert_eq!(second["error"]["code"], "already_running", "{second}");
-    // Another action isn't held up.
-    let other = call(&f, "one", "run", json!({"action":"other"})).await;
-    assert_eq!(
-        other["result"]["stdout"].as_str().unwrap().trim(),
-        std::env::var("HOME").unwrap_or_default(),
-        "credentials come from the gateway's environment the same way"
-    );
-    assert_eq!(
-        first.await.unwrap()["result"]["stdout"]
-            .as_str()
-            .unwrap()
-            .trim(),
-        "done"
-    );
-    assert_eq!(
-        call(&f, "one", "run", json!({"action":"slow","timeout_ms":100})).await["result"]["timed_out"],
-        true
-    );
-    assert_eq!(
-        call(&f, "one", "run", json!({"action":"slow"})).await["result"]["timed_out"],
-        false,
-        "finished or timed out, it can run again"
-    );
+    // A path that is not a path on the backend is refused before anything is sent.
+    for bad in ["//elsewhere/x", "api", "/a b", "/x#y"] {
+        let out = ws_app_call(&f, "one", "call", json!({"path": bad})).await;
+        assert_eq!(out["error"]["code"], "invalid_path", "{bad}: {out}");
+    }
+    assert_eq!(seen_one.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn call_gives_typed_errors_when_the_backend_is_missing_down_or_refuses() {
+    let f = fixture().await;
+    write_app(&f, "one", "t1", &[PAGE]);
+    let code = |out: Value| out["error"]["code"].as_str().unwrap_or("").to_owned();
+    // No endpoint file: the service is not running.
+    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
+    assert_eq!(code(out), "no_backend");
+    // A file that is not an endpoint.
+    std::fs::write(f.apps.join("one/.app.endpoint"), "not json").unwrap();
+    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
+    assert_eq!(code(out), "backend_endpoint_unreadable");
+    // An endpoint whose service is down: the port was taken and released.
+    let (port, _) = fake_backend("t").await;
+    let closed = {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        l.local_addr().unwrap().port()
+    };
+    assert_ne!(port, closed);
+    write_endpoint(&f, "one", closed, "t");
+    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
+    assert_eq!(code(out), "backend_down");
+    // A backend that refuses the token (for instance after a restart with a new one).
+    write_endpoint(&f, "one", port, "stale");
+    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
+    assert_eq!(code(out), "backend_refused");
+    // The fresh endpoint works again without anything being restarted here.
+    write_endpoint(&f, "one", port, "t");
+    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
+    assert_eq!(out["ok"], true, "{out}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_endpoint_file_that_leaves_the_folder_is_not_used() {
+    let f = fixture().await;
+    write_app(&f, "one", "t1", &[PAGE]);
+    let (port, seen) = fake_backend("t").await;
+    let outside = f.root.join("outside.endpoint");
+    std::fs::write(&outside, json!({"port": port, "token": "t"}).to_string()).unwrap();
+    std::os::unix::fs::symlink(&outside, f.apps.join("one/.app.endpoint")).unwrap();
+    let out = ws_app_call(&f, "one", "call", json!({"path":"/x"})).await;
+    assert_eq!(out["error"]["code"], "no_backend", "{out}");
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_page_cannot_fetch_the_endpoint_file() {
+    let f = fixture().await;
+    write_app(&f, "one", "t1", &[PAGE]);
+    write_endpoint(&f, "one", 1, "secret-token");
+    let base = open(&f, "one")
+        .await
+        .trim_end_matches("index.html")
+        .to_owned();
+    let web = f.addr.to_string();
+    let reply = http(&web, "GET", &format!("{base}.app.endpoint"), &[], "").await;
+    assert_eq!(reply.status, 404);
+    assert!(!reply.body.contains("secret-token"));
 }
