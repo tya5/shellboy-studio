@@ -140,6 +140,34 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
  });
 
+ it.each([
+  {running:true,services:true,schedules:true},
+  {running:false,services:true,schedules:true},
+  {running:true,services:false,schedules:true},
+  {running:false,services:true,schedules:false},
+ ])('keeps one section order in Activity: %j',async state=>{
+  const f=await setup();
+  const at='2026-11-21T00:00:00Z';
+  const answer=f.db.answer.bind(f.db);
+  f.db.answer=call=>{
+   if(call.command==='schedule.list') return {ok:true,result:{thread_id:'lead',items:state.schedules?[{schedule_id:'sched',enabled:true,cron:'0 9 * * *',next_at:at,cwd:'/fixture',command:'echo test',description:'Schedule fixture',latest:null}]:[]}};
+   if(call.command==='service.list') return {ok:true,result:{thread_id:'lead',items:state.services?[{service_id:'svc',enabled:false,cwd:'/fixture',command:'echo service',description:'Service fixture',latest:null}]:[]}};
+   return answer(call);
+  };
+  if(!state.running){f.db.work.lead=[];f.db.shells.lead=[];}
+  const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
+  const t=f.model.t.value;
+  try {
+   await act(async()=>{hint();await settle(f.t,f.db);});
+   const list=f.host.querySelector('[data-panel-list="work"]')!;
+   const labels=[...list.querySelectorAll('.group-label')].map(node=>node.textContent??'');
+   const order=[t('work.running'),t('panel.pending'),t('service.heading'),t('schedule.heading')];
+   const seen=labels.map(text=>order.find(label=>text.includes(label))).filter(Boolean);
+   expect(seen).toEqual(order);
+   expect(list.querySelector('[data-panel-row-id="shell-running"]')!==null).toBe(state.running);
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('captures the Run ID and opener through Activity confirmation when thread details change', async () => {
   const f=await setup();
   const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
