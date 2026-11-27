@@ -114,6 +114,11 @@ pub fn access(command: &Command) -> Access {
         | Command::ContextEdit(..)
         | Command::ScheduleAdd(..)
         | Command::ScheduleSet(..)
+        // Service endpoint data (including its token) is internal to Apps; service configuration
+        // reads and writes are not exposed by the general Web UI.
+        | Command::ServiceGet(..)
+        | Command::ServiceSet(..)
+        | Command::ServiceEndpoint(..)
         | Command::IndexPreview(..)
         | Command::IndexBackfill(..)
         | Command::IndexRetry(..)
