@@ -2977,7 +2977,7 @@ dependencies = [
 [[package]]
 name = "shellboy"
 version = "0.17.0"
-source = "git+https://github.com/tya5/shellboy?rev=6dc80c5cbfbc2acd0afc7148e85730e08a186282#6dc80c5cbfbc2acd0afc7148e85730e08a186282"
+source = "git+https://github.com/tya5/shellboy?rev=a9a0003280e5d5cebe14f04230da126f802372e8#a9a0003280e5d5cebe14f04230da126f802372e8"
 dependencies = [
  "arboard",
  "base64 0.23.1",
