@@ -13,6 +13,7 @@ import type { DesignContext, Prefs } from '../../../ui-core/src';
 import { DESIGNS } from '../../registry';
 import { loadPrefs, savePrefs, type PrefStore } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
+import * as clockDisplays from '../screens/clock-display';
 
 const layoutCss=readFileSync('designs/console/system/layout.css','utf8').replace(/\/\*[\s\S]*?\*\//g,'');
 /** layout.css as a browser applies it in a container of `width`; happy-dom does not evaluate container queries. */
@@ -83,21 +84,21 @@ async function setupExposedPanel() {
 
 describe('right panel purpose',()=>{
  it('does not refresh hidden Work labels on a clock tick and catches up when opened', async () => {
+  const renders = vi.spyOn(clockDisplays, 'PanelElapsed');
   const f = await setupExposedPanel();
-  const list = f.host.querySelector('[data-panel-list="work"]')!;
   const at = Date.parse('2026-11-21T00:00:00Z');
   try {
    await act(() => { f.model.now.value = at + 5_000; });
-   const visible = list.textContent;
+   renders.mockClear();
    await act(() => { f.model.now.value = at + 15_000; });
-   expect(list.textContent).not.toBe(visible);
+   expect(renders).toHaveBeenCalled();
    await act(() => { f.context.setPrefs({ panelCollapsed: true }); });
-   const collapsed = list.textContent;
+   renders.mockClear();
    await act(() => { f.model.now.value = at + 65_000; });
-   expect(list.textContent).toBe(collapsed);
+   expect(renders).not.toHaveBeenCalled();
    await act(() => { f.context.setPrefs({ panelCollapsed: false }); });
-   expect(list.textContent).not.toBe(collapsed);
-  } finally { f.model.dispose(); }
+   expect(renders).toHaveBeenCalled();
+  } finally { renders.mockRestore(); f.model.dispose(); }
  });
 
  it.each([1280,390])('reads definitions on hints and uses exact Activity commands at %i', async width => {

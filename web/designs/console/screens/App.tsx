@@ -1,11 +1,11 @@
-import { clockAge } from "./clock-display";
+import { clockAge, useClockPane } from "./clock-display";
 import { CoreBanner, CoreStatusLink } from "./CoreSettings";
 import { SidebarTree, siblingPositions } from "./SidebarTree";
 import { normalizeFilter, type ListFilter } from "../../../data/src/store";
 import { sidebarGroups } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, CAPABILITY_CWDS, CAPABILITY_REPARENT, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
 import { Button } from "../system/components/Button";
 import { Field } from "../system/components/Field";
@@ -45,16 +45,7 @@ export function App({ context }: { context: DesignContext }) {
   const model = context.model;
   const appRef = useRef<HTMLDivElement>(null);
   const panelVisible = () => (appRef.current?.clientWidth ?? 0) >= 1180;
-  const [narrowSidebar, setNarrowSidebar] = useState(false);
-  useLayoutEffect(() => {
-    const app = appRef.current;
-    if (!app) return;
-    const update = () => setNarrowSidebar(app.clientWidth > 0 && app.clientWidth < 900);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(app);
-    return () => observer.disconnect();
-  }, []);
+  const sidebarPane = useClockPane();
   const [phonePanel, setPhonePanel] = useState<string>();
   const activityThread = model.coreActivityThread.value;
   const openThread = model.handle.value?.threadId;
@@ -78,6 +69,10 @@ export function App({ context }: { context: DesignContext }) {
   const [tagEditorId, setTagEditorId] = useState<string>();
   const [movePickerOpen, setMovePickerOpen] = useState(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
+  const setSidebarPane = useCallback((node: HTMLDivElement | null) => {
+    sidebarListRef.current = node;
+    sidebarPane.ref(node);
+  }, [sidebarPane.ref]);
   const lastSidebarFocus = useRef<string>();
   // Where the last focused link is, so focus can land on whatever takes its place. One entry.
   const sidebarPosition = useRef<{ id: string; index: number }>();
@@ -100,7 +95,7 @@ export function App({ context }: { context: DesignContext }) {
   const route = model.route.value;
   useEffect(() => { model.actionError.value = undefined; }, [model, route]);
   const [drawer, setDrawer] = useState(false);
-  const sidebarClock = (narrowSidebar ? drawer : !context.prefs.value.navCollapsed) ? model.coarseNow : undefined;
+  const sidebarClock = sidebarPane.visible ? model.coarseNow : undefined;
   const [settings, setSettings] = useState(false);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<ListFilter>({});
@@ -300,7 +295,7 @@ export function App({ context }: { context: DesignContext }) {
             <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} />
             {threadSelection.bar()}
           </div>
-          <div class="side-list" ref={sidebarListRef} onFocusIn={(event) => {
+          <div class="side-list" ref={setSidebarPane} onFocusIn={(event) => {
             const target = event.target as HTMLElement;
             const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? target.closest<HTMLElement>("[data-thread-row]")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]');
             if (!link) return;

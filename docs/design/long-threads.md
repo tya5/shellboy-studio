@@ -73,3 +73,9 @@ zero reads during 301 uninterrupted drag reports, one pending read cancelled on
 leaving, and no `history.list` calls. These are request/storage counts, not browser
 or owner timing guarantees. A separate trillion-node metadata fixture checks
 that storage does not scale with total.
+
+### Fetched message bodies
+
+The selected conversation window holds up to 64 fetched bodies, separate from row excerpts but scoped to the same reader. When a row leaves retained history, the window drops all expanded variants for that row and cancels unfinished reads. Unmounting or replacing the reader releases all remaining bodies. Reopening an evicted row requires a fresh read.
+
+The pending-message and reply detail panel is a different reader, since its target need not be in the history window. It holds only its currently open body, cancels its read on close or binding change, and does not populate the history window.

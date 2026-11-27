@@ -1,4 +1,4 @@
-import { useClockText } from "./clock-display";
+import { useClockPane, useClockText } from "./clock-display";
 // Branches (#138): a Thread's lines of work as coloured vertical lanes, where each split off, the two picked lines
 // compared from their split, and New branch / Rewind on a selected message. Approved mock:
 // web/designs/console/mocks/branches.tsx on wip/studio-branches-redesign-mock (53cf3c7). No flicker: rows keep
@@ -39,7 +39,7 @@ function LaneStatus({ t, item }: { t: Translate; item: BranchItem }) {
 }
 
 /** One line of work: its colour and name, where it came from, its size and age, and the Compare choice. */
-function LineCard({ t, lane, name, parentName, now, picked, onPick }: { t: Translate; lane: Lane; name: string; parentName: string | undefined; now: AppModel["coarseNow"]; picked: boolean; onPick: () => void }) {
+function LineCard({ t, lane, name, parentName, now, picked, onPick }: { t: Translate; lane: Lane; name: string; parentName: string | undefined; now: AppModel["coarseNow"] | undefined; picked: boolean; onPick: () => void }) {
   const i = lane.item;
   const origin = i.divergence && !lane.detached && parentName ? t("branches.splitFrom", { parent: parentName, n: i.divergence.ordinal + 1 }) : lane.detached && parentName ? t("branches.apart", { parent: parentName }) : t("branches.original");
   const age = useClockText(now, clock => formatAge(i.tipAt, clock), [i.tipAt]);
@@ -106,7 +106,7 @@ function afterSplit(pages: readonly (readonly HistoryItem[])[]): HistoryItem[] {
   return pages.flatMap((page) => page.slice(1));
 }
 
-function CompareSideView({ t, side, lane, name, now, onMore }: { t: Translate; side: CompareSide; lane: Lane | undefined; name: string; now: AppModel["coarseNow"]; onMore: () => void }) {
+function CompareSideView({ t, side, lane, name, now, onMore }: { t: Translate; side: CompareSide; lane: Lane | undefined; name: string; now: AppModel["coarseNow"] | undefined; onMore: () => void }) {
   const mark = lane ? markOf(lane) : { column: 0, tone: 0 };
   const rows = afterSplit(side.pages);
   const count = side.total !== undefined && side.ordinal !== undefined ? side.total - side.ordinal - 1 : undefined;
@@ -129,11 +129,11 @@ function CompareSideView({ t, side, lane, name, now, onMore }: { t: Translate; s
 /** Last shown pages per side, held while a refresh of the same pair reads again, so nothing blanks out. */
 type Held = Map<string, CompareSide>;
 
-function Compare({ model, family, graph, name, held }: { model: AppModel; family: BranchFamily; graph: LaneGraph; name: (i: BranchItem) => string; held: Held }) {
+function Compare({ model, family, graph, name, held, visible }: { model: AppModel; family: BranchFamily; graph: LaneGraph; name: (i: BranchItem) => string; held: Held; visible: boolean }) {
   const t = model.t.value;
   const c = model.branchCompare;
   const s = c.state.value;
-  const now = model.coarseNow;
+  const now = visible ? model.coarseNow : undefined;
   if (s.selected.length !== 2) return <p class="muted">{t("branches.pickTwo")}</p>;
   if (!model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW)) return <p class="muted">{t("branches.compareNeedsReads")}</p>;
   const pair = s.selected.map((id) => family.items.find((i) => i.threadId === id));
@@ -168,7 +168,9 @@ export function Branches({ model }: { model: AppModel }) {
   const compare = c.state.value;
   const target = b.target.value;
   const rewind = b.rewind.value;
-  const now = model.coarseNow;
+  const linesPane = useClockPane();
+  const comparePane = useClockPane();
+  const now = linesPane.visible ? model.coarseNow : undefined;
   const supported = model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
   const rowsById = model.rowById.value;
   const [phoneView, setPhoneView] = useState<"family" | "compare">("family");
@@ -311,7 +313,7 @@ export function Branches({ model }: { model: AppModel }) {
         {family?.ancestorsTruncated ? <Notice tone="wait">{t("branches.ancestorsTruncated")}</Notice> : null}
         {family?.rootParentUnavailable ? <p class="muted caption">{t("branches.rootParent")}</p> : null}
       </div>
-      {graph ? <section class="branches-lines" aria-label={t("branches.linesAria")}>
+      {graph ? <section ref={linesPane.ref} class="branches-lines" aria-label={t("branches.linesAria")}>
         <h2 class="branches-h branches-phone-only">{t("branches.compareTwo")}</h2>
         <ul class="branch-lines">{lanes.map((l) => <LineCard key={l.item.threadId} t={t} lane={l} name={name(l.item)} parentName={l.parent ? name(l.parent) : undefined} now={now} picked={compare.selected.includes(l.item.threadId)} onPick={() => pick(l.item.threadId)} />)}</ul>
       </section> : null}
@@ -326,10 +328,10 @@ export function Branches({ model }: { model: AppModel }) {
           </div> : null}
           <BranchLanes label={t("branches.graphAria", { title })} columns={graph.columns} rows={views} selected={selectedKey} onSelect={choose} actions={targetRow ? actions : undefined} selectedLabel={t("branches.actionsAria", { n: targetOrdinal !== undefined ? targetOrdinal + 1 : "?" })} onVisible={onVisible} />
         </section>
-        <section class="branches-compare" aria-label={t("branches.differ")}>
+        <section ref={comparePane.ref} class="branches-compare" aria-label={t("branches.differ")}>
           <div class="branches-phone-only branches-back"><Button variant="ghost" onClick={() => setPhoneView("family")}><Icon role="panel.back" size="small" />{t("view.branches")}</Button></div>
           <h2 class="branches-h">{t("branches.differ")}</h2>
-          {family ? <Compare model={model} family={family} graph={graph} name={name} held={held.current} /> : null}
+          {family ? <Compare visible={comparePane.visible} model={model} family={family} graph={graph} name={name} held={held.current} /> : null}
         </section>
       </div> : null}
     </div>

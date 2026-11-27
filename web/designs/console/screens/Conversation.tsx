@@ -1,5 +1,5 @@
 import { HistoryBodies } from "../../../ui-core/src/history-bodies";
-import { useClockText } from "./clock-display";
+import { ClockElapsed, PanelElapsed, useClockText } from "./clock-display";
 import { SchedulePanel } from "./SchedulePanel";
 import { OwnerDiagnostic } from "./OwnerDiagnostic";
 import { ReplyAnnouncement } from "./ReplyAnnouncement";
@@ -345,11 +345,13 @@ export function SavedWindowContent({ model, snapshot, openThreadSettings }: { mo
     {handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value('convo.handoffLimit')}</div> : null}</>} />;
 }
 
-const stepDuration = (s: Step, now: number): string | undefined => {
-  if (s.durationMs !== undefined) return formatDuration(s.durationMs);
-  const start = parseTime(s.startedAt);
-  return s.status === "running" && start !== undefined ? formatDuration(now - start) : undefined;
-};
+function useStepDuration(model: AppModel, step: Step | undefined, visible: boolean) {
+  const fixed = step?.durationMs;
+  const start = fixed === undefined && step?.status === "running" ? parseTime(step.startedAt) : undefined;
+  return useClockText(visible && start !== undefined ? model.now : undefined,
+    now => fixed !== undefined ? formatDuration(fixed) : visible && start !== undefined ? formatDuration(now - start) : undefined,
+    [visible, fixed, start]);
+}
 
 const exitText = (s: Step): string | undefined => (typeof s.exitCode === "number" ? `exit ${s.exitCode}` : undefined);
 
@@ -387,7 +389,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
     {running ? <>
       <span data-status-description>{running.label}</span>
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
-      {start === undefined ? null : <span><PanelElapsed model={model} started={start} /></span>}
+      {start === undefined ? null : <span><ClockElapsed clock={model.now} started={start} /></span>}
     </> : null}
     {recovery ? <>{model.canRetry.value ? <Button aria-describedby="conversation-retry-note" onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}{recovery.configuration ? <ConnectionRecovery model={model} /> : null}</> : null}
   </> : " "}</div>;
@@ -534,8 +536,9 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   const merged:WorkElementDisplay=display.state&&display.state.source==="wire"&&step.exitCode!==undefined&&step.status!==undefined?{...display,state:{...display.state,executionStatus:step.status,exitCode:step.exitCode}}:display;
   const formatted=formatWorkElementDisplay(merged);
   const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,iconRole:"work.terminal" as const}:formatted;
-  const elapsed = useClockText(open && step.status === "running" && step.durationMs === undefined && parseTime(step.startedAt) !== undefined && (display.detailPolicy === "actual-safe-typed" || display.detailPolicy === "existing-shell-output") ? model.now : undefined, now => open ? stepDuration(step, now) : undefined, [open, step]);
-  if(display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
+  const hasDetail = display.detailPolicy === "actual-safe-typed" || display.detailPolicy === "existing-shell-output";
+  const elapsed = useStepDuration(model, step, open && hasDetail);
+  if(!hasDetail)return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
   const command = fullCommand ?? step.command;
   const summary = [step.description, formatted.contentLabel].find(candidate => candidate?.trim() && candidate.trim() !== step.command.trim() && candidate.trim() !== command.trim())?.trim() ?? t("output.shellSummary");
   const duration = elapsed && step.status === "running" ? t("output.durationSoFar", { duration: elapsed }) : elapsed;
@@ -662,14 +665,10 @@ function PanelPossessions({ model, platform }: { model: AppModel; platform: Retu
 }
 
 /** The one reader of the 1 s clock in a panel list: each second re-renders this text, not the list. */
-function PanelElapsed({ model, started }: { model: AppModel; started: number }) {
-  return <>{useClockText(model.now, now => formatDuration(Math.max(0, now - started)), [started])}</>;
-}
-
 /** `before` and the time since `startedAt`, joined; the clock is read only inside `PanelElapsed`. */
 function panelSubtitle(model: AppModel, before: readonly (string | undefined)[], startedAt?: string, after: readonly (string | undefined)[] = []): ComponentChildren {
   const started = parseTime(startedAt);
-  const parts: ComponentChildren[] = [...before.filter(Boolean), ...(started === undefined ? [] : [<PanelElapsed key="elapsed" model={model} started={started} />]), ...after.filter(Boolean)];
+  const parts: ComponentChildren[] = [...before.filter(Boolean), ...(started === undefined ? [] : [<PanelElapsed key="elapsed" clock={model.now} started={started} />]), ...after.filter(Boolean)];
   return parts.length ? parts.flatMap((part, index) => index ? [" · ", part] : [part]) : undefined;
 }
 
@@ -868,7 +867,7 @@ function PanelDetail({ model, tabLabel, onBack, artifactPlatform, visible }: { v
     return () => { cancel.cancel(); detailBodies.dispose(); };
   }, [model, bodyId, detailBodies]);
   const detailBody = bodyId === undefined ? undefined : detailBodies.get(model.bodyCacheKey(bodyId));
-  const elapsed = useClockText(visible && step?.status === "running" && step.durationMs === undefined && parseTime(step.startedAt) !== undefined ? model.now : undefined, now => step ? stepDuration(step, now) : undefined, [step]);
+  const elapsed = useStepDuration(model, step, visible && detail?.kind === "step");
   const backRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
   const back = <Button buttonRef={backRef} variant="ghost" aria-label={t("panel.backToTab", { tab: tabLabel })} data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;

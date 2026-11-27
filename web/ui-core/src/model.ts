@@ -1123,10 +1123,12 @@ export class AppModel {
       if (expected?.handle === undefined) existing.manualAuthorized = true;
       return;
     }
-    const token = { manualAuthorized: expected?.handle === undefined };
+    const token = { manualAuthorized: expected?.handle === undefined, cancel: new Cancel() };
     tokens.set(cacheKey, token);
     const cancel = this.threadReads;
     const lifetime = handle.liveEpoch();
+    const forget = cancel.add(() => token.cancel.cancel());
+    const forgetPanel = panel?.cancel.add(() => token.cancel.cancel());
     const qualified = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
       && (expected === undefined || (reader !== undefined
@@ -1146,7 +1148,7 @@ export class AppModel {
           }
           return;
         }
-        const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: panel?.cancel ?? cancel });
+        const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: token.cancel });
         if (!current() || !qualified() || tokens.get(cacheKey) !== token) {
           if (tokens.get(cacheKey) === token && bodies.peek(cacheKey)?.loading) {
             set(undefined);
@@ -1167,6 +1169,8 @@ export class AppModel {
       }
       if (current() && qualified() && tokens.get(cacheKey) === token) set({ text, loading: false, error: undefined });
     } finally {
+      forget();
+      forgetPanel?.();
       if (tokens.get(cacheKey) === token) tokens.delete(cacheKey);
     }
   }
