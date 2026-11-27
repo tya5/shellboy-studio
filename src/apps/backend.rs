@@ -28,8 +28,13 @@ pub(super) fn endpoint_error(error: Value) -> ApiFail {
     }
 }
 
-/// Forward one request to the exact endpoint returned by Core for the selected service.
-pub(super) async fn call(endpoint: ServiceEndpoint, args: &Value) -> Result<Value, ApiFail> {
+pub(super) struct PreparedCall {
+    path: String,
+    body: Vec<u8>,
+}
+
+/// Validate user-controlled request data before service resolution can fail.
+pub(super) fn prepare(args: &Value) -> Result<PreparedCall, ApiFail> {
     let path = args.get("path").and_then(Value::as_str).unwrap_or_default();
     if !path.starts_with('/') || path.starts_with("//") || path.contains('#') || !visible(path) {
         return Err((
@@ -44,6 +49,17 @@ pub(super) async fn call(endpoint: ServiceEndpoint, args: &Value) -> Result<Valu
     if body.len() > MAX_DATA {
         return Err(("too_large", "The request body is over 8 MiB".to_owned()));
     }
+    Ok(PreparedCall {
+        path: path.to_owned(),
+        body,
+    })
+}
+
+/// Forward one validated request to the exact endpoint returned by Core.
+pub(super) async fn call(
+    endpoint: ServiceEndpoint,
+    prepared: PreparedCall,
+) -> Result<Value, ApiFail> {
     if endpoint.port == 0 || !visible(&endpoint.token) {
         return Err((
             "backend_failed",
@@ -51,12 +67,13 @@ pub(super) async fn call(endpoint: ServiceEndpoint, args: &Value) -> Result<Valu
         ));
     }
     let mut request = format!(
-        "POST {path} HTTP/1.0\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nConnection: close\r\nContent-Length: {}\r\n",
+        "POST {} HTTP/1.0\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nConnection: close\r\nContent-Length: {}\r\n",
+        prepared.path,
         endpoint.port,
         endpoint.token,
-        body.len()
+        prepared.body.len()
     );
-    if !body.is_empty() {
+    if !prepared.body.is_empty() {
         request.push_str("Content-Type: application/json\r\n");
     }
     request.push_str("\r\n");
@@ -66,7 +83,7 @@ pub(super) async fn call(endpoint: ServiceEndpoint, args: &Value) -> Result<Valu
             .map_err(|e| ("backend_down", format!("The backend does not answer: {e}")))?;
         let io = |e: std::io::Error| ("backend_failed", format!("The backend failed: {e}"));
         stream.write_all(request.as_bytes()).await.map_err(io)?;
-        stream.write_all(&body).await.map_err(io)?;
+        stream.write_all(&prepared.body).await.map_err(io)?;
         let mut raw = Vec::new();
         // HTTP/1.0 with close: the body ends at EOF. Headers count toward the same bound.
         (&mut stream)

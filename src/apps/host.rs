@@ -619,6 +619,7 @@ impl<O: Owner> AppHost<O> {
 
     /// Resolve the requested Core service within the app's owning Thread, then forward the request.
     async fn backend_call(&self, args: &Value, latest: &Latest) -> Result<Value, ApiFail> {
+        let prepared = super::backend::prepare(args)?;
         let service_name = args
             .get("service_name")
             .and_then(Value::as_str)
@@ -645,7 +646,7 @@ impl<O: Owner> AppHost<O> {
                 "Core returned an invalid service endpoint".to_owned(),
             )
         })?;
-        super::backend::call(endpoint, args).await
+        super::backend::call(endpoint, prepared).await
     }
 
     async fn dispatch(

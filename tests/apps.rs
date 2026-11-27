@@ -1396,8 +1396,18 @@ async fn named_services_are_shared_by_pages_and_composed_by_one_page() {
         assert_eq!(out["error"]["code"], "invalid_path", "{bad}: {out}");
     }
 
-    // Stopping one shared service makes both pages observe backend_down.
+    // Validation takes precedence over endpoint lookup, even when the service is stopped.
     f.service("tracker-a", "t1", "tracker", None);
+    let invalid_while_stopped = ws_app_call(
+        &f,
+        "board",
+        "call",
+        json!({"service_name":"tracker","path":"//invalid"}),
+    )
+    .await;
+    assert_eq!(invalid_while_stopped["error"]["code"], "invalid_path");
+
+    // Stopping one shared service makes both pages observe backend_down.
     for page in ["board", "report"] {
         let out = ws_app_call(
             &f,

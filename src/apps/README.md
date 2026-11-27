@@ -103,9 +103,10 @@ Two pages can share one service: register `tracker` once in the Thread, then bot
 
 ```js
 const [issues, dates] = await Promise.all([
-  shellboy.call("tracker", "/issues"),
-  shellboy.call("calendar", "/events"),
+  shellboy.call("tracker", "/issues", {}),
+  shellboy.call("calendar", "/events", {}),
 ]);
+if (issues.status !== 200 || dates.status !== 200) throw new Error("A service request failed");
 renderDashboard(issues.body, dates.body);
 ```
 
@@ -172,6 +173,7 @@ def poll():
     with urllib.request.urlopen(req) as r: data = r.read()
     with open("data/.next", "wb") as f: f.write(data)
     os.replace("data/.next", "data/issues.json")   # the page's data.onChange fires
+    return json.loads(data)
 def loop():
     while True:
         try:
@@ -185,9 +187,15 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         if self.headers.get("Authorization") != "Bearer " + token:
             self.send_response(401); self.end_headers(); return
+        if self.path not in ("/issues", "/refresh"):
+            self.send_response(404); self.end_headers(); return
         try:
-            with lock: poll()          # /refresh runs one poll and returns its result
-            code, body = 200, {"ok": True}
+            with lock:
+                if self.path == "/refresh":
+                    body = poll()      # refresh writes data and returns the fetched issue list
+                else:
+                    with open("data/issues.json", encoding="utf-8") as f: body = json.load(f)
+            code = 200
         except Exception as e:
             code, body = 502, {"ok": False, "error": str(e)}
         out = json.dumps(body).encode()
@@ -208,7 +216,7 @@ async function draw() {
 }
 shellboy.data.onChange(draw);
 draw();
-refresh.onclick = () => shellboy.call("tracker", "/refresh", {}).catch((e) => show(e.code === "no_backend" ? "The tracker service is not running" : e.message));
+refresh.onclick = () => shellboy.call("tracker", "/refresh", {}).catch((e) => show(e.code === "backend_down" ? "The tracker service is stopped" : e.code === "no_backend" ? "No tracker service is configured" : e.message));
 ```
 
 **Charts.** Draw inline SVG from `data/` files; no library is needed for bars and lines.

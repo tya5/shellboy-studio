@@ -3185,3 +3185,144 @@ async fn named_ask_history_window_carries_the_saved_model_sender() {
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test]
+async fn two_studio_pages_share_a_real_service_and_see_it_stop() {
+    use shellboy::protocol::{ArtifactAddArgs, ServiceAddArgs, ThreadCreateArgs};
+    let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN required"));
+    let root = temp_root();
+    let data = root.join("data");
+    let serve = start_owner(&bin, &root, &data);
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner.clone(), true).await;
+    let _cookie = login(addr, &state).await;
+    let created = owner
+        .call(
+            CoreCommand::ThreadCreate(ThreadCreateArgs {
+                agents: None,
+                connection: None,
+                cwd: Some(root.to_string_lossy().into_owned()),
+                model: None,
+                effort: None,
+                parent_thread_id: None,
+            }),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let thread = serde_json::to_value(created).unwrap()["result"]["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let service_dir = root.join("tracker");
+    std::fs::create_dir_all(&service_dir).unwrap();
+    std::fs::write(service_dir.join("service.py"), r#"import http.server, json, os, secrets
+TOKEN = secrets.token_hex(16)
+class Handler(http.server.BaseHTTPRequestHandler):
+ def do_POST(self):
+  if self.headers.get('Authorization') != 'Bearer ' + TOKEN:
+   self.send_response(401); self.end_headers(); return
+  body = json.dumps({'issues': ['one']}).encode()
+  self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(body)
+s = http.server.HTTPServer(('127.0.0.1', 0), Handler)
+with open(os.environ['SHELLBOY_SERVICE_ENDPOINT_FILE'], 'w') as f: json.dump({'port': s.server_port, 'token': TOKEN}, f)
+s.serve_forever()
+"#).unwrap();
+    let service = owner
+        .call(
+            shellboy::protocol::Command::ServiceAdd(ServiceAddArgs {
+                thread_id: Some(thread.clone()),
+                name: Some("tracker".into()),
+                cwd: Some(service_dir.to_string_lossy().into_owned()),
+                description: None,
+                command: "python3 service.py".into(),
+            }),
+            Some(format!("{}:real-studio-tracker", serve.instance)),
+            None,
+        )
+        .await
+        .unwrap();
+    let service_id = serde_json::to_value(service).unwrap()["result"]["service_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let mut app_names = Vec::new();
+    for title in ["Board", "Report"] {
+        let dir = root.join(title.to_lowercase());
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.html"), "<!doctype html><title>test</title>").unwrap();
+        let text = dir.display().to_string();
+        let uri = format!(
+            "shellboy-app:{}",
+            text.strip_prefix(r"\\?\").unwrap_or(&text)
+        );
+        owner
+            .call(
+                shellboy::protocol::Command::ArtifactAdd(ArtifactAddArgs {
+                    thread_id: thread.clone(),
+                    uri,
+                    title: title.into(),
+                    mime: None,
+                }),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+    }
+    let listing = state.apps.list(&thread, None).await.unwrap();
+    app_names.extend(
+        listing["apps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|app| app["name"].as_str().unwrap().to_owned()),
+    );
+    assert_eq!(app_names.len(), 2, "both artifact pages are registered");
+
+    let call = |name: &str| {
+        state.apps.call(
+            name,
+            "call",
+            json!({"service_name":"tracker","path":"/issues"}),
+        )
+    };
+    let mut live = false;
+    for _ in 0..100 {
+        let result = call(&app_names[0]).await;
+        if result["ok"] == true {
+            live = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        live,
+        "tracker service should become available through Studio"
+    );
+    assert_eq!(
+        call(&app_names[1]).await["ok"],
+        true,
+        "second page shares tracker"
+    );
+    owner
+        .call(
+            shellboy::protocol::Command::ServiceStop(
+                serde_json::from_value(json!({"service_id":service_id})).unwrap(),
+            ),
+            Some(format!("{}:real-studio-stop-tracker", serve.instance)),
+            None,
+        )
+        .await
+        .unwrap();
+    for name in &app_names {
+        let result = call(name).await;
+        assert_eq!(result["error"]["code"], "backend_down", "{name}: {result}");
+    }
+    cancel.cancel();
+    drop(serve);
+    let _ = std::fs::remove_dir_all(&root);
+}
