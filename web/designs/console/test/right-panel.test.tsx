@@ -185,37 +185,61 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
  });
 
- it('shows None in Running and Pending only for a settled, complete empty read',async()=>{
+ it('follows one empty-state table for Running and Pending from the work read',async()=>{
   const f=await setup();
   const t=f.model.t.value;
   const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
-  const noneIn=(index:number)=>[...f.host.querySelectorAll('[data-panel-list="work"] section')[index]!.querySelectorAll('p')].some(p=>p.textContent===t('schedule.none'));
+  const emptyLines=()=>[0,1].map(index=>[...f.host.querySelectorAll('[data-panel-list="work"] section')[index]!.querySelectorAll('p:not(.panel-list-divider-description)')].map(p=>p.textContent));
   const activity=()=>f.host.querySelector('[data-panel-list="work"]')!.textContent??'';
-  try {
-   f.db.work.lead=[];
-   await act(async()=>{hint();await settle(f.t,f.db);});
-   expect([noneIn(0),noneIn(1)]).toEqual([true,true]);
-   expect(activity()).not.toContain(t('work.partial'));
+  const heads=()=>[...f.host.querySelectorAll('[data-panel-list="work"] section')].slice(0,2).map(section=>section.querySelector('.group-label')?.textContent??'');
+  const none=[[t('schedule.none')],[t('schedule.none')]];
+  const quiet=[[],[]];
+  const answerOthers=async(except?:string)=>{
    await act(async()=>{
-    hint();
     for(let i=0;i<10;i++){
      await flush(32);
-     for(const call of f.t.calls().filter(call=>call.command!=='status'&&!f.db.answered.has(call.id))){
+     for(const call of f.t.calls().filter(call=>call.command!==except&&!f.db.answered.has(call.id))){
       f.db.answered.add(call.id);
       const response=f.db.answer(call);
       if(response.ok) f.t.ok(call.id,response.result); else f.t.ownerError(call.id,response.code);
      }
     }
    });
+  };
+  try {
+   f.db.work.lead=[];
+   // first read in flight, no snapshot: the loading line only
+   (f.model.handle.peek()!.work as {value:unknown}).value={value:undefined,loading:true,stale:false,error:undefined};
+   await act(async()=>{await flush(2);});
+   expect(emptyLines()).toEqual([[t('common.loading')],[t('common.loading')]]);
+   // settled, complete, empty: None
+   await act(async()=>{hint();await settle(f.t,f.db);});
+   expect(emptyLines()).toEqual(none);
+   expect(activity()).not.toContain(t('work.partial'));
+   expect(activity()).not.toContain(t('work.stale'));
+   // refresh in flight over the snapshot: unchanged
+   await act(async()=>{hint();});
+   await answerOthers('status');
    expect(f.t.calls('status').some(call=>!f.db.answered.has(call.id))).toBe(true);
-   expect([noneIn(0),noneIn(1)]).toEqual([false,false]);
+   expect(emptyLines()).toEqual(none);
+   // failed refresh over the snapshot: stale notice with the error, never None or Loading
+   const realAnswer=f.db.answer.bind(f.db);
+   f.db.answer=call=>call.command==='status'?{ok:false,code:'internal'}:realAnswer(call);
    await act(async()=>{await settle(f.t,f.db);});
-   expect([noneIn(0),noneIn(1)]).toEqual([true,true]);
+   expect(emptyLines()).toEqual(quiet);
+   expect(activity()).toContain(t('work.stale'));
+   expect(f.host.querySelector('[data-work-stale]')!.textContent!.length).toBeGreaterThan(t('work.stale').length);
+   expect(activity()).not.toContain(t('common.loading'));
+   // partial: rows are all elsewhere, the partial note shows, never None
+   f.db.answer=realAnswer;
    f.db.work.lead=Array.from({length:201},(_,i)=>({kind:'shell',id:`other-${i}`,thread_id:'lead',execution_id:`other-${i}`,run_id:'other-run',state:'running'}));
    await act(async()=>{hint();await settle(f.t,f.db);});
    expect(f.model.handle.peek()?.work.peek().value?.next_cursor).toBeDefined();
-   expect([noneIn(0),noneIn(1)]).toEqual([false,false]);
+   expect(emptyLines()).toEqual(quiet);
    expect(activity()).toContain(t('work.partial'));
+   expect(activity()).not.toContain(t('work.stale'));
+   expect(heads()[0]).toContain(t('work.running'));
+   expect(heads()[1]).toContain(t('panel.pending'));
   } finally {f.model.dispose();f.data.stop();}
  });
 

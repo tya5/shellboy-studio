@@ -710,9 +710,10 @@ function PanelActivity({ model }: { model: AppModel }) {
   const selected = model.panelOpener.value.work;
   const runId = model.details.value?.run_id;
   const runStopAvailable = !!runId;
-  // "None" only for a settled, complete read; loading shows the reading line, partial shows the existing partial note below.
+  // Empty Running/Pending line from the work resource: first read in flight shows loading, a complete settled empty read shows None,
+  // a partial or stale snapshot shows neither (the partial and stale notes below say why), and a refresh in flight keeps the snapshot.
   const resource = model.handle.value?.work.value;
-  const workEmpty = work.partial ? null : resource?.loading || resource?.stale ? <p class="caption muted" role="status">{t("common.loading")}</p> : resource?.value !== undefined ? <p class="caption muted">{t("schedule.none")}</p> : null;
+  const workEmpty = work.partial || resource?.stale ? null : resource?.value === undefined ? resource?.loading ? <p class="caption muted" role="status">{t("common.loading")}</p> : null : <p class="caption muted">{t("schedule.none")}</p>;
   return <div class="panel-list" data-panel-list="work">
     {activitySections.map(section => {
       if (section.key === "service" || section.key === "schedule") {
@@ -744,7 +745,7 @@ function PanelActivity({ model }: { model: AppModel }) {
       })}{rows.length ? null : workEmpty}</section>;
     })}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
-    {workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted">{t("work.stale")}</div> : null}
+    {resource?.stale || workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted" data-work-stale="">{t("work.stale")}{resource?.error ? ` ${t("common.readError", { message: resource.error.message })}` : ""}</div> : null}
     {runStopConfirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("action.stopEverything")} closeLabel={t("thread.deleteCancel")} describedBy="run-stop-description" onClose={() => setRunStopConfirm(undefined)} getReturnFocusTarget={() => runStopConfirm?.opener}>
       <div class="shell-stop-confirmation"><p id="run-stop-description">{t("action.stopEverythingDescription")}</p><Button variant="stop" onClick={() => { const { runId } = runStopConfirm!; setRunStopConfirm(undefined); void model.stopRun(runId); }}>{t("action.stopEverything")}</Button></div>
     </WorkSheet> : null}
