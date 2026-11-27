@@ -133,7 +133,8 @@ pub fn access(command: &Command) -> Access {
         | Command::ThreadImport(..)
         | Command::HistoryExport(..)
         | Command::ServiceAdd(..)
-        | Command::ServiceRemove(..) => Access::Denied,
+        | Command::ServiceRemove(..)
+        | Command::ArtifactRead(..) => Access::Denied,
     }
 }
 
