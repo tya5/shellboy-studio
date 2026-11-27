@@ -3218,7 +3218,11 @@ async fn two_studio_pages_share_a_real_service_and_see_it_stop() {
 
     let service_dir = root.join("tracker");
     std::fs::create_dir_all(&service_dir).unwrap();
-    std::fs::write(service_dir.join("service.py"), r#"import http.server, json, os, secrets
+    let (ready_addr, mut ready_rx) = {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        (listener.local_addr().unwrap(), listener)
+    };
+    std::fs::write(service_dir.join("service.py"), r#"import http.server, json, os, secrets, socket, sys
 TOKEN = secrets.token_hex(16)
 class Handler(http.server.BaseHTTPRequestHandler):
  def do_POST(self):
@@ -3228,7 +3232,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
   self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(body)
 s = http.server.HTTPServer(('127.0.0.1', 0), Handler)
 with open(os.environ['SHELLBOY_SERVICE_ENDPOINT_FILE'], 'w') as f: json.dump({'port': s.server_port, 'token': TOKEN}, f)
-open('ready', 'w').close()
+with socket.create_connection(('127.0.0.1', int(sys.argv[1]))) as ready:
+ ready.sendall(b'ready')
 s.serve_forever()
 "#).unwrap();
     let service = owner
@@ -3238,7 +3243,7 @@ s.serve_forever()
                 name: Some("tracker".into()),
                 cwd: Some(service_dir.to_string_lossy().into_owned()),
                 description: None,
-                command: "python3 service.py".into(),
+                command: format!("python3 service.py {}", ready_addr.port()),
             }),
             Some(format!("{}:real-studio-tracker", serve.instance)),
             None,
@@ -3284,16 +3289,20 @@ s.serve_forever()
     );
     assert_eq!(app_names.len(), 2, "both artifact pages are registered");
 
-    tokio::time::timeout(Duration::from_secs(30), async {
-        while !tokio::fs::try_exists(service_dir.join("ready"))
+    let ready = tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut stream, _) = ready_rx
+            .accept()
             .await
-            .unwrap_or(false)
-        {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+            .expect("accept service readiness signal");
+        let mut signal = [0; 5];
+        tokio::io::AsyncReadExt::read_exact(&mut stream, &mut signal)
+            .await
+            .expect("read service readiness signal");
+        signal
     })
     .await
     .expect("service fixture bound its listener and published its endpoint");
+    assert_eq!(&ready, b"ready", "service readiness channel payload");
 
     for name in &app_names {
         let result = state
@@ -3311,7 +3320,7 @@ s.serve_forever()
             "{name}: {result}"
         );
     }
-    owner
+    let stopped = owner
         .call(
             shellboy::protocol::Command::ServiceStop(
                 serde_json::from_value(json!({"service_id":service_id})).unwrap(),
@@ -3320,7 +3329,9 @@ s.serve_forever()
             None,
         )
         .await
-        .expect("service.stop succeeds");
+        .expect("service.stop IPC succeeds");
+    let stopped = serde_json::to_value(stopped).unwrap();
+    assert_eq!(stopped["ok"], true, "Core accepted service.stop: {stopped}");
     for name in &app_names {
         let result = state
             .apps
