@@ -1,43 +1,91 @@
-//! Finding apps: one read of the folder per request, so a new folder needs no restart. Files only;
-//! nothing is cached. A folder that can't be used is still listed, with the reason.
-use serde::{Deserialize, Serialize};
+//! Finding apps: Core's `artifact.list` and `artifact.get` are the only registry. An app is an artifact
+//! whose latest version URI uses the `shellboy-app:` scheme; nothing is cached or kept here.
+use serde::Serialize;
+use serde_json::Value;
+use shellboy::protocol::{ArtifactGetArgs, ArtifactListArgs, Command};
 use std::path::{Component, Path, PathBuf};
 
 pub const MAX_APPS: usize = 64;
-const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
-const MAX_NAME: usize = 40;
+/// `artifact.list` serves 1 to 32 rows a page (Core's `docs/design/thread-artifacts.md`).
+const LIST_PAGE: u32 = 32;
+/// Pages of one Thread's artifacts one listing reads: it stops here and says the list is partial.
+const MAX_LIST_PAGES: usize = 8;
+const SCHEME: &str = "shellboy-app";
 
-#[derive(Debug, Default, Deserialize)]
-struct Manifest {
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    entry: Option<String>,
-    #[serde(default)]
-    thread: Option<String>,
-}
-
+/// What a listing shows. `name` is the artifact ID, which also names the route and the sender label.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct AppEntry {
     pub name: String,
     pub title: String,
-    pub entry: String,
-    pub thread: Option<String>,
-    /// Why this app can't open. The folder stays listed so its author can see it.
-    pub problem: Option<String>,
+    pub thread: String,
 }
 
-/// The folder name is the app's ID, which also names its cookie and sender label.
-pub fn valid_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= MAX_NAME
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
-        && !name.starts_with('-')
+/// The latest saved version of an artifact, as the owner reports it.
+#[derive(Debug, Clone)]
+pub struct Latest {
+    pub artifact: String,
+    pub thread: String,
+    pub title: String,
+    pub version: i64,
+    pub uri: String,
+    pub mime: Option<String>,
 }
 
-/// A path inside an app: relative, with no way out of it. Symlinks are checked when opened.
+/// What a version URI means to Studio. The owner decides what may be read; this only decides which
+/// door the Web UI opens it by.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Kind {
+    /// A `shellboy-app:` folder: `index.html` and the files it loads, with the app API.
+    App(PathBuf),
+    /// Any other artifact of type `text/html`: one static page, without the API or its neighbours.
+    Page,
+}
+
+impl Latest {
+    pub fn kind(&self) -> Option<Kind> {
+        if let Some(folder) = app_folder(&self.uri) {
+            return Some(Kind::App(folder));
+        }
+        let html = self.mime.as_deref().is_some_and(|mime| {
+            mime.split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .eq_ignore_ascii_case("text/html")
+        });
+        // The owner reads only local files; anything else it would refuse is not offered as a page.
+        let local = Path::new(&self.uri).is_absolute() || has_scheme(&self.uri, "file");
+        (html && local).then_some(Kind::Page)
+    }
+}
+
+fn has_scheme(uri: &str, scheme: &str) -> bool {
+    uri.get(..scheme.len() + 1).is_some_and(|head| {
+        head[..scheme.len()].eq_ignore_ascii_case(scheme) && head.ends_with(':')
+    })
+}
+
+/// The folder of a `shellboy-app:` URI. The scheme is compared without case and the rest must be an
+/// absolute path, as Core requires.
+pub fn app_folder(uri: &str) -> Option<PathBuf> {
+    has_scheme(uri, SCHEME)
+        .then(|| PathBuf::from(&uri[SCHEME.len() + 1..]))
+        .filter(|folder| folder.is_absolute())
+}
+
+fn latest_of(value: &Value) -> Option<Latest> {
+    let text = |at: &str| value.pointer(at).and_then(Value::as_str).map(str::to_owned);
+    Some(Latest {
+        artifact: text("/artifact_id")?,
+        thread: text("/thread_id")?,
+        title: text("/latest/title")?,
+        version: value.pointer("/latest/version")?.as_i64()?,
+        uri: text("/latest/uri")?,
+        mime: text("/latest/mime"),
+    })
+}
+
+/// A path inside an app: relative, with no way out of it. Core refuses the rest when it reads.
 pub fn safe_relative(path: &str) -> Option<PathBuf> {
     if path.is_empty() || path.contains('\0') || path.contains('\\') {
         return None;
@@ -54,104 +102,83 @@ pub fn safe_relative(path: &str) -> Option<PathBuf> {
     (out.components().next().is_some()).then_some(out)
 }
 
-/// Whether `name` is an app at all: a valid name and a folder. Lookup and slot reclamation both use it.
-pub async fn is_app_dir(apps_dir: &Path, name: &str) -> bool {
-    valid_name(name)
-        && tokio::fs::metadata(apps_dir.join(name))
-            .await
-            .is_ok_and(|m| m.is_dir())
+/// One artifact's latest version. The owner's error is returned as it came.
+pub async fn latest<F, Fut>(call: &F, artifact: &str) -> Result<Latest, Value>
+where
+    F: Fn(Command) -> Fut,
+    Fut: std::future::Future<Output = Result<Value, Value>>,
+{
+    let value = call(Command::ArtifactGet(ArtifactGetArgs {
+        artifact_id: artifact.to_owned(),
+        version: None,
+        cursor: None,
+        limit: Some(1),
+    }))
+    .await?;
+    latest_of(&value)
+        .filter(|found| found.artifact == artifact)
+        .ok_or_else(|| serde_json::json!({"code": "invalid_reply", "message": "The owner's artifact reply was not understood"}))
 }
 
-pub async fn read_entry(apps_dir: &Path, name: &str) -> Option<AppEntry> {
-    if !is_app_dir(apps_dir, name).await {
-        return None;
-    }
-    let dir = apps_dir.join(name);
-    let mut entry = AppEntry {
-        name: name.to_owned(),
-        title: name.to_owned(),
-        entry: "index.html".into(),
-        thread: None,
-        problem: None,
-    };
-    let manifest = dir.join("app.json");
-    match tokio::fs::metadata(&manifest).await {
-        Err(_) => {
-            entry.problem = Some("app.json is missing".into());
-            return Some(entry);
-        }
-        Ok(m) if m.len() > MAX_MANIFEST_BYTES => {
-            entry.problem = Some("app.json is too large".into());
-            return Some(entry);
-        }
-        Ok(_) => {}
-    }
-    let parsed = match tokio::fs::read(&manifest).await {
-        Ok(bytes) => serde_json::from_slice::<Manifest>(&bytes)
-            .map_err(|e| format!("app.json can't be read: {e}")),
-        Err(e) => Err(format!("app.json can't be read: {e}")),
-    };
-    let manifest = match parsed {
-        Ok(m) => m,
-        Err(problem) => {
-            entry.problem = Some(problem);
-            return Some(entry);
-        }
-    };
-    if let Some(title) = manifest.name.filter(|t| !t.trim().is_empty()) {
-        entry.title = title;
-    }
-    entry.thread = manifest.thread.filter(|t| !t.is_empty());
-    if let Some(file) = manifest.entry {
-        entry.entry = file;
-    }
-    match safe_relative(&entry.entry) {
-        None => entry.problem = Some(format!("entry {} isn't a path inside the app", entry.entry)),
-        Some(rel) => {
-            if !tokio::fs::metadata(dir.join(rel))
-                .await
-                .is_ok_and(|m| m.is_file())
+/// The apps of one Thread, most recently updated first, and whether more artifacts were left unread.
+pub async fn list<F, Fut>(call: &F, thread: &str) -> Result<(Vec<AppEntry>, bool), Value>
+where
+    F: Fn(Command) -> Fut,
+    Fut: std::future::Future<Output = Result<Value, Value>>,
+{
+    let mut apps = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..MAX_LIST_PAGES {
+        let page = call(Command::ArtifactList(ArtifactListArgs {
+            thread_id: thread.to_owned(),
+            cursor: cursor.take(),
+            limit: LIST_PAGE,
+        }))
+        .await?;
+        for item in page["items"].as_array().into_iter().flatten() {
+            if let Some(found) = latest_of(item)
+                && matches!(found.kind(), Some(Kind::App(_)))
+                && apps.len() < MAX_APPS
             {
-                entry.problem = Some(format!("entry {} doesn't exist", entry.entry));
+                apps.push(AppEntry {
+                    name: found.artifact,
+                    title: found.title,
+                    thread: found.thread,
+                });
             }
         }
-    }
-    Some(entry)
-}
-
-pub async fn list(apps_dir: &Path) -> Result<Vec<AppEntry>, String> {
-    let mut names = Vec::new();
-    let mut dir = match tokio::fs::read_dir(apps_dir).await {
-        Ok(dir) => dir,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(e.to_string()),
-    };
-    while let Ok(Some(item)) = dir.next_entry().await {
-        if let Some(name) = item.file_name().to_str() {
-            names.push(name.to_owned());
+        cursor = page["next_cursor"].as_str().map(str::to_owned);
+        if cursor.is_none() {
+            return Ok((apps, false));
         }
-    }
-    names.sort();
-    let mut out = Vec::new();
-    for name in names {
-        if out.len() >= MAX_APPS {
+        if apps.len() >= MAX_APPS {
             break;
         }
-        if let Some(entry) = read_entry(apps_dir, &name).await {
-            out.push(entry);
-        }
     }
-    Ok(out)
+    Ok((apps, true))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn names_and_paths() {
-        assert!(valid_name("mail-view_2"));
-        for bad in ["", "-x", "Up", "a/b", "..", "a.b", &"x".repeat(41)] {
-            assert!(!valid_name(bad), "{bad}");
+    fn folders_and_paths() {
+        let folder = std::env::temp_dir().join("kanban");
+        let uri = format!("shellboy-app:{}", folder.display());
+        assert_eq!(app_folder(&uri), Some(folder.clone()));
+        assert_eq!(
+            app_folder(&format!("Shellboy-App:{}", folder.display())),
+            Some(folder),
+            "the scheme has no case"
+        );
+        for bad in [
+            "shellboy-app:relative",
+            "file:///x",
+            "/x",
+            "shellboy-app",
+            "",
+        ] {
+            assert_eq!(app_folder(bad), None, "{bad}");
         }
         assert_eq!(safe_relative("a/./b.txt"), Some(PathBuf::from("a/b.txt")));
         for bad in [

@@ -279,7 +279,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
       case "bridge.memory":
         return { ok: true, result: { rss_bytes: 41943040, unavailable_reason: null } };
       case "apps.list":
-        return { ok: true, result: { dir: "/tmp/x/apps", guide: "/tmp/x/apps/README.md", apps: [{ name: "board", title: "Board", entry: "index.html", thread: "lead", problem: null }, { name: "half", title: "Half made", entry: "index.html", thread: null, problem: "app.json can't be read: expected value" }] } };
+        return { ok: true, result: { apps: [{ name: "board", title: "Board", thread: "lead" }, { name: "second", title: "Second", thread: "lead" }], partial: false } };
       case "apps.open":
         return { ok: true, result: { name: a.name, title: "Board", url: "/a/s1/index.html", thread: "lead" } };
       case "apps.call":

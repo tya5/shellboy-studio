@@ -143,7 +143,7 @@ Keep default authentication for normal use. Explicit `--no-auth` is for disposab
 
 ## Apps, guides, and troubleshooting
 
-**Apps** lists local Studio web apps. Review an app and its permissions before using it: actions execute on the Studio host. `shellboy-studio guide user` and `shellboy-studio guide agent` print the bundled guides without starting the bridge. Startup rewrites `$SHELLBOY_DATA_DIR/studio/agent-guide.md` and the managed Apps README.
+**Apps** lists the `shellboy-app:` artifacts of the open Thread: web apps a Thread built in a folder and registered with `shellboy artifact add --uri shellboy-app:./FOLDER`. The same app opens from the Thread's Possessions, and an HTML file registered as an artifact opens there as one static page without the app API. Review an app before using it: actions execute on the Studio host. `shellboy-studio guide user` and `shellboy-studio guide agent` print the bundled guides without starting the bridge. Startup rewrites `$SHELLBOY_DATA_DIR/studio/agent-guide.md`; the app API guide is served at `/_shellboy/guide.md`.
 
 If Studio cannot reach Core, check that Core is running under the same OS account, the data directories match, and both binaries match the release pairing. Studio does not downgrade the protocol. Do not reset data or restart an owner running work just to clear a mismatch. Follow the release notes for verification limits; the presence of an archive is not proof of a physical-device test.
 

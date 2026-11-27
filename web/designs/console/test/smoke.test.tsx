@@ -1466,19 +1466,18 @@ describe("Apps", () => {
     return { ...made, el };
   };
   const frame = (el: Element) => el.querySelector<HTMLIFrameElement>("iframe")!;
-  it("lists apps, with a broken one saying why and no way to open it", async () => {
+  it("lists the Thread's apps, each opening by its artifact", async () => {
     const { el } = await open();
     const cards = [...el.querySelectorAll(".card")];
-    expect(cards.map((c) => text(c.querySelector("h2")!))).toEqual(["Board", "Half made"]);
-    expect(text(cards[1]!)).toContain("app.json can't be read");
-    expect(cards[1]!.querySelector("a")).toBeNull();
+    expect(cards.map((c) => text(c.querySelector("h2")!))).toEqual(["Board", "Second"]);
     expect(cards[0]!.querySelector("a")!.getAttribute("href")).toBe("#/apps/board");
+    expect(cards[1]!.querySelector("a")!.getAttribute("href")).toBe("#/apps/second");
     expect(el.querySelector("details")?.hasAttribute("open")).toBe(false);
   });
   it("says what to do when there are none, and ships nothing of its own", async () => {
     const { model, t, db } = await fixtureModel({ route: "inbox" });
     const plain = db.answer;
-    db.answer = (c) => (c.command === "apps.list" ? { ok: true, result: { dir: "/tmp/x/apps", apps: [] } } : plain(c));
+    db.answer = (c) => (c.command === "apps.list" ? { ok: true, result: { apps: [], partial: false } } : plain(c));
     const el = draw(model);
     await act(async () => {
       model.applyRoute({ view: "apps" });
@@ -1681,7 +1680,6 @@ describe("Settings", () => {
     expect(text(el)).toContain("shellboy-studio guide user");
     expect(text(el)).not.toContain("tailscale serve");
     expect(text(el)).toContain("--allow-host");
-    expect(text(el)).toContain("Apps folder");
     expect(text(el)).not.toContain("Source:");
   });
   it("points per-thread settings to Conversation and keeps appearance choices", async () => {

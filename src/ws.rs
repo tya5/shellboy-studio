@@ -82,10 +82,6 @@ pub async fn session<O: Owner>(
     let hello = ServerFrame::Hello {
         bridge_version: env!("CARGO_PKG_VERSION"),
         listen: state.config.listen.to_string(),
-        apps_dir: state
-            .apps
-            .as_ref()
-            .map(|apps| apps.dir.display().to_string()),
         data_dir: state.config.data_dir.display().to_string(),
         owner: owner_state,
         desktop: state.launcher.as_ref().map(|_| true),
@@ -460,12 +456,7 @@ fn apps_call<O: Owner>(
     tasks: &mut JoinSet<()>,
     handles: &mut HashMap<u64, AbortHandle>,
 ) -> Option<ServerFrame> {
-    let Some(apps) = state.apps.clone() else {
-        return Some(result_error(
-            id,
-            BridgeError::new("not_allowed", "this bridge offers no apps"),
-        ));
-    };
+    let apps = state.apps.clone();
     if handles.len() >= APP_CALLS {
         return Some(result_error(
             id,
@@ -476,7 +467,7 @@ fn apps_call<O: Owner>(
     let handle = tasks.spawn(async move {
         let text = |key: &str| args.as_ref().and_then(|a| a.get(key)).and_then(Value::as_str).unwrap_or_default().to_owned();
         let result = match name.as_str() {
-            "list" => apps.list().await.map_err(|m| ("apps_unreadable", m)),
+            "list" => apps.list(&text("thread")).await,
             "open" => apps.open(&text("name")).await,
             "instances" => apps.instances(&text("name")).await.map(|items| json!({"items": items})),
             "instance.create" => apps.add_instance(&text("name"), &text("instance")).await,

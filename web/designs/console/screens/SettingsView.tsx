@@ -130,7 +130,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
           </Section>
           <Section settingId={search("studio.remote", "studio.remote", ["studio.remoteGuide"]).settingId} title={t("studio.remote")} sub={t("studio.remoteGuide")}><FactList missing={missing} facts={[{ ...search("studio.fact.listen", "studio.listen"), value: model.data.listen.value, mono: true }]} /><p><code>shellboy-studio guide user</code></p><p><code>shellboy-studio --allow-host HOSTNAME</code></p><p>{t("studio.hostGuide")}</p></Section>
           <Section settingId={search("studio.token", "studio.token", ["studio.tokenGuide"]).settingId} title={t("studio.token")}><p>{t("studio.tokenGuide")}</p></Section>
-          <Section settingId={search("studio.info", "studio.info").settingId} title={t("studio.info")}><FactList missing={missing} facts={[{ ...search("studio.fact.apps", "studio.apps"), value: model.data.appsDir.value, mono: true }, { ...search("studio.fact.version", "studio.version"), value: model.data.bridgeVersion.value, mono: true }, { ...search("studio.fact.ownerVersion", "studio.ownerVersion") }]} /></Section>
+          <Section settingId={search("studio.info", "studio.info").settingId} title={t("studio.info")}><FactList missing={missing} facts={[{ ...search("studio.fact.version", "studio.version"), value: model.data.bridgeVersion.value, mono: true }, { ...search("studio.fact.ownerVersion", "studio.ownerVersion") }]} /></Section>
         </>;
       case "index":
         return <>

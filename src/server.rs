@@ -34,18 +34,13 @@ pub struct ServerConfig {
     pub config_dir: PathBuf,
 }
 
-/// Where apps live. Without it, the bridge offers no apps.
-pub struct AppsPaths {
-    pub dir: PathBuf,
-}
-
 pub struct Shared<O> {
     pub owner: Arc<O>,
     pub hub: Arc<Hub>,
     pub auth: Auth,
     pub config: ServerConfig,
     pub global: Arc<Semaphore>,
-    pub apps: Option<Arc<Apps<O>>>,
+    pub apps: Arc<Apps<O>>,
     pub cancel: CancellationToken,
     pub launcher: Option<crate::launcher::Control>,
     login_startup_requests: Arc<Mutex<()>>,
@@ -55,28 +50,19 @@ pub type AppState<O> = Arc<Shared<O>>;
 
 impl<O: Owner> Shared<O> {
     pub fn new(owner: Arc<O>, hub: Arc<Hub>, auth: Auth, config: ServerConfig) -> Arc<Self> {
-        Self::with_apps(owner, hub, auth, config, None, CancellationToken::new())
+        Self::with_cancel(owner, hub, auth, config, CancellationToken::new())
     }
 
-    /// `cancel` also ends the app listeners.
-    pub fn with_apps(
+    /// `cancel` also ends the app watchers.
+    pub fn with_cancel(
         owner: Arc<O>,
         hub: Arc<Hub>,
         auth: Auth,
         config: ServerConfig,
-        apps: Option<AppsPaths>,
         cancel: CancellationToken,
     ) -> Arc<Self> {
         let global = Arc::new(Semaphore::new(GLOBAL_CALLS));
-        let apps = apps.map(|paths| {
-            Apps::new(
-                paths.dir,
-                owner.clone(),
-                hub.clone(),
-                global.clone(),
-                cancel.clone(),
-            )
-        });
+        let apps = Apps::new(owner.clone(), hub.clone(), global.clone(), cancel.clone());
         Arc::new(Self {
             owner,
             hub,
@@ -128,12 +114,11 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
     if state.config.debug {
         router = router.route("/debug", get(debug_page));
     }
-    if state.apps.is_some() {
-        router = router
-            .route("/a/{session}/{*path}", get(app_file::<O>))
-            .route("/_shellboy/api.js", get(|| async { Apps::<O>::api_js() }))
-            .route("/_shellboy/ui.css", get(|| async { Apps::<O>::ui_css() }));
-    }
+    router = router
+        .route("/a/{session}/{*path}", get(app_file::<O>))
+        .route("/_shellboy/api.js", get(|| async { Apps::<O>::api_js() }))
+        .route("/_shellboy/ui.css", get(|| async { Apps::<O>::ui_css() }))
+        .route("/_shellboy/guide.md", get(|| async { Apps::<O>::guide() }));
     router
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -341,10 +326,7 @@ async fn app_file<O: Owner>(
     Path((session, path)): Path<(String, String)>,
     method: Method,
 ) -> Response {
-    match &state.apps {
-        Some(apps) => apps.file(&session, &path, &method).await,
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
+    state.apps.file(&session, &path, &method).await
 }
 
 #[derive(Deserialize)]
@@ -510,8 +492,6 @@ pub async fn serve<O: Owner>(
     .await;
     cancel.cancel();
     let _ = poller.await;
-    if let Some(apps) = apps {
-        apps.stopped().await;
-    }
+    apps.stopped().await;
     result
 }

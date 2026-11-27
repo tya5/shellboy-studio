@@ -2,7 +2,11 @@
 //! the Web UI's cookie or storage. It reaches this API only through the parent frame, which forwards
 //! over the authenticated `/ws` and alone decides which app a call is for. Its files come from a path
 //! holding an unguessable session (`Apps::file`), because an opaque origin sends no cookies.
-use super::{Apps, catalog, run};
+use super::{
+    Apps, ENTRY, Opened,
+    catalog::{self, Latest},
+    run,
+};
 use crate::{hub::SessionGuard, owner::Owner};
 use axum::{
     body::Body,
@@ -20,7 +24,6 @@ use std::{
 };
 
 const MAX_DATA: usize = 8 * 1024 * 1024;
-const MAX_FILE: u64 = 64 * 1024 * 1024;
 const MAX_LIST: usize = 1000;
 const WAIT: Duration = Duration::from_secs(25);
 /// How often the one watcher of an app looks at `data/`, while a page is waiting. Fixed: a page open
@@ -45,7 +48,7 @@ type ApiFail = (&'static str, String);
 
 pub struct AppHost<O> {
     pub name: String,
-    dir: PathBuf,
+    pub(super) dir: PathBuf,
     apps: Arc<Apps<O>>,
     writes: tokio::sync::Mutex<()>,
     hints: tokio::sync::Mutex<Hints>,
@@ -337,42 +340,18 @@ impl<O: Owner> AppHost<O> {
             .ok_or(("invalid_path", format!("{path} isn't a path inside data/")))
     }
 
-    async fn bound(&self, args: &Value) -> Result<String, ApiFail> {
-        if let Some(thread) = args
-            .get("thread")
+    fn bound(&self, args: &Value, latest: &Latest) -> String {
+        args.get("thread")
             .and_then(Value::as_str)
             .filter(|t| !t.is_empty())
-        {
-            return Ok(thread.to_owned());
-        }
-        let entry = catalog::read_entry(&self.apps.dir, &self.name).await;
-        entry.and_then(|e| e.thread).ok_or((
-            "no_bound_thread",
-            "This app has no bound Thread; name one, or set thread in app.json".to_owned(),
-        ))
+            .unwrap_or(&latest.thread)
+            .to_owned()
     }
 
     async fn owner_call(&self, command: Value) -> Result<Value, Value> {
         let parsed: Command = serde_json::from_value(command)
             .map_err(|e| json!({"code":"invalid_args","message":e.to_string()}))?;
-        let _permit = self
-            .apps
-            .global
-            .acquire()
-            .await
-            .map_err(|_| json!({"code":"shutting_down","message":"The gateway is stopping"}))?;
-        match self.apps.owner.call(parsed, None, None).await {
-            Ok(response) => {
-                let value = serde_json::to_value(&response).unwrap_or(Value::Null);
-                if value["ok"] == true {
-                    Ok(value["result"].clone())
-                } else {
-                    Err(value["error"].clone())
-                }
-            }
-            Err(api) => Err(serde_json::to_value(&api)
-                .unwrap_or(json!({"code":"owner_call_failed","message":api.message}))),
-        }
+        self.apps.owner_value(parsed).await
     }
 
     async fn data_read(&self, args: &Value) -> Result<Value, ApiFail> {
@@ -479,8 +458,12 @@ impl<O: Owner> AppHost<O> {
     }
 
     /// Change hints from the one shared `events.wait`, held at the hub. No owner connection is used.
-    async fn events_wait(self: &Arc<Self>, args: &Value) -> Result<Value, ApiFail> {
-        let thread = self.bound(args).await.ok();
+    async fn events_wait(
+        self: &Arc<Self>,
+        args: &Value,
+        latest: &Latest,
+    ) -> Result<Value, ApiFail> {
+        let thread = Some(self.bound(args, latest));
         let list = args.get("list").and_then(Value::as_bool).unwrap_or(false);
         let _lease = Lease::new(self, Kind::Hint);
         let mut hints = self.hints.lock().await;
@@ -692,23 +675,21 @@ impl<O: Owner> AppHost<O> {
         op: &str,
         args: Value,
         instance: Option<&str>,
+        latest: &Latest,
     ) -> Result<Value, Value> {
         let fail = |(code, message): ApiFail| json!({"code": code, "message": message});
         match op {
             "app.info" => {
-                let entry = catalog::read_entry(&self.apps.dir, &self.name).await;
-                Ok(
-                    json!({"name": self.name, "title": entry.as_ref().map(|e| e.title.clone()), "thread": entry.and_then(|e| e.thread)}),
-                )
+                Ok(json!({"name": self.name, "title": latest.title, "thread": latest.thread}))
             }
             "data.read" => self.data_read(&args).await.map_err(fail),
             "data.write" => self.data_write(&args).await.map_err(fail),
             "data.list" => self.data_list(&args).await.map_err(fail),
-            "events.wait" => self.events_wait(&args).await.map_err(fail),
+            "events.wait" => self.events_wait(&args, latest).await.map_err(fail),
             "data.wait" => self.data_wait(&args, instance).await.map_err(fail),
             "run" => self.run_action(&args).await.map_err(fail),
             "thread.send" => {
-                let thread = self.bound(&args).await.map_err(fail)?;
+                let thread = self.bound(&args, latest);
                 let text = args.get("text").and_then(Value::as_str).unwrap_or_default();
                 let mut send = json!({"thread_id": thread, "text": text, "sender_label": format!("app:{}", self.name)});
                 if let Some(deliver) = args.get("deliver") {
@@ -718,12 +699,12 @@ impl<O: Owner> AppHost<O> {
                     .await
             }
             "thread.get" => {
-                let thread = self.bound(&args).await.map_err(fail)?;
+                let thread = self.bound(&args, latest);
                 self.owner_call(json!({"command": "thread.get", "args": {"thread_id": thread}}))
                     .await
             }
             "thread.messages" => {
-                let thread = self.bound(&args).await.map_err(fail)?;
+                let thread = self.bound(&args, latest);
                 let mut read = json!({"thread_id": thread, "limit": args.get("limit").and_then(Value::as_u64).unwrap_or(50).min(200)});
                 for key in ["cursor", "since"] {
                     if let Some(v) = args.get(key) {
@@ -750,73 +731,77 @@ impl<O: Owner> AppHost<O> {
 
 impl<O: Owner> AppHost<O> {
     /// One API call from the app's page, already forwarded by the parent frame.
-    pub async fn call(self: &Arc<Self>, op: &str, args: Value, instance: Option<&str>) -> Value {
-        match self.dispatch(op, args, instance).await {
+    pub async fn call(
+        self: &Arc<Self>,
+        op: &str,
+        args: Value,
+        instance: Option<&str>,
+        latest: &Latest,
+    ) -> Value {
+        match self.dispatch(op, args, instance, latest).await {
             Ok(result) => json!({"ok": true, "result": result}),
             Err(error) => json!({"ok": false, "error": error}),
         }
     }
+}
 
-    /// A file under the app's path. `actions/` isn't served: scripts run through the API.
-    pub(super) async fn file(&self, method: &Method, raw: &str) -> Response {
-        if method != Method::GET && method != Method::HEAD {
-            return StatusCode::METHOD_NOT_ALLOWED.into_response();
-        }
-        let relative = percent_decode(raw);
-        let entry = catalog::read_entry(&self.apps.dir, &self.name).await;
-        let is_entry = entry.as_ref().is_some_and(|e| e.entry == relative);
-        let missing = || {
-            if is_entry {
-                let page = format!(
-                    "<!doctype html><meta charset=\"utf-8\"><title>Missing</title><script src=\"/_shellboy/api.js\"></script><script>throw new Error({:?})</script><p>This app's entry file is missing.</p>",
-                    format!("The entry file {relative} is missing")
-                );
-                app_headers(
-                    "text/html; charset=utf-8",
-                    Body::from(page),
-                    StatusCode::NOT_FOUND,
-                )
-            } else {
-                app_headers(
-                    "text/plain; charset=utf-8",
-                    Body::from("Not found"),
-                    StatusCode::NOT_FOUND,
-                )
-            }
-        };
-        let Some(rel) = catalog::safe_relative(&relative) else {
-            return missing();
-        };
-        if rel.starts_with("actions") {
-            return app_headers(
+/// A file under a session's path, read through the owner. `actions/` isn't served: scripts run through
+/// the API. A static page serves only its one file, without the API.
+pub(super) async fn serve_file<O: Owner>(
+    apps: &Apps<O>,
+    opened: &Opened,
+    method: &Method,
+    raw: &str,
+) -> Response {
+    if method != Method::GET && method != Method::HEAD {
+        return StatusCode::METHOD_NOT_ALLOWED.into_response();
+    }
+    let relative = percent_decode(raw);
+    let is_entry = !opened.page && relative == ENTRY;
+    let missing = || {
+        if is_entry {
+            let page = format!(
+                "<!doctype html><meta charset=\"utf-8\"><title>Missing</title><script src=\"/_shellboy/api.js\"></script><script>throw new Error({:?})</script><p>This app's entry file is missing.</p>",
+                format!("The entry file {relative} is missing")
+            );
+            app_headers(
+                "text/html; charset=utf-8",
+                Body::from(page),
+                StatusCode::NOT_FOUND,
+            )
+        } else {
+            app_headers(
                 "text/plain; charset=utf-8",
                 Body::from("Not found"),
                 StatusCode::NOT_FOUND,
-            );
+            )
         }
-        let Some(full) = self.inside(&rel).await else {
-            return missing();
-        };
-        let Ok(meta) = tokio::fs::metadata(&full).await else {
-            return missing();
-        };
-        if !meta.is_file() {
-            return missing();
-        }
-        if meta.len() > MAX_FILE {
-            return StatusCode::PAYLOAD_TOO_LARGE.into_response();
-        }
-        let Ok(bytes) = tokio::fs::read(&full).await else {
-            return missing();
-        };
-        let kind = content_type(&full);
-        let body = if kind.starts_with("text/html") {
-            Body::from(inject_api(&String::from_utf8_lossy(&bytes)))
-        } else {
-            Body::from(bytes)
-        };
-        app_headers(kind, body, StatusCode::OK)
+    };
+    let Some(rel) = catalog::safe_relative(&relative) else {
+        return missing();
+    };
+    if rel.starts_with("actions") || opened.page && relative != ENTRY {
+        return app_headers(
+            "text/plain; charset=utf-8",
+            Body::from("Not found"),
+            StatusCode::NOT_FOUND,
+        );
     }
+    let read = apps
+        .read_file(opened, (!opened.page).then_some(relative.as_str()))
+        .await;
+    let bytes = match read {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return missing(),
+        Err(status) => return status.into_response(),
+    };
+    let kind = content_type(&rel);
+    let body = if kind.starts_with("text/html") && !opened.page {
+        Body::from(inject_api(&String::from_utf8_lossy(&bytes)))
+    } else {
+        Body::from(bytes)
+    };
+    app_headers(kind, body, StatusCode::OK)
 }
 
 fn percent_decode(path: &str) -> String {
@@ -844,18 +829,26 @@ mod tests {
     use tokio::sync::Semaphore;
     use tokio_util::sync::CancellationToken;
 
-    struct NoOwner;
-    impl Owner for NoOwner {
+    /// Knows one artifact, `one`, an app in `dir`; every other call is refused.
+    struct OneApp(PathBuf);
+    impl Owner for OneApp {
         async fn call(
             &self,
-            _: Command,
+            command: Command,
             _: Option<String>,
             _: Option<shellboy::protocol::Origin>,
         ) -> Result<shellboy::protocol::Response<Value>, shellboy::protocol::ApiError> {
-            Err(shellboy::protocol::ApiError::new(
-                shellboy::protocol::ErrorCode::AppNotRunning,
-                "no owner in this test",
-            ))
+            match command {
+                Command::ArtifactGet(_) => Ok(shellboy::protocol::Response::success(
+                    "test".to_owned(),
+                    json!({"artifact_id":"one","thread_id":"t","created_at":"now","updated_at":"now",
+                        "latest":{"version":1,"uri":format!("shellboy-app:{}", self.0.join("one").display()),"title":"One","created_at":"now"}}),
+                )),
+                _ => Err(shellboy::protocol::ApiError::new(
+                    shellboy::protocol::ErrorCode::AppNotRunning,
+                    "no owner in this test",
+                )),
+            }
         }
     }
 
@@ -863,13 +856,11 @@ mod tests {
     async fn the_hint_session_is_released_once_pages_stop_waiting() {
         let dir = std::env::temp_dir().join(format!("studio-hints-{}", random()));
         std::fs::create_dir_all(dir.join("one")).unwrap();
-        std::fs::write(dir.join("one/app.json"), "{}").unwrap();
         std::fs::write(dir.join("one/index.html"), "x").unwrap();
         let hub = crate::hub::Hub::new();
         let cancel = CancellationToken::new();
         let apps = Apps::new(
-            dir.clone(),
-            Arc::new(NoOwner),
+            Arc::new(OneApp(dir.clone())),
             hub.clone(),
             Arc::new(Semaphore::new(4)),
             cancel.clone(),
@@ -914,17 +905,15 @@ mod tests {
         PathBuf,
         Arc<crate::hub::Hub>,
         CancellationToken,
-        Arc<Apps<NoOwner>>,
+        Arc<Apps<OneApp>>,
     ) {
         let dir = std::env::temp_dir().join(format!("studio-lifecycle-{}", random()));
         std::fs::create_dir_all(dir.join("one/data")).unwrap();
-        std::fs::write(dir.join("one/app.json"), "{}").unwrap();
         std::fs::write(dir.join("one/index.html"), "x").unwrap();
         let hub = crate::hub::Hub::new();
         let cancel = CancellationToken::new();
         let apps = Apps::new(
-            dir.clone(),
-            Arc::new(NoOwner),
+            Arc::new(OneApp(dir.clone())),
             hub.clone(),
             Arc::new(Semaphore::new(4)),
             cancel.clone(),
@@ -988,7 +977,7 @@ mod tests {
         let (dir, _hub, cancel, apps) = one_app();
         let first = apps.call("one", "data.wait", json!({})).await;
         let version = first["result"]["version"].as_u64().unwrap();
-        let host = apps.host("one").await.unwrap();
+        let (host, _) = apps.host("one").await.unwrap();
         // Watching the published snapshot opens no data lease of its own.
         let mut published = host.watch.subscribe();
         std::fs::write(dir.join("one/data/x"), "1").unwrap();

@@ -422,6 +422,46 @@ describe('right panel purpose',()=>{
  });
 
 
+ it('opens a shellboy-app: artifact and a file: HTML artifact in the Apps frame, and nothing else that way', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({platform: null})));
+  const original = ResizeObserver;
+  let reveal: (() => void) | undefined;
+  vi.stubGlobal('ResizeObserver', class extends original {
+    constructor(cb: ResizeObserverCallback) { super(cb); reveal = () => cb([], this); }
+    override observe(node: Element) { if (node.matches('[data-panel-root]')) reveal?.(); }
+  });
+  const f=await setup(['attachment.list.page','artifact.list.page']);
+  const at='2026-11-21T00:00:00Z';
+  const rows=[
+   {id:'app',uri:'shellboy-app:/work/kanban',mime:null},
+   {id:'page',uri:'/work/report.html',mime:'text/html'},
+   {id:'remote',uri:'https://example.invalid/report.html',mime:'text/html'},
+   {id:'note',uri:'/work/note.md',mime:'text/markdown'},
+  ].map(r=>({artifact_id:r.id,thread_id:'lead',created_at:at,updated_at:at,latest:{version:1,title:r.id,uri:r.uri,mime:r.mime,created_at:at}}));
+  const answer=f.db.answer.bind(f.db);
+  f.db.answer=call=>{
+   if(call.command==='attachment.list') return {ok:true,result:{items:[]}};
+   if(call.command==='artifact.list') return {ok:true,result:{items:rows}};
+   if(call.command==='artifact.get') {
+    const row=rows.find(r=>r.artifact_id===(call.args as {artifact_id:string}).artifact_id)!;
+    return {ok:true,result:{...row,versions:{items:[{version:1,created_at:at}]}}};
+   }
+   return answer(call);
+  };
+  const page=f.host.querySelector('#panel-page-possessions')!;
+  const pump=async (work:()=>void)=>{ await act(async()=>work()); await act(async()=>{await settle(f.t,f.db);}); };
+  try {
+   await pump(()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="possessions"]')!.click());
+   const opened:Record<string,string|null>={};
+   for (const id of ['app','page','remote','note']) {
+    await pump(()=>page.querySelector<HTMLButtonElement>(`[data-panel-row-id="${id}"] button`)!.click());
+    opened[id]=page.querySelector('[data-panel-detail] a[href^="#/apps/"]')?.getAttribute('href') ?? null;
+    await pump(()=>f.host.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
+   }
+   expect(opened).toEqual({app:'#/apps/app',page:'#/apps/page',remote:null,note:null});
+  } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
+ });
+
  it('opens the attachment section on demand, pages by cursor, and refreshes on the Thread hint', async () => {
   const f=await setup(['attachment.list.page']);
   const row=(id:string,path:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path,kind:'file',delivery_status:'applied',selected:true,managed:false});

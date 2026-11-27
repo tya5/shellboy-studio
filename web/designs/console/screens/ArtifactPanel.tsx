@@ -1,5 +1,5 @@
 import { artifactContent, artifactRevealPlatform, revealArtifact, Cancel, type ArtifactRevealError, type ArtifactSummary, type ArtifactRevealPlatform, type ArtifactContentTarget, type ArtifactSelected, type ArtifactVersion } from "../../../data/src";
-import { parseTime, type AppModel } from "../../../ui-core/src";
+import { formatRoute, parseTime, type AppModel } from "../../../ui-core/src";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Button } from "../system/components/Button";
 import { CopyButton } from "../system/components/CopyButton";
@@ -116,6 +116,8 @@ export function ArtifactList(props: ArtifactListProps) {
 }
 
 function artifactAction(version: ArtifactVersion, desktop: boolean) {
+  // An app folder opens in the Apps frame whatever its MIME; the owner reads its files.
+  if (/^shellboy-app:/i.test(version.uri)) return { kind: "app" } as const;
   const mime = media(version.mime);
   if (!mime) return;
   try {
@@ -125,7 +127,9 @@ function artifactAction(version: ArtifactVersion, desktop: boolean) {
   const local = /^(?:file:|\/|[a-z]:[\\/])/i.test(version.uri);
   if (!local) return;
   if (mime.startsWith("image/") || mime.startsWith("text/") && mime !== "text/html") return { kind: "preview", mime } as const;
-  if (desktop && (mime === "application/pdf" || mime === "text/html")) return { kind: "open" } as const;
+  // One HTML file is shown as a static page in the same frame, read through the owner like a preview.
+  if (mime === "text/html") return { kind: "page" } as const;
+  if (desktop && mime === "application/pdf") return { kind: "open" } as const;
 }
 
 function Preview({ model, target, mime, title }: { model: AppModel; target: ArtifactContentTarget; mime: string; title: string }) {
@@ -207,6 +211,7 @@ export function ArtifactDetail({ model, platform }: { model: AppModel; platform:
       <KeyValue rows={[{ key: `v${version.version} · URI`, value: <bdi class="mono artifact-uri">{version.uri}</bdi> }]} />
       <CopyButton text={version.uri} label={t("artifact.copyPath")} copiedLabel={t("code.copied")} failedLabel={t("guide.copyFailed")} />
       {target && platform && fileArtifact(version.uri, platform) ? <RevealButton key={version.version} model={model} platform={platform} target={target} /> : null}
+      {action && (action.kind === "app" || action.kind === "page") && artifact && selection === undefined ? <a class="nav-link" href={formatRoute({ view: "apps", appName: artifact })}>{t(action.kind === "app" ? "artifact.openApp" : "artifact.openPage")}</a> : null}
       {action?.kind === "link" ? <a class="nav-link" href={action.href} target="_blank" rel="noopener noreferrer">{t("artifact.open")}</a> : null}
       {target && action?.kind === "preview" ? <Preview key={JSON.stringify([target, action.mime])} model={model} target={target} mime={action.mime} title={version.title} /> : null}
       {target && action?.kind === "open" ? <Button variant="ghost" onClick={() => {
