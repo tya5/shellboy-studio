@@ -570,7 +570,7 @@ For the existing macOS/Windows desktop path, each Studio launch or manual Start 
 
 | Decision | Reason and impact | Revisit when |
 |---|---|---|
-| Bundle guides in Studio and overwrite the installed agent guide at startup | The guide describes Studio rather than core; no user AGENTS.md is changed. A custom apps directory is shown by Studio, not inferred from the data directory. | The Apps host exposes an agent-readable discovery surface for custom directories. |
+| Bundle guides in Studio and overwrite the installed agent guide at startup | The guide describes Studio rather than core; no user AGENTS.md is changed. Apps are Thread artifacts, so there is no apps directory to show (#169). | — |
 | Require a typed working folder and review of the exact request before creating a Thread | The browser cannot safely browse the host filesystem through the current RPC; typing gives explicit choice without adding bridge filesystem access. An uncertain create/send is not retried automatically. | Shellboy adopts a bounded, authorized folder-selection surface. |
 
 ### Settings editing decision (2026-11-08)

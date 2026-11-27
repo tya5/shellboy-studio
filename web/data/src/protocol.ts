@@ -441,7 +441,7 @@ export interface ShellEntry {
   execution_id: string;
   state: string;
   thread_id?: string;
-  run_id?: string;
+  run_id?: string | null;
   command_excerpt?: string;
   command_excerpt_truncated?: boolean;
   turn_id?: string;
