@@ -665,7 +665,7 @@ function PanelPossessions({ model, platform }: { model: AppModel; platform: Retu
 }
 
 /** The one reader of the 1 s clock in a panel list: each second re-renders this text, not the list. */
-/** `before` and the time since `startedAt`, joined; the clock is read only inside `PanelElapsed`. */
+/** `before` and the time since `startedAt`, joined; the clock is read only inside `ClockElapsed`. */
 function panelSubtitle(model: AppModel, before: readonly (string | undefined)[], startedAt?: string, after: readonly (string | undefined)[] = []): ComponentChildren {
   const started = parseTime(startedAt);
   const parts: ComponentChildren[] = [...before.filter(Boolean), ...(started === undefined ? [] : [<ClockElapsed key="elapsed" clock={model.now} started={started} />]), ...after.filter(Boolean)];
