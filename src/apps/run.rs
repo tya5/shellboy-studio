@@ -82,11 +82,7 @@ pub fn command_for(path: &Path) -> Command {
         "py" => with("python3", &[]),
         "js" | "mjs" => with("node", &[]),
         "sh" => with("sh", &[]),
-        // Bypass: a default Windows policy refuses every local .ps1, so no action would start.
-        "ps1" => with(
-            "powershell",
-            &["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"],
-        ),
+        "ps1" => with("powershell", &["-NoProfile", "-File"]),
         "cmd" | "bat" => with("cmd", &["/C"]),
         _ => Command::new(path),
     }

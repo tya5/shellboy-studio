@@ -974,8 +974,8 @@ async fn run_kills_what_the_script_started() {
 }
 
 /// Watches a helper a PowerShell action starts. The action starts the helper, sends its process ID over
-/// a named pipe and waits for the reply. The test opens the helper's handle before replying, so the
-/// handle names that same process whatever happens after, and `gone` waits on that handle.
+/// a named pipe and waits for the reply. The test opens the helper's handle and publishes it before
+/// replying, so the handle names that same process whatever happens after, and `gone` waits on it.
 #[cfg(windows)]
 struct Helper {
     started: tokio::sync::oneshot::Receiver<Process>,
@@ -1020,10 +1020,10 @@ impl Helper {
                 "{case}: couldn't open the helper {pid}: {}",
                 std::io::Error::last_os_error()
             );
-            let process = Process(handle as usize);
-            // The action goes on only now, with the helper's handle held here.
+            // Readiness is published with the handle before the action is acknowledged, so an action
+            // that has finished has already been reported ready.
+            let _ = started.send(Process(handle as usize));
             pipe.get_mut().write_all(b"ok\n").await.unwrap();
-            let _ = started.send(process);
         });
         Self {
             started: started_rx,
@@ -1062,7 +1062,9 @@ impl Helper {
 #[tokio::test]
 async fn run_kills_what_the_script_started() {
     let f = fixture().await;
-    let start = |case: &str| {
+    // `.cmd` actions run under any PowerShell policy: the script text is not a file PowerShell is asked to
+    // run, so cmd hands it to `-Command`. The action is still started by the production Job path.
+    let script = |case: &str| {
         format!(
             "$p = Start-Process -FilePath powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -WindowStyle Hidden\r\n\
              $c = New-Object System.IO.Pipes.NamedPipeClientStream '.', '{}', ([System.IO.Pipes.PipeDirection]::InOut)\r\n\
@@ -1075,23 +1077,37 @@ async fn run_kills_what_the_script_started() {
             Helper::pipe(case)
         )
     };
+    let start = |case: &str| {
+        format!(
+            "@powershell -NoProfile -Command \"& ([scriptblock]::Create((Get-Content -Raw scripts/{case}.txt)))\"\r\n"
+        )
+    };
     write_app(
         &f.apps,
         "one",
         "{}",
         &[
             PAGE,
+            ("scripts/leave.txt", &script("leave")),
+            ("scripts/hang.txt", &script("hang")),
+            ("scripts/close.txt", &script("close")),
             (
-                "actions/leave.ps1",
-                &format!("{}'done'\r\n", start("leave")),
+                "actions/leave.cmd",
+                &format!("{}@echo done\r\n", start("leave")),
             ),
             (
-                "actions/hang.ps1",
-                &format!("{}Start-Sleep 300\r\n", start("hang")),
+                "actions/hang.cmd",
+                &format!(
+                    "{}@powershell -NoProfile -Command \"Start-Sleep 300\"\r\n",
+                    start("hang")
+                ),
             ),
             (
-                "actions/close.ps1",
-                &format!("{}Start-Sleep 300\r\n", start("close")),
+                "actions/close.cmd",
+                &format!(
+                    "{}@powershell -NoProfile -Command \"Start-Sleep 300\"\r\n",
+                    start("close")
+                ),
             ),
         ],
     );
@@ -1100,11 +1116,12 @@ async fn run_kills_what_the_script_started() {
     let apps = f.state.apps.clone().unwrap();
     let left =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"leave"})).await });
-    // An action that ends before its helper reports in failed to start it: say how.
+    // Readiness wins when both are ready; an action that ends without reporting says how it ended.
     let mut left = left;
     tokio::select! {
-        ended = &mut left => panic!("script exit: the action ended before the helper started: {ended:?}"),
+        biased;
         () = helper.started("script exit") => {}
+        ended = &mut left => panic!("script exit: the action ended before the helper started: {ended:?}"),
     }
     let left = left.await.unwrap();
     assert_eq!(left["result"]["timed_out"], false, "{left}");
@@ -1117,11 +1134,12 @@ async fn run_kills_what_the_script_started() {
         apps.call("one", "run", json!({"action":"hang","timeout_ms":15000}))
             .await
     });
-    // An action that ends before its helper reports in failed to start it: say how.
+    // Readiness wins when both are ready; an action that ends without reporting says how it ended.
     let mut hung = hung;
     tokio::select! {
-        ended = &mut hung => panic!("timeout: the action ended before the helper started: {ended:?}"),
+        biased;
         () = helper.started("timeout") => {}
+        ended = &mut hung => panic!("timeout: the action ended before the helper started: {ended:?}"),
     }
     let hung = hung.await.unwrap();
     assert_eq!(hung["result"]["timed_out"], true, "{hung}");
@@ -1131,11 +1149,12 @@ async fn run_kills_what_the_script_started() {
     let apps = f.state.apps.clone().unwrap();
     let page =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
-    // An action that ends before its helper reports in failed to start it: say how.
+    // Readiness wins when both are ready; an action that ends without reporting says how it ended.
     let mut page = page;
     tokio::select! {
-        ended = &mut page => panic!("closed page: the action ended before the helper started: {ended:?}"),
+        biased;
         () = helper.started("closed page") => {}
+        ended = &mut page => panic!("closed page: the action ended before the helper started: {ended:?}"),
     }
     page.abort();
     let _ = page.await;
