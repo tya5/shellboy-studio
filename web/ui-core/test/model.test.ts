@@ -81,6 +81,23 @@ describe("AppModel over the fake transport", () => {
     expect(model.context.value).toEqual({ inputTokens: 41200, threshold: 200000, state: "normal", fill: 41200 * 100 / 200000 });
   });
 
+  it("drops a disposed conversation window from the model and starts fresh on return", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
+    try {
+      const reader = model.longReader.peek()!;
+      expect(reader.acceptedView.peek().rows.length).toBeGreaterThan(0);
+      reader.dispose();
+      expect(model.longReader.peek()).not.toBe(reader);
+      expect(reader.acceptedView.peek().rows).toEqual([]);
+      expect(reader.rangeItems()).toEqual([]);
+      model.navigate({ view: "analytics" });
+      model.openThread("lead");
+      await settle(t, db);
+      expect(model.longReader.peek()).not.toBe(reader);
+      expect(model.longReader.peek()?.acceptedView.peek().rows.length).toBeGreaterThan(0);
+    } finally { model.dispose(); }
+  });
+
   it("releases a fetched body and cancels a read when scrolling retires their rows", async () => {
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = Array.from({ length: 2_000 }, (_, ordinal) => ({ node_id: `row-${ordinal}`, kind: "user_message", selection: { ordinal } }));

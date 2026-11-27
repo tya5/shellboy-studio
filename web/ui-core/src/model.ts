@@ -729,10 +729,11 @@ export class AppModel {
     this.insights.dispose();
     this.pending.close?.();
     this.modelListCancel.cancel();
-    this.releaseConversationReader();
-    this.apps.leaveFolders();
+    // Stop model effects before reader retirement invalidates their accepted-view dependencies.
     for (const d of this.disposers) d();
     this.disposers = [];
+    this.releaseConversationReader();
+    this.apps.leaveFolders();
     this.listHandle?.close();
     this.listHandle = undefined;
     this.handle.value?.close();
@@ -806,9 +807,6 @@ export class AppModel {
   /** Drop the strong reference to accepted rows whenever the conversation reader leaves. */
   private releaseConversationReader(): void {
     this.longReader.peek()?.dispose();
-    this.longReader.value = undefined;
-    this.readerThread = undefined;
-    this.shellScan = undefined;
   }
 
   /** One reader per open Thread while the Conversation shows and the owner has the positional read. */
@@ -827,6 +825,12 @@ export class AppModel {
       reader.bindCurrentThread(h);
       reader.bindConversationInput((snapshot, replacement, retiring) => this.captureWindowConversation(reader, h, snapshot, replacement, retiring),
         snapshot => this.applyCommittedOwnRegion(reader, h, snapshot));
+      reader.onDispose(() => {
+        if (this.longReader.peek() !== reader) return;
+        this.readerThread = undefined;
+        this.shellScan = undefined;
+        this.longReader.value = undefined;
+      });
       this.longReader.value = reader;
       reader.refreshConversationInput(reader.acceptedView.peek());
     }

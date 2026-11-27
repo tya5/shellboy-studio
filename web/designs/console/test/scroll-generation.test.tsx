@@ -14,15 +14,17 @@ function rig(invalidate: 'generation' | 'dispose' | 'notify') {
   const request=Object.freeze({id:{},target:42});
   const port={acceptedView:{peek:()=>accepted,isCurrent:(ref:object)=>!disposed&&ref===accepted},peekScroll:()=>request,consumeScroll:vi.fn((ref:object)=>{if(stale)staleEffects.push('request');return !disposed&&ref===accepted;})};let invalidated=false, stale=false;
   const staleEffects: string[]=[];
+  let release: (() => void) | undefined;
   const takeScroll=vi.fn(()=>{if(stale)staleEffects.push("request");return 42;}),view=vi.fn(),measure=vi.fn(()=>{
     stale=false;
     if(invalidated)return;invalidated=true;stale=true;
     if(invalidate==='notify'){version.value++;version.value++;}
     else if(invalidate==='generation'){accepted=Object.freeze({generation:1});version.value++;}
-    else {disposed=true;render(null,host!);}
+    else {disposed=true;release?.();render(null,host!);}
   });
   const win={version,status,error:signal(undefined),following:signal(true),pathChanged:signal(false),total:0,
-    renderRange:()=>undefined,pendingNavigation:false,measure,takeScroll,view};
+    renderRange:()=>undefined,pendingNavigation:false,measure,takeScroll,view,
+    onDispose:(callback:()=>void)=>{release=callback;return ()=>{release=undefined;};}};
   const model={t:signal((key:string)=>key),shells:signal([])};
   const query=Element.prototype.querySelectorAll;
   vi.spyOn(Element.prototype,'querySelectorAll').mockImplementation(function(this:Element,selector:string){
