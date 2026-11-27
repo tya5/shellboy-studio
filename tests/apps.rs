@@ -1100,7 +1100,12 @@ async fn run_kills_what_the_script_started() {
     let apps = f.state.apps.clone().unwrap();
     let left =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"leave"})).await });
-    helper.started("script exit").await;
+    // An action that ends before its helper reports in failed to start it: say how.
+    let mut left = left;
+    tokio::select! {
+        ended = &mut left => panic!("script exit: the action ended before the helper started: {ended:?}"),
+        () = helper.started("script exit") => {}
+    }
     let left = left.await.unwrap();
     assert_eq!(left["result"]["timed_out"], false, "{left}");
     assert_eq!(left["result"]["exit_code"], 0, "{left}");
@@ -1112,7 +1117,12 @@ async fn run_kills_what_the_script_started() {
         apps.call("one", "run", json!({"action":"hang","timeout_ms":15000}))
             .await
     });
-    helper.started("timeout").await;
+    // An action that ends before its helper reports in failed to start it: say how.
+    let mut hung = hung;
+    tokio::select! {
+        ended = &mut hung => panic!("timeout: the action ended before the helper started: {ended:?}"),
+        () = helper.started("timeout") => {}
+    }
     let hung = hung.await.unwrap();
     assert_eq!(hung["result"]["timed_out"], true, "{hung}");
     helper.gone("timeout").await;
@@ -1121,7 +1131,12 @@ async fn run_kills_what_the_script_started() {
     let apps = f.state.apps.clone().unwrap();
     let page =
         tokio::spawn(async move { apps.call("one", "run", json!({"action":"close"})).await });
-    helper.started("closed page").await;
+    // An action that ends before its helper reports in failed to start it: say how.
+    let mut page = page;
+    tokio::select! {
+        ended = &mut page => panic!("closed page: the action ended before the helper started: {ended:?}"),
+        () = helper.started("closed page") => {}
+    }
     page.abort();
     let _ = page.await;
     helper.gone("closed page").await;
