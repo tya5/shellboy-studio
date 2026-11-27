@@ -1,5 +1,5 @@
 import { HistoryBodies } from "../../../ui-core/src/history-bodies";
-import { ClockElapsed, PanelElapsed, useClockText } from "./clock-display";
+import { ClockElapsed, useClockText } from "./clock-display";
 import { SchedulePanel } from "./SchedulePanel";
 import { OwnerDiagnostic } from "./OwnerDiagnostic";
 import { ReplyAnnouncement } from "./ReplyAnnouncement";
@@ -668,7 +668,7 @@ function PanelPossessions({ model, platform }: { model: AppModel; platform: Retu
 /** `before` and the time since `startedAt`, joined; the clock is read only inside `PanelElapsed`. */
 function panelSubtitle(model: AppModel, before: readonly (string | undefined)[], startedAt?: string, after: readonly (string | undefined)[] = []): ComponentChildren {
   const started = parseTime(startedAt);
-  const parts: ComponentChildren[] = [...before.filter(Boolean), ...(started === undefined ? [] : [<PanelElapsed key="elapsed" clock={model.now} started={started} />]), ...after.filter(Boolean)];
+  const parts: ComponentChildren[] = [...before.filter(Boolean), ...(started === undefined ? [] : [<ClockElapsed key="elapsed" clock={model.now} started={started} />]), ...after.filter(Boolean)];
   return parts.length ? parts.flatMap((part, index) => index ? [" · ", part] : [part]) : undefined;
 }
 
@@ -862,11 +862,10 @@ function PanelDetail({ model, tabLabel, onBack, artifactPlatform, visible }: { v
   const detailBodies = useMemo(() => new HistoryBodies(1), [model, bodyId, bodyHandle, bodyEpoch, bodyReader, bodyRoute]);
   useEffect(() => {
     if (!bodyId) return;
-    const cancel = new Cancel();
-    void model.loadBody(bodyId, undefined, { bodies: detailBodies, cancel });
-    return () => { cancel.cancel(); detailBodies.dispose(); };
+    void model.loadBody(bodyId, undefined, detailBodies);
+    return () => detailBodies.dispose();
   }, [model, bodyId, detailBodies]);
-  const detailBody = bodyId === undefined ? undefined : detailBodies.get(model.bodyCacheKey(bodyId));
+  const detailBody = bodyId === undefined ? undefined : detailBodies.get(bodyId);
   const elapsed = useStepDuration(model, step, visible && detail?.kind === "step");
   const backRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
