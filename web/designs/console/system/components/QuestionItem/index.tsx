@@ -1,4 +1,5 @@
-export function QuestionItem({ title, age, question, current, onClick }: { title: string; age?: string | undefined; question: string; current: boolean; onClick: () => void }) {
+import type { ComponentChildren } from "preact";
+export function QuestionItem({ title, age, question, current, onClick }: { title: string; age?: ComponentChildren | undefined; question: string; current: boolean; onClick: () => void }) {
   return (
     <button type="button" class="qitem" aria-current={current ? "true" : undefined} onClick={onClick}>
       <small>

@@ -81,6 +81,21 @@ describe("AppModel over the fake transport", () => {
     expect(model.context.value).toEqual({ inputTokens: 41200, threshold: 200000, state: "normal", fill: 41200 * 100 / 200000 });
   });
 
+  it("releases a fetched body when its conversation window exits", async () => {
+    const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
+    try {
+      const reader = model.longReader.peek()!;
+      const key = model.bodyCacheKey("savedassistant");
+      const pending = model.loadBody("savedassistant");
+      await flush();
+      t.ok(t.calls("history.read").at(-1)!.id, { node_id: "savedassistant", kind: "assistant_response", text: "expanded body" });
+      await pending;
+      expect(model.bodyState("savedassistant")?.text).toBe("expanded body");
+      model.navigate({ view: "analytics" });
+      expect(reader.bodies.get(key)).toBeUndefined();
+    } finally { model.dispose(); }
+  });
+
   it("rejects a late full-body fetch after navigation cancellation", async () => {
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = [{ node_id: "savedassistant", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "prefix", text_complete: false }] }];
@@ -89,6 +104,7 @@ describe("AppModel over the fake transport", () => {
     try {
       const pending = model.loadBody("savedassistant");
       const bodyKey = model.bodyCacheKey("savedassistant");
+      const reader = model.longReader.peek()!;
       await flush();
       const call = t.calls("history.read").at(-1);
       expect(call).toBeDefined();
@@ -96,7 +112,7 @@ describe("AppModel over the fake transport", () => {
       model.navigate({ view: "analytics" });
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "late full body" });
       await pending;
-      expect(model.bodies.peek().get(bodyKey)?.text).toBeUndefined();
+      expect(reader.bodies.get(bodyKey)?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 
@@ -110,12 +126,13 @@ describe("AppModel over the fake transport", () => {
       expect(call).toBeDefined();
       expect(call!.args).toMatchObject({ node_id: "savedassistant" });
       const bodyKey = model.bodyCacheKey("savedassistant");
-      expect(model.bodies.peek().get(bodyKey)).toMatchObject({ loading: true, text: undefined });
+      const reader = model.longReader.peek()!;
+      expect(reader.bodies.get(bodyKey)).toMatchObject({ loading: true, text: undefined });
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "successful but stale" });
       model.navigate({ view: "analytics" });
       expect(model.route.peek()).not.toBe(beforeRoute);
       await pending;
-      expect(model.bodies.peek().get(bodyKey)?.text).toBeUndefined();
+      expect(reader.bodies.get(bodyKey)?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 
@@ -181,7 +198,7 @@ describe("AppModel over the fake transport", () => {
     } finally { model.dispose(); }
   });
 
-  it("cancels an evicted body read before its stale next cursor", async () => {
+  it("cancels a duplicate body read before its stale next cursor", async () => {
     const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = [{ node_id: "body-node", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "saved", text_complete: true }] }];
       owner.historyRevisions.lead = 2;
@@ -192,7 +209,7 @@ describe("AppModel over the fake transport", () => {
       const first = t.calls("history.read").at(-1);
       expect(first).toBeDefined();
       const key = model.bodyCacheKey("body-node", "answer");
-      const evicted = new Map(model.bodies.peek()); evicted.delete(key); model.bodies.value = evicted;
+      const reader = model.longReader.peek()!;
       const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
       expect(t.calls("history.read")).toHaveLength(1);
@@ -200,11 +217,11 @@ describe("AppModel over the fake transport", () => {
       model.navigate({ view: "analytics" });
       await firstRead; await duplicate;
       expect(t.calls("history.read")).toHaveLength(1);
-      expect(model.bodies.peek().get(key)?.text).toBeUndefined();
+      expect(reader.bodies.get(key)?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 
-  it("coalesces an evicted body read through successful cursor pagination", async () => {
+  it("coalesces a duplicate body read through successful cursor pagination", async () => {
     const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = [{ node_id: "body-node", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "saved", text_complete: true }] }];
       owner.historyRevisions.lead = 2;
@@ -215,7 +232,7 @@ describe("AppModel over the fake transport", () => {
       const first = t.calls("history.read").at(-1);
       expect(first).toBeDefined();
       const key = model.bodyCacheKey("body-node", "answer");
-      const evicted = new Map(model.bodies.peek()); evicted.delete(key); model.bodies.value = evicted;
+      const reader = model.longReader.peek()!;
       const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
       expect(t.calls("history.read")).toHaveLength(1);

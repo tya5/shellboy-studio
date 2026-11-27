@@ -1,3 +1,4 @@
+import { clockAge } from "./clock-display";
 import { CoreBanner, CoreStatusLink } from "./CoreSettings";
 import { SidebarTree, siblingPositions } from "./SidebarTree";
 import { normalizeFilter, type ListFilter } from "../../../data/src/store";
@@ -23,7 +24,7 @@ import { ThreadTagEditor } from "../system/components/ThreadTagEditor";
 import { ThreadMovePicker } from "../system/components/ThreadMovePicker";
 import { ShellFooter, ShellToggle } from "../system/components/ShellToggle";
 import { useSidebarThreadSelection } from "../system/components/SidebarThreadSelection";
-import { formatAge, formatCount } from "../../../ui-core/src";
+import { formatCount } from "../../../ui-core/src";
 import { ThreadHeader } from "./ThreadHeader";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
@@ -44,6 +45,16 @@ export function App({ context }: { context: DesignContext }) {
   const model = context.model;
   const appRef = useRef<HTMLDivElement>(null);
   const panelVisible = () => (appRef.current?.clientWidth ?? 0) >= 1180;
+  const [narrowSidebar, setNarrowSidebar] = useState(false);
+  useLayoutEffect(() => {
+    const app = appRef.current;
+    if (!app) return;
+    const update = () => setNarrowSidebar(app.clientWidth > 0 && app.clientWidth < 900);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(app);
+    return () => observer.disconnect();
+  }, []);
   const [phonePanel, setPhonePanel] = useState<string>();
   const activityThread = model.coreActivityThread.value;
   const openThread = model.handle.value?.threadId;
@@ -89,6 +100,7 @@ export function App({ context }: { context: DesignContext }) {
   const route = model.route.value;
   useEffect(() => { model.actionError.value = undefined; }, [model, route]);
   const [drawer, setDrawer] = useState(false);
+  const sidebarClock = (narrowSidebar ? drawer : !context.prefs.value.navCollapsed) ? model.coarseNow : undefined;
   const [settings, setSettings] = useState(false);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<ListFilter>({});
@@ -321,7 +333,7 @@ export function App({ context }: { context: DesignContext }) {
                     return <ThreadItem key={r.key} sidebar treePosition={positions[index]} unread={unread} beforeLink={threadSelection.checkbox(id, r.summary.title, r.summary.archived_at !== undefined)} linkId={sidebarLinkId(r.key)}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
-                      depth={r.depth} current={id === sidebarSelected} pending={r.pending} pendingExact={r.pendingExact} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
+                      depth={r.depth} current={id === sidebarSelected} pending={r.pending} pendingExact={r.pendingExact} age={clockAge(sidebarClock, r.summary.updated_at)}
                       childrenFold={r.descendants ? { count: r.descendants, awaiting: r.awaiting, running: r.running, open: expanded,
                         label: t("sidebar.children", { n: r.descendants, awaiting: r.awaiting, running: r.running }),
                         awaitingLabel: t("sidebar.needsYou"), runningLabel: statusLabel(t, "running"),

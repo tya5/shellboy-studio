@@ -1,3 +1,4 @@
+import { HistoryBodies } from "./history-bodies";
 import type { HistoryWindowInput } from '../../data/src/history-input';
 import { captureConversationInput, conversationIdentityEqual, savedAttemptIds, captureCurrentWork, type ConversationIdentity, type ConversationSemanticInput } from "./conversation-input";
 import type { ThreadHandle } from "../../data/src/store";
@@ -98,6 +99,7 @@ type AdoptedBeforeRead = { handle: ThreadHandle; epoch: number; ids: ReadonlySet
 type PreparedConversationPublication = { retiring?: ReadonlySet<string>; replacement: boolean; publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
 
 export class ConversationWindow {
+  readonly bodies = new HistoryBodies(64);
   private readonly reader: WindowReader;
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
   private buckets = new Map<number, Bucket>();
@@ -380,6 +382,7 @@ export class ConversationWindow {
   dispose(): void {
     this.disposed = true;
     this.conversationInputOwner = undefined;
+    this.bodies.dispose();
     this.acceptedView.dispose();
     this.stopTimer?.();
     this.stopTimer = undefined;

@@ -1,3 +1,5 @@
+import { HistoryBodies } from "../../../ui-core/src/history-bodies";
+import { useClockText } from "./clock-display";
 import { SchedulePanel } from "./SchedulePanel";
 import { OwnerDiagnostic } from "./OwnerDiagnostic";
 import { ReplyAnnouncement } from "./ReplyAnnouncement";
@@ -385,7 +387,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
     {running ? <>
       <span data-status-description>{running.label}</span>
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
-      {start === undefined ? null : <span>{formatDuration(model.now.value - start)}</span>}
+      {start === undefined ? null : <span><PanelElapsed model={model} started={start} /></span>}
     </> : null}
     {recovery ? <>{model.canRetry.value ? <Button aria-describedby="conversation-retry-note" onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}{recovery.configuration ? <ConnectionRecovery model={model} /> : null}</> : null}
   </> : " "}</div>;
@@ -532,10 +534,10 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   const merged:WorkElementDisplay=display.state&&display.state.source==="wire"&&step.exitCode!==undefined&&step.status!==undefined?{...display,state:{...display.state,executionStatus:step.status,exitCode:step.exitCode}}:display;
   const formatted=formatWorkElementDisplay(merged);
   const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,iconRole:"work.terminal" as const}:formatted;
+  const elapsed = useClockText(open && step.status === "running" && step.durationMs === undefined && parseTime(step.startedAt) !== undefined && (display.detailPolicy === "actual-safe-typed" || display.detailPolicy === "existing-shell-output") ? model.now : undefined, now => open ? stepDuration(step, now) : undefined, [open, step]);
   if(display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
   const command = fullCommand ?? step.command;
   const summary = [step.description, formatted.contentLabel].find(candidate => candidate?.trim() && candidate.trim() !== step.command.trim() && candidate.trim() !== command.trim())?.trim() ?? t("output.shellSummary");
-  const elapsed = open ? stepDuration(step, step.status === "running" ? model.now.value : 0) : undefined;
   const duration = elapsed && step.status === "running" ? t("output.durationSoFar", { duration: elapsed }) : elapsed;
   return <WorkElementRow display={{...shellDisplay, contentLabel: summary, visibleContext: []}} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={next => {
     if(next!==open)model.toolStepChoices.value=new Map(model.toolStepChoices.peek()).set(step.executionId,next);
@@ -661,7 +663,7 @@ function PanelPossessions({ model, platform }: { model: AppModel; platform: Retu
 
 /** The one reader of the 1 s clock in a panel list: each second re-renders this text, not the list. */
 function PanelElapsed({ model, started }: { model: AppModel; started: number }) {
-  return <>{formatDuration(Math.max(0, model.now.value - started))}</>;
+  return <>{useClockText(model.now, now => formatDuration(Math.max(0, now - started)), [started])}</>;
 }
 
 /** `before` and the time since `startedAt`, joined; the clock is read only inside `PanelElapsed`. */
@@ -702,7 +704,7 @@ function panelOperationError(model: AppModel, id: string): string | undefined {
   return state && state.disposition !== "pending" ? model.t.value(state.kind === "answer" ? "inbox.answerFailed" : "work.cancelFailed", { message: state.error }) : undefined;
 }
 
-function PanelActivity({ model }: { model: AppModel }) {
+function PanelActivity({ model, visible }: { model: AppModel; visible: boolean }) {
   const t = model.t.value;
   const [runStopConfirm, setRunStopConfirm] = useState<{ runId: string; opener: HTMLButtonElement }>();
   const requestStop = useContext(RequestShellStop);
@@ -734,7 +736,7 @@ function PanelActivity({ model }: { model: AppModel }) {
         // Only Core's typed foreground fact on a running shell; absent or null shows no word.
         const placement = shellRunning && typeof shell?.foreground === "boolean" ? shell.foreground ? "foreground" : "background" : undefined;
         return <ListRow key={row.id} id={row.id} title={label} command={command?.trim() !== label ? command : undefined}
-          subtitle={panelSubtitle(model, section.kind === "step" ? [] : [state], row.startedAt)} icon={section.icon}
+          subtitle={panelSubtitle(model, section.kind === "step" ? [] : [state], visible ? row.startedAt : undefined)} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
           onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener), true)} menuLabel={t("panel.rowActions")}
           // The Turn waits on a foreground shell: its exact-execution Background action moves out of the menu onto the row.
@@ -752,7 +754,7 @@ function PanelActivity({ model }: { model: AppModel }) {
   </div>;
 }
 
-function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "asked_by" }) {
+function PanelReplies({ model, side, visible }: { model: AppModel; visible: boolean; side: "owed_by" | "asked_by" }) {
   const t = model.t.value;
   const tab = side === "owed_by" ? "reply-needed" : "awaiting-reply";
   const page = model.replyPages[side].value;
@@ -774,7 +776,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
       const actions = [...(target ? [{ key: "open", label: t("panel.openThread"), href: target }] : []),
         ...(side === "asked_by" ? [panelCancel(model, reply.message_id, "reply")] : [])];
       return <ListRow key={reply.message_id} id={reply.message_id} title={[party, reply.excerpt || t("work.textUnavailable")].filter(Boolean).join(" · ")}
-        subtitle={panelSubtitle(model, [], reply.created_at, [askedBack?.some(duty => duty.message_id === reply.message_id) ? t("convo.relation.awaiting_own_ask") : undefined])} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
+        subtitle={panelSubtitle(model, [], visible ? reply.created_at : undefined, [askedBack?.some(duty => duty.message_id === reply.message_id) ? t("convo.relation.awaiting_own_ask") : undefined])} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
         menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener), true)} />;
     })}
     {page.loading && !page.loaded || page.loadingMore ? <p role="status">{t("common.loading")}</p> : null}
@@ -845,7 +847,7 @@ function ShellActionMenu({ model, executionId, command }: { model: AppModel; exe
   return <span class="shell-action-menu">{menu.trigger}{menu.menu}</span>;
 }
 
-function PanelDetail({ model, tabLabel, onBack, artifactPlatform }: { model: AppModel; tabLabel: string; onBack: () => void; artifactPlatform: ReturnType<typeof useArtifactReveal> }) {
+function PanelDetail({ model, tabLabel, onBack, artifactPlatform, visible }: { visible: boolean; model: AppModel; tabLabel: string; onBack: () => void; artifactPlatform: ReturnType<typeof useArtifactReveal> }) {
   const t = model.t.value;
   const detail = model.panelDetail.value;
   const step = model.selectedStep.value;
@@ -853,10 +855,20 @@ function PanelDetail({ model, tabLabel, onBack, artifactPlatform }: { model: App
   const started = formatClock(step?.startedAt ?? running?.startedAt, true);
   const stepId = detail?.kind === "step" ? detail.id : undefined;
   useEffect(() => stepId && (step || running) ? model.watchOutput(stepId) : undefined, [model, stepId, !!(step || running)]);
+  const bodyId = detail?.kind === "message" || detail?.kind === "reply" ? detail.id : undefined;
+  const bodyHandle = model.handle.value;
+  const bodyEpoch = bodyHandle?.liveEpochSignal.value;
+  const bodyReader = model.longReader.value;
+  const bodyRoute = model.route.value;
+  const detailBodies = useMemo(() => new HistoryBodies(1), [model, bodyId, bodyHandle, bodyEpoch, bodyReader, bodyRoute]);
   useEffect(() => {
-    if (!detail || (detail.kind !== "message" && detail.kind !== "reply") || model.bodyState(detail.id)) return;
-    void model.loadBody(detail.id);
-  }, [model, detail]);
+    if (!bodyId) return;
+    const cancel = new Cancel();
+    void model.loadBody(bodyId, undefined, { bodies: detailBodies, cancel });
+    return () => { cancel.cancel(); detailBodies.dispose(); };
+  }, [model, bodyId, detailBodies]);
+  const detailBody = bodyId === undefined ? undefined : detailBodies.get(model.bodyCacheKey(bodyId));
+  const elapsed = useClockText(visible && step?.status === "running" && step.durationMs === undefined && parseTime(step.startedAt) !== undefined ? model.now : undefined, now => step ? stepDuration(step, now) : undefined, [step]);
   const backRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
   const back = <Button buttonRef={backRef} variant="ghost" aria-label={t("panel.backToTab", { tab: tabLabel })} data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;
@@ -868,7 +880,6 @@ function PanelDetail({ model, tabLabel, onBack, artifactPlatform }: { model: App
     const description = step?.description?.trim() || (running?.label !== running?.command?.trim() ? running?.label : undefined);
     const label = toolLabel(description, command, t("work.textUnavailable"));
     const shellCommand = command ?? running?.command ?? model.shells.value.get(detail.id)?.command_excerpt ?? label;
-    const elapsed = step ? stepDuration(step, model.now.value) : undefined;
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("details.title")}</h3></div>
       {step || running ? <><div class="cmd"><Icon role="work.command" />{description ? <span class="stack"><span>{label}</span>{command && command.trim() !== label ? <span class="mono muted caption">{command}</span> : null}</span> : <span>{label}</span>}</div>
         <KeyValue rows={[
@@ -887,10 +898,10 @@ function PanelDetail({ model, tabLabel, onBack, artifactPlatform }: { model: App
     const row = model.work.value.pending.find(item => item.id === detail.id);
     const action = row ? panelCancel(model, row.id) : undefined;
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("work.pending")}</h3></div>
-      {row ? <KeyValue rows={[{ key: t("work.pending"), value: model.bodyState(row.id)?.text ?? (row.label || t("work.textUnavailable")) }, { key: t("details.status"), value: deliveryStateLabel(t, row.state) }]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
+      {row ? <KeyValue rows={[{ key: t("work.pending"), value: detailBody?.text ?? (row.label || t("work.textUnavailable")) }, { key: t("details.status"), value: deliveryStateLabel(t, row.state) }]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
       {action ? <Button disabled={action.disabled} onClick={action.run}>{action.label}</Button> : null}
       {error ? <p role="alert">{error}</p> : null}
-      {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
+      {detailBody?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
     </section>;
   }
   if (detail.kind === "artifact") return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}</div><ArtifactDetail model={model} platform={artifactPlatform} /></section>;
@@ -911,7 +922,7 @@ function PanelDetail({ model, tabLabel, onBack, artifactPlatform }: { model: App
   }
   const side = detail.replySide ?? "asked_by";
   const reply = model.replyPages[side].value.items.find(row => row.message_id === detail.id);
-  const body = model.bodyState(detail.id);
+  const body = detailBody;
   const peer = reply && (side === "owed_by" ? reply.sender.thread_id : reply.recipient.kind === "thread" ? reply.recipient.thread_id : undefined);
   const replyCancel = reply && side === "asked_by" ? panelCancel(model, reply.message_id, "reply") : undefined;
   const canAnswer = reply && (side === "owed_by" || reply.recipient.kind === "name" && reply.recipient.name === "human");
@@ -1000,8 +1011,8 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
         const active = tab.id === selectedTab;
         const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment" || detail.kind === "artifact");
         return <PanelPage key={tab.id} id={tab.id} hidden={!active || panelCollapsed}>
-          {tab.id === "settings" ? (active && !panelCollapsed && model.details.value ? <ThreadSettingsPanel key={owner.state === "connected" ? owner.info.instance_id ?? "connected" : owner.state} model={model} details={model.details.value} destination={destination} /> : null) : <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? (usageThread ? <ThreadAnalytics key={usageKey} model={model} threadId={usageThread} /> : null) : tab.id === "possessions" ? <PanelPossessions model={model} platform={artifactPlatform} /> : <PanelReplies model={model} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>}
-          {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} artifactPlatform={artifactPlatform} /> : null}
+          {tab.id === "settings" ? (active && !panelCollapsed && model.details.value ? <ThreadSettingsPanel key={owner.state === "connected" ? owner.info.instance_id ?? "connected" : owner.state} model={model} details={model.details.value} destination={destination} /> : null) : <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} visible={(phone || panelVisible) && active && !panelCollapsed && !drilledIn} /> : tab.id === "info" ? (usageThread ? <ThreadAnalytics key={usageKey} model={model} threadId={usageThread} /> : null) : tab.id === "possessions" ? <PanelPossessions model={model} platform={artifactPlatform} /> : <PanelReplies model={model} visible={(phone || panelVisible) && active && !panelCollapsed && !drilledIn} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>}
+          {drilledIn ? <PanelDetail visible={!!(phone || panelVisible)} key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} artifactPlatform={artifactPlatform} /> : null}
         </PanelPage>;
       })}
     </div>
