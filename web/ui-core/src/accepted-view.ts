@@ -100,7 +100,14 @@ export class AcceptedView<T> {
   }
   /** Revoke before cancellation/other external callbacks, without replacing display. */
   revoke(): void { batch(() => { this.staged = undefined; this.pending = false; const capability=mintCapability(); this.capability.value=capability; }); }
-  dispose(): void { this.ended = true; this.revoke(); this.listeners.clear(); }
+  dispose(released?: T): void {
+    this.ended = true;
+    this.listeners.clear();
+    batch(() => {
+      this.revoke();
+      if (released !== undefined) this.value.value = captureAcceptedInput(released);
+    });
+  }
   private notify(): void {
     if (this.notifying || this.ended) return;
     this.notifying = true;

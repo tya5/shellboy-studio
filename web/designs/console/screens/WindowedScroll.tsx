@@ -20,6 +20,24 @@ export function heldRange(visible: { first: number; last: number }, total: numbe
   return range;
 }
 
+type HeldRef<T> = { current: T };
+
+/** Context can outlive a render; none of these functions closes over its reader or scroll port. */
+function useMountedViewport(viewportState: { top: number; height: number; following: boolean; fallback: number }, focusedKey: string | undefined,
+  lastTop: HeldRef<number>, active: HeldRef<MountedViewport | undefined>, mounted: HeldRef<Map<Element, string>>,
+  byKey: HeldRef<Map<string, HTMLElement>>, dirty: HeldRef<Set<HTMLElement>>, resize: HeldRef<ResizeObserver | undefined>) {
+  const mount = useCallback((key: string, element: HTMLElement | null) => {
+    const old = byKey.current.get(key);
+    if (old) { resize.current?.unobserve(old); mounted.current.delete(old); dirty.current.delete(old); byKey.current.delete(key); }
+    if (element) {
+      mounted.current.set(element, key); byKey.current.set(key, element); dirty.current.add(element);
+      resize.current?.observe(element);
+    }
+  }, []);
+  const commit = useCallback((viewport: MountedViewport | undefined) => { active.current = viewport; }, []);
+  return useMemo(() => ({ ...viewportState, focusedKey, get top() { return lastTop.current; }, mount, commit }), [viewportState, focusedKey]);
+}
+
 export type WindowScrollModel = Pick<AppModel,'t'|'shells'|'handle'|'senderPageSelected'|'bodyState'>;
 
 export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine, scrollPort, renderAcceptedView }: { model: WindowScrollModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren; scrollPort?: ScrollViewPort<object>; renderAcceptedView?: (ref: WindowAcceptedSnapshot) => ComponentChildren }) {
@@ -64,16 +82,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const byKey = useRef(new Map<string, HTMLElement>());
   const dirty = useRef(new Set<HTMLElement>());
   const resize = useRef<ResizeObserver>();
-  const mount = useCallback((key: string, element: HTMLElement | null) => {
-    const old = byKey.current.get(key);
-    if (old) { resize.current?.unobserve(old); mounted.current.delete(old); dirty.current.delete(old); byKey.current.delete(key); }
-    if (element) {
-      mounted.current.set(element, key); byKey.current.set(key, element); dirty.current.add(element);
-      resize.current?.observe(element);
-    }
-  }, []);
-  const commit = useCallback((viewport: MountedViewport | undefined) => { active.current = viewport; }, []);
-  const viewport = useMemo(() => ({ ...viewportState, focusedKey, get top() { return lastTop.current; }, mount, commit }), [viewportState, focusedKey]);
+  const viewport = useMountedViewport(viewportState, focusedKey, lastTop, active, mounted, byKey, dirty, resize);
   const tellWindow = (box: HTMLElement, start: number, following: boolean) => {
     const top = box.scrollTop - start;
     const current = active.current;
@@ -169,12 +178,18 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   // One frame belongs to this mounted scroll root; RO delivery only invalidates it.
   const observed = useRef(new Set<Element>());
   const frame = useRef<number | undefined>(undefined);
-  const latest = useRef({ sync, port });
+  const latest = useRef<{ sync: () => void; port: ScrollViewPort<object> }>();
   latest.current = { sync, port };
   const cancelFrame = () => {
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     frame.current = undefined;
   };
+  useLayoutEffect(() => win.onDispose(() => {
+    latest.current = undefined;
+    active.current = undefined;
+    cancelFrame();
+    writer.current.cancel();
+  }), [win]);
   useLayoutEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
     let observing = true;
@@ -182,17 +197,20 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       if (!observing) return;
       for (const entry of entries) if (mounted.current.has(entry.target)) dirty.current.add(entry.target as HTMLElement);
       if (frame.current !== undefined) return;
-      const owner = latest.current.port;
+      const owner = latest.current?.port;
+      if (!owner) return;
       const ref = owner.acceptedView.peek();
       frame.current = requestAnimationFrame(() => {
         frame.current = undefined;
-        if (latest.current.port === owner && owner.acceptedView.isCurrent(ref)) latest.current.sync();
+        if (latest.current?.port === owner && owner.acceptedView.isCurrent(ref)) latest.current.sync();
       });
     });
     resize.current = observer;
     for (const node of mounted.current.keys()) observer.observe(node);
     return () => {
       observing = false;
+      latest.current = undefined;
+      active.current = undefined;
       cancelFrame();
       observer.disconnect();
       observed.current.clear();

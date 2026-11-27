@@ -100,7 +100,8 @@ type PreparedConversationPublication = { retiring?: ReadonlySet<string>; replace
 
 export class ConversationWindow {
   readonly bodies = new HistoryBodies(64);
-  private readonly reader: WindowReader;
+  private reader: WindowReader;
+  private readonly disposal = new Set<() => void>();
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
   private buckets = new Map<number, Bucket>();
   private heights = new Heights();
@@ -148,7 +149,7 @@ export class ConversationWindow {
   constructor(reader: WindowReader, options: WindowOptions = {}) {
     this.reader={read:async(args,cancel)=>{
       const out=await reader.read(args,cancel);
-      if(!out.ok&&out.error.kind==='invalid_response'){
+      if(!this.disposed&&!out.ok&&out.error.kind==='invalid_response'){
         const ref=this.acceptedView.peek(),reason=out.error.message;
         this.diagnostic.value=Object.freeze({reason:reason==='input-bound'||reason==='cyclic-input'?reason:'invalid-input',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
       }
@@ -378,15 +379,38 @@ export class ConversationWindow {
     this.pump();
   }
 
-  /** Leaving the view or the Thread: nothing more is read. */
+  onDispose(release: () => void): () => void {
+    if (this.disposed) { release(); return () => {}; }
+    this.disposal.add(release);
+    return () => { this.disposal.delete(release); };
+  }
+
+  /** Retire the reader and its borrowers before any late callback can use the old view. */
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
-    this.conversationInputOwner = undefined;
-    this.bodies.dispose();
-    this.acceptedView.dispose();
-    this.stopTimer?.();
-    this.stopTimer = undefined;
-    this.cancelAll();
+    batch(() => {
+      this.conversationInputOwner = undefined;
+      this.conversationCommit = undefined;
+      this.currentThread = undefined;
+      this.acceptedInput = undefined;
+      this.reader = { read: async () => ({ ok: false, error: { kind: "cancelled", message: "Reader disposed" } }) };
+      this.buckets.clear();
+      this.heights = new Heights();
+      this.wanted.clear();
+      this.failed.clear();
+      this.scrollRequest = this.scrollHandle = undefined;
+      this.lastAnchor = this.tailKnown = undefined;
+      this.total = 0;
+      this.bodies.dispose();
+      this.acceptedView.dispose({ generation: this.acceptedGeneration, epoch: this.epoch, disposed: true,
+        rows: [], range: undefined, total: 0, revision: undefined, pending: false });
+      this.stopTimer?.();
+      this.stopTimer = undefined;
+      this.cancelAll();
+      for (const release of this.disposal) release();
+      this.disposal.clear();
+    });
   }
 
   // ---- reads ----
