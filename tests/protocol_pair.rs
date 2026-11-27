@@ -67,7 +67,7 @@ fn thread_details_have_directional_reply_counts_and_awaiting_own_ask() {
 #[test]
 fn exact_protocol_44_status_run_item_carries_stop_settlement_failure() {
     use shellboy::{protocol::RunStopSettlementFailure, status::WorkItem};
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 47);
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 48);
     let row = |failure: Option<serde_json::Value>| {
         let mut row = json!({"kind":"run","id":"run-s","state":"stopping","thread_id":"t",
             "thread_title":"synthetic","current_connection":"c","current_model":"m",
@@ -286,7 +286,7 @@ fn core_schedule_and_service_reads_require_a_thread() {
 #[test]
 fn message_acceptance_and_reply_match_the_pinned_result_schemas() {
     use shellboy::protocol::{MessageAccepted, MessageReplied};
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 47);
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 48);
     let schema: serde_json::Value =
         serde_json::from_str(&shellboy::protocol::schema_json()).unwrap();
     let results = &schema["operation_results"];
