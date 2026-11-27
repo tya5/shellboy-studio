@@ -626,9 +626,12 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
   );
 }
 
+/** The one place that fixes the Activity section order: running, pending, services, schedules. Every section is always shown, with an empty line when it has no rows. Attachments are their own tab after it. */
 const activitySections = [
   { key: "running", label: "work.running", kind: "step", icon: "work.command" },
   { key: "pending", label: "panel.pending", kind: "message", icon: "panel.awaiting_reply" },
+  { key: "service", kind: "service" },
+  { key: "schedule", kind: "schedule" },
 ] as const;
 
 const possessionsSections = [
@@ -709,9 +712,13 @@ function PanelActivity({ model }: { model: AppModel }) {
   const runStopAvailable = !!runId;
   return <div class="panel-list" data-panel-list="work">
     {activitySections.map(section => {
+      if (section.key === "service" || section.key === "schedule") {
+        const kind = section.kind;
+        return model.handle.value ? <SchedulePanel key={`${model.handle.value.threadId}:${kind}`} model={model} kind={kind} open={(id, opener) => model.openInPanel({ kind, id }, panelFocusReturn(opener), true)} /> : null;
+      }
       const rows = work[section.key];
       const showRunStop = section.key === "running" && runStopAvailable;
-      return rows.length || showRunStop ? <section key={section.key}>{showRunStop
+      return <section key={section.key}>{showRunStop
         ? <ListDivider label={t(section.label)} count={rows.length} action={<Button variant="stop" onClick={event => { const targetRunId = model.details.value?.run_id; if (targetRunId) setRunStopConfirm({ runId: targetRunId, opener: event.currentTarget }); }}>{t("action.stopEverything")}</Button>} description={t("action.stopEverythingDescription")} />
         : <ListDivider label={t(section.label)} count={rows.length} />}{rows.map(row => {
         const state = row.state === "accepted" ? t("work.accepted") : t("work.held");
@@ -731,12 +738,10 @@ function PanelActivity({ model }: { model: AppModel }) {
           actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, command ?? row.label, requestStop, placement !== "foreground") : undefined} error={panelOperationError(model, row.id)}>
           {placement ? <StatusMark shell status="running" label={t(`work.${placement}`)} /> : null}
         </ListRow>;
-      })}</section> : null;
+      })}{rows.length ? null : <p class="caption muted">{t("schedule.none")}</p>}</section>;
     })}
-    {model.handle.value ? (["schedule", "service"] as const).map(kind => <SchedulePanel key={`${model.handle.value!.threadId}:${kind}`} model={model} kind={kind} open={(id, opener) => model.openInPanel({ kind, id }, panelFocusReturn(opener), true)} />) : null}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
     {workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted">{t("work.stale")}</div> : null}
-    {!work.running.length && !work.pending.length && !work.partial && !runStopAvailable ? <EmptyState compact role="empty.panelActivity" title={t("panel.empty.work")} body={t("panel.empty.workBody")} /> : null}
     {runStopConfirm ? <WorkSheet open role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title={t("action.stopEverything")} closeLabel={t("thread.deleteCancel")} describedBy="run-stop-description" onClose={() => setRunStopConfirm(undefined)} getReturnFocusTarget={() => runStopConfirm?.opener}>
       <div class="shell-stop-confirmation"><p id="run-stop-description">{t("action.stopEverythingDescription")}</p><Button variant="stop" onClick={() => { const { runId } = runStopConfirm!; setRunStopConfirm(undefined); void model.stopRun(runId); }}>{t("action.stopEverything")}</Button></div>
     </WorkSheet> : null}
