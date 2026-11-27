@@ -88,7 +88,7 @@ The service, in any language:
 3. writes `{"port": 51234, "token": "..."}` to `.app.endpoint` in its working directory, readable by the owner only (mode 0600; on Windows the folder's own permissions). Write a temp file and rename it, so nobody reads half of it;
 4. answers only requests that carry `Authorization: Bearer <token>` (401 otherwise).
 
-Studio reads `.app.endpoint` on every call and forwards only to the folder's own backend. The file is not served to the page. Keep credentials out of the folder: read them from the service's environment or a file the person put elsewhere. The service's output stays in Core (`shellboy shell read`), and it can use `shellboy message ask` and waits. Periodic work uses `shellboy schedule`.
+Studio reads `.app.endpoint` on every call and forwards only to the folder's own backend. Hidden files and folders (names starting with `.`, such as `.app.endpoint`, `.env`, `.git`) are never served to the page. Keep credentials out of the folder: read them from the service's environment or a file the person put elsewhere. The service's output stays in Core (`shellboy shell read`), and it can use `shellboy message ask` and waits. Periodic work uses `shellboy schedule`.
 
 ## Redistributing an app
 
@@ -153,31 +153,44 @@ shellboy.data.onChange(render);
 
 `thread.onChange` tells you the conversation changed, for the rare page that shows it. Prefer `data/`: the page shouldn't have to parse a conversation.
 
-**A tracker watcher: a service plus its board page.** The service polls the tracker and writes `data/issues.json`; the page draws it and asks the service to refresh on demand.
+**A tracker watcher: a service plus its board page.** The service polls the tracker every 5 minutes and writes `data/issues.json`; the page draws it, and its refresh button calls `/refresh`, which runs one poll and returns its result. A failed poll ends the process with a non-zero exit, so Core's failure notice reaches your Thread.
 
 ```python
 # service.py, started with: shellboy service add --thread "$SHELLBOY_THREAD_ID" --cwd ./tracker --command 'python3 service.py'
-import http.server, json, os, secrets, threading, time, urllib.request
+import http.server, json, os, secrets, threading, urllib.request
 token = secrets.token_hex(16)
+lock = threading.Lock()
 def poll():
+    req = urllib.request.Request("https://tracker.example/api/issues",
+        headers={"Authorization": "Bearer " + os.environ["TRACKER_TOKEN"]})  # credential from the environment, not the folder
+    with urllib.request.urlopen(req) as r: data = r.read()
+    with open("data/.next", "wb") as f: f.write(data)
+    os.replace("data/.next", "data/issues.json")   # the page's data.onChange fires
+def loop():
     while True:
-        req = urllib.request.Request("https://tracker.example/api/issues",
-            headers={"Authorization": "Bearer " + os.environ["TRACKER_TOKEN"]})  # credential from the environment, not the folder
-        with urllib.request.urlopen(req) as r: data = r.read()
-        with open("data/.next", "wb") as f: f.write(data)
-        os.replace("data/.next", "data/issues.json")   # the page's data.onChange fires
-        time.sleep(300)
+        try:
+            with lock: poll()
+        except Exception as e:
+            print("poll failed:", e, flush=True)
+            os._exit(1)   # a non-zero exit is what makes Core notify the Thread
+        wake.wait(300); wake.clear()
+wake = threading.Event()
 class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         if self.headers.get("Authorization") != "Bearer " + token:
             self.send_response(401); self.end_headers(); return
-        body = json.dumps({"ok": True}).encode()
-        self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
+        try:
+            with lock: poll()          # /refresh runs one poll and returns its result
+            code, body = 200, {"ok": True}
+        except Exception as e:
+            code, body = 502, {"ok": False, "error": str(e)}
+        out = json.dumps(body).encode()
+        self.send_response(code); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(out)
 srv = http.server.HTTPServer(("127.0.0.1", 0), H)
 fd = os.open(".app.endpoint.tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
 with os.fdopen(fd, "w") as f: json.dump({"port": srv.server_port, "token": token}, f)
 os.replace(".app.endpoint.tmp", ".app.endpoint")
-threading.Thread(target=poll, daemon=True).start()
+threading.Thread(target=loop, daemon=True).start()
 srv.serve_forever()
 ```
 

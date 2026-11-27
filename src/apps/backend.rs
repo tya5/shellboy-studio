@@ -8,8 +8,6 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub(super) const ENDPOINT: &str = ".app.endpoint";
-/// The file holds a port and a token; anything larger is not an endpoint file.
-const MAX_ENDPOINT: u64 = 4096;
 
 struct Endpoint {
     port: u16,
@@ -33,11 +31,11 @@ async fn read_endpoint(file: Option<std::path::PathBuf>) -> Result<Endpoint, Api
         .await
         .map_err(|e| unreadable(format!("{ENDPOINT} can't be opened: {e}")))?;
     opened
-        .take(MAX_ENDPOINT + 1)
+        .take(MAX_DATA as u64 + 1)
         .read_to_end(&mut bytes)
         .await
         .map_err(|e| unreadable(format!("{ENDPOINT} can't be read: {e}")))?;
-    if bytes.len() as u64 > MAX_ENDPOINT {
+    if bytes.len() > MAX_DATA {
         return Err(unreadable(format!("{ENDPOINT} is too large")));
     }
     let value: Value = serde_json::from_slice(&bytes)

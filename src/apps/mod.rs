@@ -5,7 +5,7 @@
 //! Bounds (limits, not performance claims): `catalog::MAX_APPS` hosted (a listing is one Core page of 32 per request); `MAX_SESSIONS` file
 //! sessions, oldest dropped; `CALLS` backend calls at once; owner calls share the bridge's
 //! global semaphore; one hub session per app while `thread.onChange` waits and 30 s after; one lifecycle
-//! task per app while a page waits (data walks only for `data.onChange`). A host whose folder is gone gives up its slot.
+//! task per app while a page waits (data walks only for `data.onChange`). An unused host gives up its slot when a new app needs one.
 mod backend;
 pub mod catalog;
 mod host;
