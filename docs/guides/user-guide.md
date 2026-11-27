@@ -143,7 +143,27 @@ Keep default authentication for normal use. Explicit `--no-auth` is for disposab
 
 ## Apps, guides, and troubleshooting
 
-**Apps** lists the `shellboy-app:` artifacts of the open Thread: web apps a Thread built in a folder and registered with `shellboy artifact add --uri shellboy-app:./FOLDER`. The same app opens from the Thread's Possessions, and an HTML file registered as an artifact opens there as one static page without the app API. Review an app before using it: actions execute on the Studio host. `shellboy-studio guide user` and `shellboy-studio guide agent` print the bundled guides without starting the bridge. Startup rewrites `$SHELLBOY_DATA_DIR/studio/agent-guide.md`; the app API guide is served at `/_shellboy/guide.md`.
+**Apps** lists the `shellboy-app:` artifacts of the open Thread: web apps a Thread built in a folder and registered with `shellboy artifact add --uri shellboy-app:./FOLDER`. The same app opens from the Thread's Possessions, and an HTML file registered as an artifact opens there as one static page without the app API. Review an app before using it: its Thread may also have started a background service for it, which runs as a program on the owner's machine. `shellboy-studio guide user` and `shellboy-studio guide agent` print the bundled guides without starting the bridge. Startup rewrites `$SHELLBOY_DATA_DIR/studio/agent-guide.md`; the app API guide is served at `/_shellboy/guide.md`.
+
+**How an app fits together.** An app is one picture with four parts, and the Thread owns all of it:
+
+```text
+ Thread (owns the whole app; builds and changes both halves)
+   |
+   +-- artifact  = the frontend: a folder (shellboy-app:), versioned, opens in Apps
+   |                 |  shellboy.call(path, body)        shellboy.data.*
+   |                 v                                   |
+   +-- service   = the backend: a program Shellboy runs   |
+   |                 listens on 127.0.0.1, token in .app.endpoint
+   |                 its output stays readable in the Thread's shell list
+   |                                                     |
+   +-- data/     = shared state in the app folder <------+  (page, service and Thread all read it)
+```
+
+The page cannot start anything itself: when it needs a backend it calls it with `shellboy.call`, and Studio forwards the call only to that app's own service. A forked or rewound Thread gets the page, not the service; both Threads then share the folder's `data/`. If the service fails, the Thread is notified. Example: ask a Thread "watch my issue tracker and show me a board". It writes the board page, starts a service that polls the tracker and writes `data/issues.json`, and the page redraws whenever that file changes. Your tracker login stays outside the folder, written by you.
+
+To share an app, copy its folder (git or zip). It carries a README with the install steps (register the artifact, add the service), the credentials it needs (never inside the folder) and the questions the Thread should ask you about preferences. Ask a Thread to follow that README to install it. The folder's `.gitignore` excludes `data/` and `.app.endpoint`.
+
 
 If Studio cannot reach Core, check that Core is running under the same OS account, the data directories match, and both binaries match the release pairing. Studio does not downgrade the protocol. Do not reset data or restart an owner running work just to clear a mismatch. Follow the release notes for verification limits; the presence of an archive is not proof of a physical-device test.
 
@@ -281,6 +301,26 @@ Studio はループバックのまま、別の端末から届くプライベー�
 
 ### アプリ、ガイド、トラブル対応
 
-**アプリ** は開いているスレッドの `shellboy-app:` 成果物の一覧です。スレッドがフォルダに作り、`shellboy artifact add --uri shellboy-app:./FOLDER` で登録した Web アプリです。同じアプリはスレッドの所有物からも開けます。HTML ファイルを成果物として登録した場合は、アプリ API なしの単一ページとして開きます。操作は Studio が動く端末で実行されるので、使う前にアプリを確認してください。`shellboy-studio guide user` と `shellboy-studio guide agent` で Studio を起動せずに同梱ガイドを読めます。起動時には `$SHELLBOY_DATA_DIR/studio/agent-guide.md` が上書きされます。アプリ API のガイドは `/_shellboy/guide.md` で配信されます。
+**アプリ** は開いているスレッドの `shellboy-app:` 成果物の一覧です。スレッドがフォルダに作り、`shellboy artifact add --uri shellboy-app:./FOLDER` で登録した Web アプリです。同じアプリはスレッドの所有物からも開けます。HTML ファイルを成果物として登録した場合は、アプリ API なしの単一ページとして開きます。スレッドがアプリ用のバックグラウンドサービスを起動している場合があり、それはオーナーの端末上のプログラムとして動くので、使う前にアプリを確認してください。`shellboy-studio guide user` と `shellboy-studio guide agent` で Studio を起動せずに同梱ガイドを読めます。起動時には `$SHELLBOY_DATA_DIR/studio/agent-guide.md` が上書きされます。アプリ API のガイドは `/_shellboy/guide.md` で配信されます。
+
+**アプリの仕組み。** アプリは次の1枚の図で表せます。全体はスレッドが所有します。
+
+```text
+ スレッド（アプリ全体の所有者。両方の半分を作り、変更する）
+   |
+   +-- 成果物   = フロントエンド: フォルダ（shellboy-app:）。版管理され、アプリ画面で開く
+   |                 |  shellboy.call(path, body)        shellboy.data.*
+   |                 v                                   |
+   +-- サービス = バックエンド: Shellboy が動かすプログラム  |
+   |                 127.0.0.1 で待ち受け、トークンは .app.endpoint
+   |                 出力はスレッドのシェル一覧から読める    |
+   |                                                     |
+   +-- data/    = アプリフォルダ内の共有状態 <-------------+（ページ・サービス・スレッドが読む）
+```
+
+ページ自身は何も起動できません。バックエンドが必要なときは `shellboy.call` で呼び、Studio はそのアプリ自身のサービスにだけ転送します。フォークや巻き戻しで増えたスレッドにはページが付いてきますが、サービスは付いてきません。両方のスレッドがフォルダの `data/` を共有します。サービスが失敗するとスレッドに通知されます。例: スレッドに「課題トラッカーを監視してボードで見せて」と頼むと、ボードのページを作り、トラッカーを定期的に読んで `data/issues.json` に書くサービスを起動し、ページはそのファイルが変わるたびに描き直します。トラッカーのログイン情報はフォルダの外に、あなたが置きます。
+
+アプリを配るにはフォルダをコピー（git か zip）します。フォルダの README に、インストール手順（成果物の登録とサービスの追加）、必要な認証情報（フォルダの中には置かない）、スレッドが好みを尋ねる質問を書きます。インストールはスレッドにその README を実行してもらいます。フォルダの `.gitignore` は `data/` と `.app.endpoint` を除外します。
+
 
 Core に接続できない場合は、同じ OS アカウントで起動したか、データディレクトリが一致するか、リリースノートどおりの組み合わせかを確認します。古いプロトコルへの切り替えはありません。不一致を解消するためにデータを初期化したり、作業中のオーナーを無断で再起動したりしないでください。配布物があるだけでは実機検証済みとはいえません。検証範囲はリリースノートを参照してください。

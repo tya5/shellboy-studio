@@ -1496,6 +1496,27 @@ describe("Apps", () => {
     expect([...el.querySelectorAll(".card h2")].map(text)).toEqual(["First", "Later"]);
     expect(more()).toBeUndefined();
   });
+  it("does not say there are no apps while a first page without apps has a next page", async () => {
+    const { model, t, db } = await fixtureModel({ route: "inbox" });
+    const plain = db.answer;
+    db.answer = (c) => {
+      if (c.command !== "apps.list") return plain(c);
+      const first = (c.args as { cursor?: string }).cursor === undefined;
+      return { ok: true, result: first ? { apps: [], next_cursor: "p2" } : { apps: [{ name: "a2", title: "Later" }] } };
+    };
+    const el = draw(model);
+    await act(async () => {
+      model.applyRoute({ view: "apps" });
+      await settle(t, db);
+    });
+    expect(text(el)).not.toContain("No apps yet");
+    const more = () => [...el.querySelectorAll("button")].find((b) => b.textContent === model.t.value("apps.more"));
+    await act(async () => {
+      more()!.click();
+      await settle(t, db);
+    });
+    expect([...el.querySelectorAll(".card h2")].map(text)).toEqual(["Later"]);
+  });
   it("says what to do when there are none, and ships nothing of its own", async () => {
     const { model, t, db } = await fixtureModel({ route: "inbox" });
     const plain = db.answer;

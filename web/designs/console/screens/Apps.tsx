@@ -78,7 +78,7 @@ function AppList({ context }: { context: DesignContext }) {
       {failed ? <Notice tone="bad">{t("apps.openFailed", { name: failed.name, message: failed.message })}</Notice> : null}
       {list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : null}
       {list.thread === undefined ? <p class="muted caption">{t("apps.noThread")}</p> : null}
-      {list.loaded && list.apps.length === 0 ? <><EmptyState role="empty.apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} variant="ghost" onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
+      {list.loaded && list.apps.length === 0 && list.next === undefined ? <><EmptyState role="empty.apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} variant="ghost" onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
       {list.apps.length > 0 ? (
         <div class="grid">
           {list.apps.map((a) => (
