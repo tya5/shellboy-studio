@@ -1063,7 +1063,8 @@ impl Helper {
 async fn run_kills_what_the_script_started() {
     let f = fixture().await;
     // `.cmd` actions run under any PowerShell policy: the script text is not a file PowerShell is asked to
-    // run, so cmd hands it to `-Command`. The action is still started by the production Job path.
+    // run, so cmd hands it to `-Command`, found relative to the action file (`%~dp0`), not to the working
+    // directory. The action is still started by the production Job path.
     let script = |case: &str| {
         format!(
             "$p = Start-Process -FilePath powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -WindowStyle Hidden\r\n\
@@ -1079,7 +1080,7 @@ async fn run_kills_what_the_script_started() {
     };
     let start = |case: &str| {
         format!(
-            "@powershell -NoProfile -Command \"& ([scriptblock]::Create((Get-Content -Raw scripts/{case}.txt)))\"\r\n"
+            "@powershell -NoProfile -Command \"& ([scriptblock]::Create((Get-Content -Raw '%~dp0..\\scripts\\{case}.txt')))\"\r\n"
         )
     };
     write_app(
