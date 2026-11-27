@@ -27,6 +27,11 @@ pub fn ok(instance: &str, result: Value) -> Reply {
     ))
 }
 
+/// A successful owner reply for a `mock_replies` handler.
+pub fn ok_reply(result: Value) -> Option<Reply> {
+    Some(ok("inst1", result))
+}
+
 pub fn events(instance: &str, status: &str, cursor: &str, changes: &[&str], more: bool) -> Reply {
     events_with_config(instance, status, cursor, changes, more, false)
 }
@@ -57,7 +62,7 @@ pub fn unreachable_owner() -> Reply {
     ))
 }
 
-type Handler = dyn Fn(&Command) -> Option<Value> + Send + Sync;
+type Handler = dyn Fn(&Command) -> Option<Reply> + Send + Sync;
 
 pub struct MockOwner {
     events_rx: tokio::sync::Mutex<mpsc::UnboundedReceiver<Reply>>,
@@ -68,6 +73,13 @@ pub struct MockOwner {
 
 pub fn mock(
     handler: impl Fn(&Command) -> Option<Value> + Send + Sync + 'static,
+) -> (Arc<MockOwner>, mpsc::UnboundedSender<Reply>) {
+    mock_replies(move |command| handler(command).map(|result| ok("inst1", result)))
+}
+
+/// Like `mock`, but the handler may answer with an owner error as well as a result.
+pub fn mock_replies(
+    handler: impl Fn(&Command) -> Option<Reply> + Send + Sync + 'static,
 ) -> (Arc<MockOwner>, mpsc::UnboundedSender<Reply>) {
     let (tx, rx) = mpsc::unbounded_channel();
     (
@@ -92,7 +104,7 @@ impl Owner for MockOwner {
         }
         self.other_calls.lock().unwrap().push(command.clone());
         match (self.handler)(&command) {
-            Some(result) => ok("inst1", result),
+            Some(reply) => reply,
             None => pending().await,
         }
     }
@@ -202,4 +214,15 @@ pub async fn login<O: Owner>(addr: std::net::SocketAddr, state: &AppState<O>) ->
         .next()
         .unwrap()
         .to_owned()
+}
+
+/// The body of a plain GET with no credentials, as a sandboxed page would send it.
+pub async fn http_get(addr: std::net::SocketAddr, path: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).await.unwrap();
+    response
 }

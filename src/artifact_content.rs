@@ -7,22 +7,15 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
+use base64::Engine;
 use serde::Deserialize;
 use shellboy::protocol::{
-    ArtifactGetArgs, ArtifactSelected, Command, ConfigGetArgs, PROTOCOL_VERSION,
+    ArtifactGetArgs, ArtifactReadArgs, ArtifactSelected, Command, PROTOCOL_VERSION,
 };
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
-    pin::Pin,
-    task::{Context, Poll},
 };
-use tokio::{
-    fs::File,
-    io::{AsyncRead, AsyncReadExt, ReadBuf, Take},
-    sync::OwnedSemaphorePermit,
-};
-use tokio_util::io::ReaderStream;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,10 +49,9 @@ fn preview_type(mime: &str) -> bool {
             && !mime.eq_ignore_ascii_case("text/html")
 }
 
+/// What the desktop hands to the system's own application. HTML is shown as a page in the Apps frame.
 fn open_type(mime: &str) -> bool {
-    preview_type(mime)
-        || mime_type(mime).eq_ignore_ascii_case("text/html")
-        || mime_type(mime).eq_ignore_ascii_case("application/pdf")
+    preview_type(mime) || mime_type(mime).eq_ignore_ascii_case("application/pdf")
 }
 
 fn local_path(uri: &str) -> Option<PathBuf> {
@@ -109,7 +101,7 @@ pub(crate) async fn content<O: Owner>(
     {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let Ok(permit) = state.global.clone().try_acquire_owned() else {
+    let Ok(_permit) = state.global.clone().try_acquire_owned() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     let Some(version) = resolve(
@@ -122,15 +114,16 @@ pub(crate) async fn content<O: Owner>(
     else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let Some(path) = local_path(&version.version.uri) else {
-        return StatusCode::NO_CONTENT.into_response();
-    };
     let Some(mime) = version.version.mime else {
         return StatusCode::NO_CONTENT.into_response();
     };
     match target.action {
-        Action::Preview if preview_type(&mime) => preview(&state, &path, permit).await,
-        Action::Open if open_type(&mime) => open_file(&path).await,
+        // The owner alone decides what the version's URI lets anyone read.
+        Action::Preview if preview_type(&mime) => preview(&state, &target).await,
+        Action::Open if open_type(&mime) => match local_path(&version.version.uri) {
+            Some(path) => open_file(&path).await,
+            None => StatusCode::NO_CONTENT.into_response(),
+        },
         _ => StatusCode::NO_CONTENT.into_response(),
     }
 }
@@ -402,59 +395,28 @@ async fn run_reveal(runner: &impl RevealRunner, platform: Platform, path: &Path)
         .ok_or(())
 }
 
-// Keep the same shared permit until the body finishes or the browser cancels.
-struct BoundedFile {
-    file: Take<File>,
-    _permit: OwnedSemaphorePermit,
-}
-impl AsyncRead for BoundedFile {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.file).poll_read(cx, buf)
-    }
-}
-
-async fn preview<O: Owner>(
-    state: &AppState<O>,
-    path: &Path,
-    permit: OwnedSemaphorePermit,
-) -> Response {
-    let config = read(state, Command::ConfigGet(ConfigGetArgs {})).await;
+/// The version's one file, read through the owner, which applies the scheme contract and the size limit.
+async fn preview<O: Owner>(state: &AppState<O>, target: &Target) -> Response {
     let unavailable = StatusCode::NO_CONTENT;
-    let Some(limit) = config
-        .as_ref()
-        .and_then(|result| result.pointer("/loaded/values/limits/attachment_file_bytes"))
-        .and_then(serde_json::Value::as_u64)
-        .filter(|n| *n > 0)
+    let Some(content) = read(
+        state,
+        Command::ArtifactRead(ArtifactReadArgs {
+            thread_id: target.thread_id.clone(),
+            artifact_id: target.artifact_id.clone(),
+            version: target.version,
+            path: None,
+        }),
+    )
+    .await
     else {
         return unavailable.into_response();
     };
-    if !tokio::fs::metadata(path)
-        .await
-        .is_ok_and(|meta| meta.is_file() && meta.len() <= limit)
-    {
-        return unavailable.into_response();
-    }
-    let mut opts = tokio::fs::OpenOptions::new();
-    opts.read(true);
-    #[cfg(unix)]
-    opts.custom_flags(libc::O_NONBLOCK);
-    let Ok(file) = opts.open(path).await else {
+    let Some(bytes) = content["base64"]
+        .as_str()
+        .and_then(|text| base64::engine::general_purpose::STANDARD.decode(text).ok())
+    else {
         return unavailable.into_response();
     };
-    let Ok(meta) = file.metadata().await else {
-        return unavailable.into_response();
-    };
-    if !meta.is_file() || meta.len() > limit {
-        return unavailable.into_response();
-    }
-    let stream = ReaderStream::new(BoundedFile {
-        file: file.take(meta.len()),
-        _permit: permit,
-    });
     (
         [
             (header::CONTENT_TYPE, "application/octet-stream"),
@@ -465,7 +427,7 @@ async fn preview<O: Owner>(
                 "sandbox; default-src 'none'",
             ),
         ],
-        Body::from_stream(stream),
+        Body::from(bytes),
     )
         .into_response()
 }
