@@ -130,7 +130,8 @@ where
     Fut: std::future::Future<Output = Result<Value, Value>>,
 {
     let page = call(Command::ArtifactList(ArtifactListArgs {
-        thread_id: thread.to_owned(),
+        thread_id: Some(thread.to_owned()),
+        scheme: Some(SCHEME.to_owned()),
         cursor,
         limit: LIST_PAGE,
     }))

@@ -41,8 +41,8 @@ next-tags = ["next-shellboy"]
 next-cwds = ["next-tags"]
 
 [dependencies]
-# Core #462 branch snapshot for development; repin to Core main after #462 lands.
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "9240d5337cc1823845a8de313a6129a3e2b2f471" }
+# Core main after #462 / protocol 49 landed.
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "f9cd46e722" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt", "io"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }

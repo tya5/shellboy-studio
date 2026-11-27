@@ -253,7 +253,15 @@ async fn fixture() -> Fixture {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|(_, found)| found.thread == args.thread_id)
+                .filter(|(_, found)| {
+                    args.thread_id
+                        .as_ref()
+                        .is_none_or(|thread| found.thread == *thread)
+                        && args
+                            .scheme
+                            .as_ref()
+                            .is_none_or(|scheme| found.uri.starts_with(&format!("{scheme}:")))
+                })
                 .map(|(id, found)| summary(id, found))
                 .collect();
             let from: usize = args.cursor.as_deref().map_or(0, |c| c.parse().unwrap());

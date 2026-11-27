@@ -1,9 +1,11 @@
-# Core main preparation (Studio #152 / #151)
+# Core main pin: f9cd46e (Studio #177)
 
-Core `60ea26e89c4064860a6f53180e58975cdfc3b02d`, protocol 47 (`docs/reference/protocol.schema.json` `$id` `protocol-v47`). This is a Core main snapshot, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
+Core `f9cd46e722`, protocol 49 (`docs/reference/protocol.schema.json` `$id` `protocol-v49`). This is a Core main snapshot, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this task repins the named-services branch and is not a release.
 
 | Core change | Studio adoption |
 | --- | --- |
+| #462, protocol 49 | The local `service.endpoint` operation can address any service in the owner, so Studio scopes access in the bridge: the named-service app route calls it with the app's owner Thread and exact service name, rejects a result not owned by that Thread, and keeps the private loopback endpoint/token on the bridge side. The browser cannot call this internal operation or receive the endpoint credential. Endpoint publication retirement/reaping follows the Core lifecycle result; Studio treats the endpoint as transient and does not persist its token. |
+
 | #445, protocol 47 (Studio #169) | `artifact.read` returns one regular file of an exact artifact version as base64. Studio reads app files and the Possessions preview through it and no longer opens artifact files itself (apps: `docs/design/apps.md`). The browser allowlist denies it: only the gateway reads. |
 | #449, protocol 46 | `schedule.add` / `schedule.set` take `notify`; `schedule.list` items carry it. No Studio surface in this change. |
 | #452, protocol 45 | `shell.list` rows may omit `command_characters` and carry a nullable `run_id`. Typed by the pinned crate. Studio's web decoder accepts both shapes (examined in #169 review); `ShellEntry.run_id` is typed nullable. |
