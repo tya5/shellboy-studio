@@ -283,6 +283,23 @@ async fn exited(child: &mut tokio::process::Child) -> std::io::Result<()> {
 /// the tree (a new session, say) can hold the pipes that long.
 const DRAIN: Duration = Duration::from_secs(1);
 
+/// The canonical form Windows gives a path (`\\?\C:\x`, `\\?\UNC\s\sh\x`) as the plain path `cmd.exe` and
+/// other interpreters can open (`C:\x`, `\\s\sh\x`). Anything else stays as it is.
+fn plain_path(path: &Path) -> PathBuf {
+    let Some(text) = path.to_str() else {
+        return path.to_owned();
+    };
+    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{unc}"))
+    } else if let Some(local) = text.strip_prefix(r"\\?\")
+        && local.as_bytes().get(1) == Some(&b':')
+    {
+        PathBuf::from(local)
+    } else {
+        path.to_owned()
+    }
+}
+
 pub async fn run(
     app_name: &str,
     app_dir: &Path,
@@ -290,6 +307,8 @@ pub async fn run(
     args: &serde_json::Value,
     timeout_ms: Option<u64>,
 ) -> Result<RunResult, (&'static str, String)> {
+    // The caller's paths are validated canonical paths; the interpreter is given the plain form once.
+    let (app_dir, script) = (&plain_path(app_dir), &plain_path(script));
     let input = serde_json::to_vec(args).map_err(|e| ("invalid_args", e.to_string()))?;
     if input.len() > MAX_STDIN {
         return Err(("invalid_args", "args are over 8 MiB".to_owned()));
@@ -411,4 +430,33 @@ pub async fn run(
         return Ok(finish(None, (Vec::new(), false), (Vec::new(), false), true));
     }
     Ok(finish(status, out, err, false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain_path;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn a_canonical_windows_path_becomes_the_plain_one() {
+        for (given, plain) in [
+            (
+                r"\\?\C:\apps\one\actions\a.cmd",
+                r"C:\apps\one\actions\a.cmd",
+            ),
+            (
+                r"\\?\UNC\server\share\one\a.cmd",
+                r"\\server\share\one\a.cmd",
+            ),
+            (r"C:\apps\one\a.cmd", r"C:\apps\one\a.cmd"),
+            ("/apps/one/a.sh", "/apps/one/a.sh"),
+            (r"\\?\Volume{1}\a", r"\\?\Volume{1}\a"),
+        ] {
+            assert_eq!(
+                plain_path(Path::new(given)),
+                PathBuf::from(plain),
+                "{given}"
+            );
+        }
+    }
 }
