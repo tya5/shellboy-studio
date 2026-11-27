@@ -860,7 +860,7 @@ export class ShellboyData {
     let rows: ThreadSummary[] = [];
     let cursor: string | undefined;
     do {
-      // An archived pin stays pinned: the pinned read includes archived Threads.
+      // The pinned read keeps archived Threads only to feed the Archive band; the sidebar row filter hides them everywhere else.
       const out = await this.operations.threadList({ ...listArgs({ ...filter, archived: "include", tags: [...(filter.tags ?? []), "pin"] }), ...(cursor ? { cursor } : {}) }, { onSent });
       // A changed filter has already asked for a fresh read; keep the previous set until it lands.
       if (!out.ok) {

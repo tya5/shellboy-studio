@@ -1326,16 +1326,39 @@ async fn an_endpoint_file_that_leaves_the_folder_is_not_used() {
 }
 
 #[tokio::test]
-async fn the_page_cannot_fetch_the_endpoint_file() {
+async fn the_page_is_never_served_a_hidden_file() {
     let f = fixture().await;
-    write_app(&f, "one", "t1", &[PAGE]);
+    write_app(
+        &f,
+        "one",
+        "t1",
+        &[
+            PAGE,
+            (".app.endpoint.tmp", "secret-token"),
+            (".hidden/inner.txt", "secret-token"),
+            ("sub/ok.txt", "plain"),
+        ],
+    );
     write_endpoint(&f, "one", 1, "secret-token");
     let base = open(&f, "one")
         .await
         .trim_end_matches("index.html")
         .to_owned();
     let web = f.addr.to_string();
-    let reply = http(&web, "GET", &format!("{base}.app.endpoint"), &[], "").await;
-    assert_eq!(reply.status, 404);
-    assert!(!reply.body.contains("secret-token"));
+    for path in [
+        ".app.endpoint",
+        "./.app.endpoint",
+        "%2E/.app.endpoint",
+        "sub/../.app.endpoint",
+        ".APP.ENDPOINT",
+        ".app.endpoint.",
+        ".app.endpoint.tmp",
+        ".hidden/inner.txt",
+    ] {
+        let reply = http(&web, "GET", &format!("{base}{path}"), &[], "").await;
+        assert_eq!(reply.status, 404, "{path}");
+        assert!(!reply.body.contains("secret-token"), "{path}");
+    }
+    let ok = http(&web, "GET", &format!("{base}./sub/ok.txt"), &[], "").await;
+    assert_eq!((ok.status, ok.body.as_str()), (200, "plain"));
 }

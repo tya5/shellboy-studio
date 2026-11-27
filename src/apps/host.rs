@@ -704,7 +704,7 @@ impl<O: Owner> AppHost<O> {
     }
 }
 
-/// A file under a session's path, read through the owner. A static page serves only its one file, without the API.
+/// A file under a session's path, read through the owner. Hidden files are never served. A static page serves only its one file, without the API.
 pub(super) async fn serve_file<O: Owner>(
     apps: &Apps<O>,
     opened: &Opened,
@@ -738,7 +738,19 @@ pub(super) async fn serve_file<O: Owner>(
     let Some(rel) = catalog::safe_relative(&relative) else {
         return missing();
     };
-    if opened.page && relative != ENTRY || relative == super::backend::ENDPOINT {
+    // One normalised path decides and is the one read: no '.' components, no '..', and no hidden
+    // component (`.app.endpoint` with its token, `.instances.json`, `.git`, `.env`). Windows ignores
+    // trailing dots and spaces in a name, so those are trimmed before the test.
+    let names: Vec<String> = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    let hidden = names.iter().any(|n| {
+        let n = n.trim_end_matches(['.', ' ']);
+        n.is_empty() || n.starts_with('.')
+    });
+    let normal = names.join("/");
+    if opened.page && normal != ENTRY || hidden {
         return app_headers(
             "text/plain; charset=utf-8",
             Body::from("Not found"),
@@ -746,7 +758,7 @@ pub(super) async fn serve_file<O: Owner>(
         );
     }
     let read = apps
-        .read_file(opened, (!opened.page).then_some(relative.as_str()))
+        .read_file(opened, (!opened.page).then_some(normal.as_str()))
         .await;
     let bytes = match read {
         Ok(bytes) => bytes,
