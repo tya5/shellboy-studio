@@ -42,7 +42,7 @@ next-cwds = ["next-tags"]
 
 [dependencies]
 # Core main after #462 / protocol 49 landed.
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "f9cd46e722" }
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "f9cd46e72297a95bf56f3b4f0238c223800dc62d" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt", "io"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
