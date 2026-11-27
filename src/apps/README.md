@@ -88,7 +88,7 @@ The service, in any language:
 3. writes `{"port": 51234, "token": "..."}` to `.app.endpoint` in its working directory, readable by the owner only (mode 0600; on Windows the folder's own permissions). Write a temp file and rename it, so nobody reads half of it;
 4. answers only requests that carry `Authorization: Bearer <token>` (401 otherwise).
 
-Studio reads `.app.endpoint` on every call and forwards only to the folder's own backend. Hidden files and folders (names starting with `.`, such as `.app.endpoint`, `.env`, `.git`) are never served to the page. Keep credentials out of the folder: read them from the service's environment or a file the person put elsewhere. The service's output stays in Core (`shellboy shell read`), and it can use `shellboy message ask` and waits. Periodic work uses `shellboy schedule`.
+Studio reads `.app.endpoint` on every call and forwards only to the folder's own backend. Hidden files and folders (names starting with `.`, such as `.app.endpoint`, `.env`, `.git`) are never served to the page. A link inside the folder that resolves to `.app.endpoint` lets only that app's own page see its own token, which gives it nothing beyond `shellboy.call`; other apps' pages cannot reach it. Keep credentials out of the folder: read them from the service's environment or a file the person put elsewhere. The service's output stays in Core (`shellboy shell read`), and it can use `shellboy message ask` and waits. Periodic work uses `shellboy schedule`.
 
 ## Redistributing an app
 
