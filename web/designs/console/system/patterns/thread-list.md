@@ -20,10 +20,11 @@ with `archived: "only"` and the applicable filters, in Core's created order
 (updated order while filtering, like All), in pages of 50 with its own Show more
 up to 1000 rows, into the same row cache by ID. It is built like All: an archived
 child sits under its archived parent, and an archived child whose parent is not
-archived is a root in Archive (no parent is guessed). The pinned read includes
-archived Threads (`archived: "include"`), so an archived pin stays in Pinned with
-its loaded descendants; as a pin also keeps its copy in All, an archived pin also
-keeps its copy in Archive. Needs-you hides Archive as it hides Pinned, and its
+archived is a root in Archive (no parent is guessed). An archived Thread shows only in
+Archive: one row rule in the sidebar model drops every Thread with `archived_at`
+from Pinned and All, so an archived child disappears from under its pinned or
+ordinary parent and returns when un-archived. An archived pin leaves Pinned
+(its pin tag is kept) and shows in Archive. Needs-you hides Archive as it hides Pinned, and its
 read is not sent. Archive is re-read on resync, a filter change, and a list hint
 whose rows changed archive state, parent or a filtered field. Archive/unarchive
 mutations are initiated from the sidebar selection bar or a row menu; the owner

@@ -603,7 +603,7 @@ it("keeps archived Threads out of All and shows them with their children in a cl
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
-it("keeps an archived pin in Pinned, copies it into Archive as All does, and hides Archive with Needs-you (#126)", async () => {
+it("shows an archived pin only in Archive, and hides Archive with Needs-you (#126, #174)", async () => {
   const f = await fixtureModel({ route: "conversation", threadId: "live", capabilities: ["thread.tags"], configure(db) {
     db.threads = {
       live: summary("live"),
@@ -619,8 +619,7 @@ it("keeps an archived pin in Pinned, copies it into Archive as All does, and hid
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(f.t.calls("thread.list").map(call => call.args)).toContainEqual({ archived: "include", tags: ["pin"], limit: 50 });
-    expect(links("Pinned")).toEqual(["kept"]);
-    expect(band("Pinned")!.querySelector('a[href="#/conversation/kept"]')!.parentElement!.querySelector("button[aria-expanded]")?.getAttribute("aria-label")).toContain("1 children");
+    expect(band("Pinned")).toBeNull();
     expect(links("All")).toEqual(["live"]);
     expect(band("Archived")!.querySelector(".tgroup-count")?.textContent).toBe("Threads: 2");
     await act(async () => { band("Archived")!.querySelector<HTMLButtonElement>(".tgroup-toggle")!.click(); });
@@ -631,5 +630,33 @@ it("keeps an archived pin in Pinned, copies it into Archive as All does, and hid
     expect(band("Pinned")).toBeNull();
     expect(band("Archived")).toBeNull();
     expect(f.t.calls("thread.list").slice(reads).map(call => call.args)).not.toContainEqual(expect.objectContaining({ archived: "only" }));
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("hides an archived child under a pinned parent and restores it on un-archive (#174)", async () => {
+  const f = await fixtureModel({ route: "conversation", threadId: "parent", capabilities: ["thread.tags"], configure(db) {
+    db.threads = { parent: summary("parent", { tags: ["pin"] }), child: summary("child", { parent_thread_id: "parent" }) };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const band = (name: string) => host.querySelector<HTMLElement>(`.side-list section[aria-label="${name}"]`);
+  const links = (name: string) => [...band(name)?.querySelectorAll<HTMLAnchorElement>("a.tree-link") ?? []].map(link => link.getAttribute("href")!.replace("#/conversation/", ""));
+  const hint = async () => { await act(async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["child"], list: true }); await settle(f.t, f.db); }); };
+  try {
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: (change: Partial<DesignContext["prefs"]["value"]>) => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    expect(band("Pinned")!.querySelector('a[href="#/conversation/parent"]')!.parentElement!.querySelector("button[aria-expanded]")?.getAttribute("aria-label")).toContain("1 children");
+    f.db.threads.child = { ...f.db.threads.child!, archived_at: "2026-01-03T00:00:00Z" } as ReturnType<typeof summary>;
+    await hint();
+    expect(band("Pinned")!.querySelector('a[href="#/conversation/parent"]')!.parentElement!.querySelector("button[aria-label*='children']")).toBeNull();
+    expect(links("All")).toEqual(["parent"]);
+    expect(band("Archived")!.querySelector(".tgroup-count")?.textContent).toBe("Threads: 1");
+    await act(async () => { band("Archived")!.querySelector<HTMLButtonElement>(".tgroup-toggle")!.click(); });
+    expect(links("Archived")).toEqual(["child"]);
+    const { archived_at: _gone, ...restored } = f.db.threads.child! as ReturnType<typeof summary> & { archived_at?: string };
+    f.db.threads.child = restored as ReturnType<typeof summary>;
+    await hint();
+    expect(band("Pinned")!.querySelector('a[href="#/conversation/parent"]')!.parentElement!.querySelector("button[aria-expanded]")?.getAttribute("aria-label")).toContain("1 children");
+    expect(band("Archived")).toBeNull();
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
