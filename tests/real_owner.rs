@@ -172,6 +172,25 @@ mod common_ws {
     >;
 }
 
+/// The documented `shellboy-app:` form: an absolute folder path. A canonicalised Windows path carries the
+/// `\\?\` namespace prefix, which Core refuses as not local, so the URI names the plain drive path.
+fn app_uri(dir: &Path) -> String {
+    let text = dir.display().to_string();
+    format!(
+        "shellboy-app:{}",
+        text.strip_prefix(r"\\?\").unwrap_or(&text)
+    )
+}
+
+#[test]
+fn the_app_uri_drops_the_windows_namespace_prefix() {
+    assert_eq!(
+        app_uri(Path::new(r"\\?\C:\Temp\probe")),
+        r"shellboy-app:C:\Temp\probe"
+    );
+    assert_eq!(app_uri(Path::new("/tmp/probe")), "shellboy-app:/tmp/probe");
+}
+
 fn temp_root() -> PathBuf {
     let root = std::env::temp_dir().join(format!("shellboy-studio-it-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&root).unwrap();
@@ -1952,7 +1971,10 @@ async fn an_app_message_is_recorded_as_from_the_app() {
     let added = shellboy_studio::owner::Owner::call(
         &*owner,
         shellboy::protocol::Command::ArtifactAdd(
-            serde_json::from_value(json!({"thread_id": thread, "uri": format!("shellboy-app:{}", dir.display()), "title": "Probe"})).unwrap(),
+            serde_json::from_value(
+                json!({"thread_id": thread, "uri": app_uri(&dir), "title": "Probe"}),
+            )
+            .unwrap(),
         ),
         None,
         None,
