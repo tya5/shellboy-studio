@@ -913,5 +913,5 @@ reads; the legacy bare-array response is not accepted.
 | Decision | Reason and impact | Revisit when |
 |---|---|---|
 | The sidebar's Include archived filter is removed; archived Threads are reached through the Archive band, which applies the same query, tag and directory filters | The user asked that All never show archived Threads; keeping the filter would put them back into All | Someone needs archived and listed results merged in one band |
-| An archived pin keeps its copy in Archive as a pin keeps its copy in All | One rule for every band (`patterns/thread-list.md`); no client-side filtering of either read | The user prefers a pin to appear only in Pinned |
+| An archived Thread, pinned or not, shows only in Archive; the sidebar model's one row rule drops it from Pinned and All (#174) | The user's rule: archived means Archive only; one rule from Core's `archived_at` for every band (`patterns/thread-list.md`) | Someone needs archived pins visible in Pinned |
 | Archive's open state is a separate preference (`sidebarOpenGroups`) because it starts closed | The existing `sidebarClosedGroups` can only record a close of a band that starts open | Another band needs a different default |
