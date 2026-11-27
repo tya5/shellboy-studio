@@ -710,6 +710,9 @@ function PanelActivity({ model }: { model: AppModel }) {
   const selected = model.panelOpener.value.work;
   const runId = model.details.value?.run_id;
   const runStopAvailable = !!runId;
+  // "None" only for a settled, complete read; loading shows the reading line, partial shows the existing partial note below.
+  const resource = model.handle.value?.work.value;
+  const workEmpty = work.partial ? null : resource?.loading || resource?.stale ? <p class="caption muted" role="status">{t("common.loading")}</p> : resource?.value !== undefined ? <p class="caption muted">{t("schedule.none")}</p> : null;
   return <div class="panel-list" data-panel-list="work">
     {activitySections.map(section => {
       if (section.key === "service" || section.key === "schedule") {
@@ -738,7 +741,7 @@ function PanelActivity({ model }: { model: AppModel }) {
           actions={section.kind === "message" ? [panelCancel(model, row.id)] : shellRunning ? shellActionEntries(model, row.id, command ?? row.label, requestStop, placement !== "foreground") : undefined} error={panelOperationError(model, row.id)}>
           {placement ? <StatusMark shell status="running" label={t(`work.${placement}`)} /> : null}
         </ListRow>;
-      })}{rows.length ? null : <p class="caption muted">{t("schedule.none")}</p>}</section>;
+      })}{rows.length ? null : workEmpty}</section>;
     })}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
     {workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted">{t("work.stale")}</div> : null}

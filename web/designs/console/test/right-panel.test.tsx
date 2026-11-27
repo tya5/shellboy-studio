@@ -185,6 +185,40 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
  });
 
+ it('shows None in Running and Pending only for a settled, complete empty read',async()=>{
+  const f=await setup();
+  const t=f.model.t.value;
+  const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
+  const noneIn=(index:number)=>[...f.host.querySelectorAll('[data-panel-list="work"] section')[index]!.querySelectorAll('p')].some(p=>p.textContent===t('schedule.none'));
+  const activity=()=>f.host.querySelector('[data-panel-list="work"]')!.textContent??'';
+  try {
+   f.db.work.lead=[];
+   await act(async()=>{hint();await settle(f.t,f.db);});
+   expect([noneIn(0),noneIn(1)]).toEqual([true,true]);
+   expect(activity()).not.toContain(t('work.partial'));
+   await act(async()=>{
+    hint();
+    for(let i=0;i<10;i++){
+     await flush(32);
+     for(const call of f.t.calls().filter(call=>call.command!=='status'&&!f.db.answered.has(call.id))){
+      f.db.answered.add(call.id);
+      const response=f.db.answer(call);
+      if(response.ok) f.t.ok(call.id,response.result); else f.t.ownerError(call.id,response.code);
+     }
+    }
+   });
+   expect(f.t.calls('status').some(call=>!f.db.answered.has(call.id))).toBe(true);
+   expect([noneIn(0),noneIn(1)]).toEqual([false,false]);
+   await act(async()=>{await settle(f.t,f.db);});
+   expect([noneIn(0),noneIn(1)]).toEqual([true,true]);
+   f.db.work.lead=Array.from({length:201},(_,i)=>({kind:'shell',id:`other-${i}`,thread_id:'lead',execution_id:`other-${i}`,run_id:'other-run',state:'running'}));
+   await act(async()=>{hint();await settle(f.t,f.db);});
+   expect(f.model.handle.peek()?.work.peek().value?.next_cursor).toBeDefined();
+   expect([noneIn(0),noneIn(1)]).toEqual([false,false]);
+   expect(activity()).toContain(t('work.partial'));
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('captures the Run ID and opener through Activity confirmation when thread details change', async () => {
   const f=await setup();
   const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
