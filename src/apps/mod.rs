@@ -3,12 +3,12 @@
 //! frame, and never sees the Web UI's token or cookie. See `docs/design/apps.md`.
 //!
 //! Bounds (limits, not performance claims): `catalog::MAX_APPS` hosted (a listing is one Core page of 32 per request); `MAX_SESSIONS` file
-//! sessions, oldest dropped; `RUNS` scripts at once and one per action; owner calls share the bridge's
+//! sessions, oldest dropped; `CALLS` backend calls at once; owner calls share the bridge's
 //! global semaphore; one hub session per app while `thread.onChange` waits and 30 s after; one lifecycle
 //! task per app while a page waits (data walks only for `data.onChange`). A host whose folder is gone gives up its slot.
+mod backend;
 pub mod catalog;
 mod host;
-pub mod run;
 
 use crate::{hub::Hub, owner::Owner};
 use axum::{
@@ -29,7 +29,7 @@ use tokio_util::sync::CancellationToken;
 pub use host::AppHost;
 
 const GUIDE: &str = include_str!("README.md");
-const RUNS: usize = 4;
+const CALLS: usize = 4;
 const MAX_SESSIONS: usize = 256;
 const MAX_INSTANCES: usize = 128;
 /// The only file of a static page, and the entry of an app.
@@ -87,7 +87,7 @@ pub struct Apps<O> {
     pub(crate) owner: Arc<O>,
     pub(crate) hub: Arc<Hub>,
     pub(crate) global: Arc<Semaphore>,
-    pub(crate) runs: Semaphore,
+    pub(crate) calls: Semaphore,
     hosts: tokio::sync::Mutex<HashMap<String, Arc<AppHost<O>>>>,
     instance_writes: tokio::sync::Mutex<()>,
     /// Which version a file session serves. In memory: a restart ends them, and the Web UI opens again.
@@ -107,7 +107,7 @@ impl<O: Owner> Apps<O> {
             owner,
             hub,
             global,
-            runs: Semaphore::new(RUNS),
+            calls: Semaphore::new(CALLS),
             hosts: tokio::sync::Mutex::new(HashMap::new()),
             instance_writes: tokio::sync::Mutex::new(()),
             sessions: Mutex::new(VecDeque::new()),

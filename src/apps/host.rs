@@ -5,7 +5,6 @@
 use super::{
     Apps, ENTRY, Opened, ReadFail,
     catalog::{self, Latest},
-    run,
 };
 use crate::{hub::SessionGuard, owner::Owner};
 use axum::{
@@ -17,15 +16,15 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use shellboy::protocol::Command;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
-const MAX_DATA: usize = 8 * 1024 * 1024;
+pub(super) const MAX_DATA: usize = 8 * 1024 * 1024;
 const MAX_LIST: usize = 1000;
-const WAIT: Duration = Duration::from_secs(25);
+pub(super) const WAIT: Duration = Duration::from_secs(25);
 /// How often the one watcher of an app looks at `data/`, while a page is waiting. Fixed: a page open
 /// for weeks, hidden or not, costs one bounded walk a second.
 const WATCH_INTERVAL: Duration = Duration::from_secs(1);
@@ -44,7 +43,7 @@ pub(super) const UI_CSS: &str = concat!(
     include_str!("ui.css"),
 );
 
-type ApiFail = (&'static str, String);
+pub(super) type ApiFail = (&'static str, String);
 
 pub struct AppHost<O> {
     pub name: String,
@@ -52,8 +51,6 @@ pub struct AppHost<O> {
     apps: Arc<Apps<O>>,
     writes: tokio::sync::Mutex<()>,
     hints: tokio::sync::Mutex<Hints>,
-    /// One at a time per action, so a page's timer can't pile up.
-    running: Mutex<HashSet<PathBuf>>,
     watch: tokio::sync::watch::Sender<DataSnapshot>,
     instance_watch:
         Mutex<std::collections::HashMap<String, tokio::sync::watch::Sender<DataSnapshot>>>,
@@ -139,16 +136,6 @@ pub struct DataSnapshot {
     files: BTreeMap<String, (u64, Option<SystemTime>)>,
     changed: Vec<String>,
     truncated: bool,
-}
-
-struct Running<'a>(&'a Mutex<HashSet<PathBuf>>, PathBuf);
-impl Drop for Running<'_> {
-    fn drop(&mut self) {
-        self.0
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .remove(&self.1);
-    }
 }
 
 /// Sizes and times of `data/`. Bounded in entries and depth; doesn't follow links; skips the temp
@@ -317,7 +304,6 @@ impl<O: Owner> AppHost<O> {
             apps,
             writes: tokio::sync::Mutex::new(()),
             hints: tokio::sync::Mutex::new(Hints::default()),
-            running: Mutex::new(HashSet::new()),
             watch: tokio::sync::watch::channel(DataSnapshot::default()).0,
             instance_watch: Mutex::new(std::collections::HashMap::new()),
             lifecycle: Mutex::new(Lifecycle::default()),
@@ -631,43 +617,16 @@ impl<O: Owner> AppHost<O> {
         )
     }
 
-    async fn run_action(&self, args: &Value) -> Result<Value, ApiFail> {
-        let action = args
-            .get("action")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let script = run::find_action(&self.dir, action).await?;
-        let Some(inside) = self
-            .inside(script.strip_prefix(&self.dir).unwrap_or(&script))
-            .await
-        else {
-            return Err(("invalid_action", "That action leaves the app".to_owned()));
-        };
-        if !self
-            .running
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .insert(inside.clone())
-        {
-            return Err(("already_running", format!("{action} is still running")));
-        }
-        let _one = Running(&self.running, inside.clone());
+    /// The app's own backend only: the endpoint file is looked up inside this app's folder.
+    async fn backend_call(&self, args: &Value) -> Result<Value, ApiFail> {
         let _permit = self
             .apps
-            .runs
+            .calls
             .acquire()
             .await
             .map_err(|_| ("shutting_down", "The gateway is stopping".to_owned()))?;
-        let timeout = args.get("timeout_ms").and_then(Value::as_u64);
-        let result = run::run(
-            &self.name,
-            &self.dir,
-            &inside,
-            args.get("args").unwrap_or(&Value::Null),
-            timeout,
-        )
-        .await?;
-        serde_json::to_value(result).map_err(|e| ("io_failed", e.to_string()))
+        let file = self.inside(Path::new(super::backend::ENDPOINT)).await;
+        super::backend::call(file, args).await
     }
 
     async fn dispatch(
@@ -687,7 +646,7 @@ impl<O: Owner> AppHost<O> {
             "data.list" => self.data_list(&args).await.map_err(fail),
             "events.wait" => self.events_wait(&args, latest).await.map_err(fail),
             "data.wait" => self.data_wait(&args, instance).await.map_err(fail),
-            "run" => self.run_action(&args).await.map_err(fail),
+            "call" => self.backend_call(&args).await.map_err(fail),
             "thread.send" => {
                 let thread = self.bound(&args, latest);
                 let text = args.get("text").and_then(Value::as_str).unwrap_or_default();
@@ -745,8 +704,7 @@ impl<O: Owner> AppHost<O> {
     }
 }
 
-/// A file under a session's path, read through the owner. `actions/` isn't served: scripts run through
-/// the API. A static page serves only its one file, without the API.
+/// A file under a session's path, read through the owner. A static page serves only its one file, without the API.
 pub(super) async fn serve_file<O: Owner>(
     apps: &Apps<O>,
     opened: &Opened,
@@ -780,7 +738,7 @@ pub(super) async fn serve_file<O: Owner>(
     let Some(rel) = catalog::safe_relative(&relative) else {
         return missing();
     };
-    if rel.starts_with("actions") || opened.page && relative != ENTRY {
+    if opened.page && relative != ENTRY || relative == super::backend::ENDPOINT {
         return app_headers(
             "text/plain; charset=utf-8",
             Body::from("Not found"),

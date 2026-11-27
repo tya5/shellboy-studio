@@ -4,12 +4,24 @@ This is the Apps reference for the Studio agent guide. Studio serves it at `/_sh
 
 An app is a Thread artifact whose URI uses the `shellboy-app:` scheme. You write the app in a folder anywhere you like and register the folder; there is no apps directory and no manifest. Studio finds apps with `artifact.list`, and the person opens them from the Thread's Possessions or under Apps in the Web UI.
 
+## The whole app in one picture
+
+```text
+Thread (owns the whole app; you build and change both halves)
+  artifact = frontend: the folder (shellboy-app:), versioned, opened by the person
+  service  = backend: a Core service in the same folder, on 127.0.0.1, token in .app.endpoint
+  data/    = shared state: the page, the service and you all read and write it
+```
+
+The page never starts anything. It reads `data/`, and calls the backend with `shellboy.call(path, body)` when it must act. The service writes `data/`; the page redraws through `data.onChange`. Forking or rewinding the Thread copies the artifact (the page) but not the service, so the backend stays with the original Thread and both share `data/`. If the service fails, your Thread is notified; its output stays readable with `shellboy shell read`.
+
 ## Layout
 
 ```text
 kanban/
   index.html  plain HTML and JS; there is no build step
   data/       the app's own files, also yours to read and edit from the Thread
+  .app.endpoint  written by the service, not by you (see Backend)
 ```
 
 Register the folder once, from your own working directory, in your own Thread:
@@ -44,13 +56,13 @@ Every call returns a promise and rejects with an `Error` that has a `code`.
 | `shellboy.data.read(path)` | `{exists, text, hash}`, UTF-8, up to 8 MiB |
 | `shellboy.data.write(path, text, {hash})` | `{hash}`. With `hash`, fails with code `conflict` if the file changed since you read it; `hash: null` means it must not exist yet. Without the option, overwrites |
 | `shellboy.data.list(path?)` | `{entries: [{name, dir, size}]}` |
-| `shellboy.data.onChange(fn)` | Calls `fn({paths})` soon after any file in `data/` changes, whoever wrote it: your Thread's shell, an action or the page itself. Returns a function that stops it. Watches up to 4096 entries, 8 folders deep |
+| `shellboy.data.onChange(fn)` | Calls `fn({paths})` soon after any file in `data/` changes, whoever wrote it: your Thread's shell, the service or the page itself. Returns a function that stops it. Watches up to 4096 entries, 8 folders deep |
 | `shellboy.thread.send(text, {thread, deliver})` | Sends a message, recorded as from `app:<name>`, not from a person. `deliver` is `next` (default) or `complete`; `now` fails with Shellboy's code `invalid_argument`, passed through unchanged |
 | `shellboy.thread.get(thread?)` | A Thread details object: `thread_id`, `title`, `cwd`, `connection`, `model`, `agents_path`, `shells_count`; optional fields include `run_id`, `turn_id`, `parent_thread_id`, `effort` and `archived_at` |
 | `shellboy.thread.messages({thread, limit, cursor, since})` | `{items, limit, filters, next_cursor?}`, oldest first, as `shellboy history list` returns them |
 | `shellboy.threads.list({query, limit, cursor, archived})` | `{items, limit, filters, next_cursor?}`; each item has `thread_id`, `title`, `cwd`, `state`, `activity`, `updated_at` and `excerpt`; `parent_thread_id` and `archived_at` may be omitted |
 | `shellboy.thread.onChange(fn, {thread})` | Calls `fn()` when that Thread may have changed; re-read then. Returns a function that stops it. `{list: true}` also watches the Thread list |
-| `shellboy.run(action, args, {timeoutMs})` | Runs a script from `actions/`: `{exit_code, stdout, stderr, stdout_truncated, stderr_truncated, timed_out, duration_ms}` |
+| `shellboy.call(path, body?)` | One `POST path` to this app's own backend with `body` as JSON: `{status, body}`, where `body` is parsed JSON for a JSON answer, else text. Rejects with `no_backend` (no `.app.endpoint`: the service is not running), `backend_endpoint_unreadable`, `backend_down`, `backend_refused` (the token is stale: the service restarted), `backend_timeout` (25 s), `backend_failed`, `too_large` (over 8 MiB either way) or `invalid_path`. Other HTTP statuses are the backend's answer and arrive as results. No retry: the page decides |
 
 These thread calls return the owner's fields directly: use `thread_id`, `title`,
 and `cwd` exactly, not `id`, `name`, or `working_directory`. `cwd` is the
@@ -61,26 +73,31 @@ shell. List results are paginated; follow `next_cursor` only when needed.
 
 The bound Thread is the artifact's owner Thread. An archived one still works. Deleting the Thread deletes the artifact record, so the app no longer opens.
 
-## actions/
+## Backend
 
-`run("report", {days: 7})` runs the file in `actions/` named `report`, or `report` plus one extension. The interpreter comes from the extension:
+Start the service from your Thread, in the app folder:
 
-| File | Runs as |
-|---|---|
-| `.py` | `python3`, or `py -3` on Windows |
-| `.js`, `.mjs` | `node` |
-| `.sh` | `sh` |
-| `.ps1` | `powershell -NoProfile -File` |
-| `.cmd`, `.bat` | `cmd /C`, on Windows |
-| anything else | the file itself, which must be executable |
-
-The working folder is the app's folder. `args` arrives as JSON on stdin. `SHELLBOY_APP_NAME` and `SHELLBOY_APP_DATA` are set, and credentials come from the environment the gateway was started in, so the app's page never sees them. The limit is 60 s by default and 600 s at most, and 1 MiB each of stdout and stderr; past that the output is cut and marked. `actions/` can't be fetched from the page.
-
-An action never overlaps itself: a call while it's running rejects with code `already_running`. So a timer in the page is safe, and it should just skip that tick:
-
-```js
-setInterval(() => shellboy.run("fetch-issues").then(show).catch((e) => { if (e.code !== "already_running") throw e; }), 60000);
+```sh
+shellboy service add --thread "$SHELLBOY_THREAD_ID" --cwd ./tracker --command 'python3 service.py'
 ```
+
+The service, in any language:
+
+1. listens on `127.0.0.1` on a free port (bind port 0), plain HTTP;
+2. makes a fresh random token at every start;
+3. writes `{"port": 51234, "token": "..."}` to `.app.endpoint` in its working directory, readable by the owner only (mode 0600; on Windows the folder's own permissions). Write a temp file and rename it, so nobody reads half of it;
+4. answers only requests that carry `Authorization: Bearer <token>` (401 otherwise).
+
+Studio reads `.app.endpoint` on every call and forwards only to the folder's own backend. The file is not served to the page. Keep credentials out of the folder: read them from the service's environment or a file the person put elsewhere. The service's output stays in Core (`shellboy shell read`), and it can use `shellboy message ask` and waits. Periodic work uses `shellboy schedule`.
+
+## Redistributing an app
+
+An app is a portable folder with no Thread ID inside. To share it, ship the folder (git or zip) with:
+
+- a `README.md` with the install steps (`shellboy artifact add --uri shellboy-app:./FOLDER`, then `shellboy service add ...`), the credentials it needs and where the person puts them (outside the folder), and the preference questions to ask the person first;
+- a `.gitignore` that excludes `data/` and `.app.endpoint`.
+
+Installing is the person asking a Thread to follow that README; there is no install command.
 
 ## Shared styles (optional)
 
@@ -136,19 +153,51 @@ shellboy.data.onChange(render);
 
 `thread.onChange` tells you the conversation changed, for the rare page that shows it. Prefer `data/`: the page shouldn't have to parse a conversation.
 
-**A live dashboard, for example from an issue tracker.** Put the fetch in `actions/`, read credentials from the environment, print JSON, and call it from a timer as shown above. The person starts the gateway with the variable set, and the page never sees it:
+**A tracker watcher: a service plus its board page.** The service polls the tracker and writes `data/issues.json`; the page draws it and asks the service to refresh on demand.
+
+```python
+# service.py, started with: shellboy service add --thread "$SHELLBOY_THREAD_ID" --cwd ./tracker --command 'python3 service.py'
+import http.server, json, os, secrets, threading, time, urllib.request
+token = secrets.token_hex(16)
+def poll():
+    while True:
+        req = urllib.request.Request("https://tracker.example/api/issues",
+            headers={"Authorization": "Bearer " + os.environ["TRACKER_TOKEN"]})  # credential from the environment, not the folder
+        with urllib.request.urlopen(req) as r: data = r.read()
+        with open("data/.next", "wb") as f: f.write(data)
+        os.replace("data/.next", "data/issues.json")   # the page's data.onChange fires
+        time.sleep(300)
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.headers.get("Authorization") != "Bearer " + token:
+            self.send_response(401); self.end_headers(); return
+        body = json.dumps({"ok": True}).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+fd = os.open(".app.endpoint.tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f: json.dump({"port": srv.server_port, "token": token}, f)
+os.replace(".app.endpoint.tmp", ".app.endpoint")
+threading.Thread(target=poll, daemon=True).start()
+srv.serve_forever()
+```
 
 ```js
-const out = await shellboy.run("fetch", { days: 7 });
-if (out.exit_code !== 0) throw new Error(out.stderr);
-render(JSON.parse(out.stdout));
+// In the page.
+await shellboy.ready;
+async function draw() {
+  const { exists, text } = await shellboy.data.read("issues.json");
+  render(exists ? JSON.parse(text) : []);
+}
+shellboy.data.onChange(draw);
+draw();
+refresh.onclick = () => shellboy.call("/refresh", {}).catch((e) => show(e.code === "no_backend" ? "The service is not running" : e.message));
 ```
 
 **Charts.** Draw inline SVG from `data/` files; no library is needed for bars and lines.
 
 ## Checking your work
 
-You can't open a browser from the Thread. Keep logic in small functions, test `actions/` by running them directly, and ask the person to open the app under Apps and press the send button if an error shows.
+You can't open a browser from the Thread. Keep logic in small functions, test the service by running it directly, and ask the person to open the app under Apps and press the send button if an error shows.
 
 ## Named instances
 
