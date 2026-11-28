@@ -208,6 +208,14 @@ fn core_main_pin_exposes_operation_evidence_held_messages_delivery_wait_and_shel
     )
     .unwrap();
     assert_eq!(access(&background), Access::Mutation);
+    for command in [
+        json!({"command":"service.get","args":{"service_id":"s"}}),
+        json!({"command":"service.set","args":{"service_id":"s","name":"tracker"}}),
+        json!({"command":"service.endpoint","args":{"service_id":"s"}}),
+    ] {
+        let command: Command = serde_json::from_value(command).unwrap();
+        assert_eq!(access(&command), Access::Denied);
+    }
 }
 
 #[test]

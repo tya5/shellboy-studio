@@ -134,6 +134,9 @@ pub fn access(command: &Command) -> Access {
         | Command::HistoryExport(..)
         | Command::ServiceAdd(..)
         | Command::ServiceRemove(..)
+        | Command::ServiceGet(..)
+        | Command::ServiceSet(..)
+        | Command::ServiceEndpoint(..)
         | Command::ArtifactRead(..) => Access::Denied,
     }
 }
