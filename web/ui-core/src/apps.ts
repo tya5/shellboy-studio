@@ -116,6 +116,7 @@ export class AppsModel {
   constructor(private readonly ops: Operations) {}
 
   private reconciliations = new Map<string, { dirty: boolean; more: boolean; promise: Promise<void> }>();
+  private listGeneration = 0;
   private globalHint: number | undefined;
 
   /** Read the active scope on entry and reread the global page on an owner list hint. */
@@ -123,81 +124,124 @@ export class AppsModel {
     const s = this.list.peek();
     const changed = thread === undefined && this.globalHint !== hint;
     this.globalHint = hint;
-    if (changed || s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
+    if (changed) void this.reconcileGlobal();
+    else if (s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
   }
 
-  /** Re-reads the displayed number of Core pages; hints coalesce behind one reader per scope. */
-  refresh(thread: string | undefined, showMore = false): Promise<void> {
-    const key = thread ?? "";
-    const current = this.list.peek();
-    const sameScope = current.thread === thread;
+  /** Thread Refresh keeps its original one-page behavior. */
+  async refresh(thread: string | undefined): Promise<void> {
+    const generation = ++this.listGeneration;
+    const before = this.list.peek();
+    const sameScope = before.thread === thread;
+    this.list.value = sameScope
+      ? { ...before, loading: true, loadingMore: false, error: undefined }
+      : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
+    const out = await this.ops.appsList(thread, undefined);
+    if (generation !== this.listGeneration) return;
+    if (!out.ok) {
+      this.list.value = { ...this.list.peek(), loading: false, error: out.error };
+      return;
+    }
+    this.list.value = { loading: false, loaded: true, thread, apps: readApps(out.value), next: str(out.value.next_cursor), pages: 1, loadingMore: false, error: undefined };
+  }
+
+  /** A global hint rebuilds only the number of pages currently displayed. */
+  private reconcileGlobal(): Promise<void> {
+    const key = "";
     const active = this.reconciliations.get(key);
     if (active) {
       active.dirty = true;
-      active.more ||= showMore;
-      this.list.value = sameScope
-        ? { ...current, loading: true, loadingMore: current.loadingMore || showMore }
-        : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: showMore, error: undefined };
       return active.promise;
     }
-
-    const state = { dirty: false, more: showMore, promise: Promise.resolve() };
+    const state = { dirty: false, more: false, promise: Promise.resolve() };
     this.reconciliations.set(key, state);
-    this.list.value = sameScope
-      ? { ...current, loading: true, loadingMore: current.loadingMore || showMore }
-      : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: showMore, error: undefined };
-    state.promise = this.reconcile(thread, key, state);
+    const before = this.list.peek();
+    this.list.value = before.thread === undefined
+      ? { ...before, loading: true }
+      : { loading: true, loaded: false, thread: undefined, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
+    state.promise = this.runGlobalReconciliation(state);
     return state.promise;
   }
 
-  private async reconcile(thread: string | undefined, key: string, state: { dirty: boolean; more: boolean; promise: Promise<void> }): Promise<void> {
+  private async runGlobalReconciliation(state: { dirty: boolean; more: boolean; promise: Promise<void> }): Promise<void> {
     try {
       do {
         state.dirty = false;
         const before = this.list.peek();
-        const sameScope = before.thread === thread;
-        const admittedMore = state.more;
-        const targetPages = Math.max(1, (sameScope ? before.pages : 0) + (admittedMore ? 1 : 0));
-        state.more = false;
-        this.list.value = sameScope
-          ? { ...before, loading: true, loadingMore: before.loadingMore || admittedMore }
-          : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: admittedMore, error: undefined };
+        const basePages = before.thread === undefined ? before.pages : 0;
+        const targetPages = Math.max(1, basePages);
         const apps: AppInfo[] = [];
         const seen = new Set<string>();
         let cursor: string | undefined;
         let next: string | undefined;
         let pages = 0;
         let error: OpError | undefined;
-        while (pages < targetPages) {
-          const out = await this.ops.appsList(thread, cursor);
+        this.list.value = { ...this.list.peek(), loading: true, loadingMore: state.more };
+        while (pages < targetPages + (state.more ? 1 : 0)) {
+          const out = await this.ops.appsList(undefined, cursor);
           if (!out.ok) { error = out.error; break; }
           pages++;
           for (const app of readApps(out.value)) {
-            if (!seen.has(app.name)) {
-              seen.add(app.name);
-              apps.push(app);
-            }
+            if (!seen.has(app.name)) { seen.add(app.name); apps.push(app); }
           }
           next = str(out.value.next_cursor);
           cursor = next;
           if (cursor === undefined) break;
         }
         const current = this.list.peek();
-        if (current.thread !== thread) return;
-        this.list.value = error
-          ? { ...current, loading: false, loadingMore: false, error }
-          : { loading: false, loaded: true, thread, apps, next, pages, loadingMore: false, error: undefined };
+        if (error) {
+          const failedMore = state.more;
+          state.more = false;
+          this.list.value = { ...current, loading: false, loadingMore: false, error };
+          if (failedMore) state.dirty = false;
+          continue;
+        }
+        state.more = false;
+        this.list.value = { loading: false, loaded: true, thread: undefined, apps, next, pages, loadingMore: false, error: undefined };
       } while (state.dirty);
     } finally {
-      if (this.reconciliations.get(key) === state) this.reconciliations.delete(key);
+      if (this.reconciliations.get("") === state) this.reconciliations.delete("");
     }
   }
 
-  /** Admit one more Core page even if a reconciliation is already running. */
+  /** Fetch exactly the published cursor and append it; never replay visible pages. */
   async more(): Promise<void> {
     const before = this.list.peek();
     if (before.next === undefined || before.loadingMore) return;
-    await this.refresh(before.thread, true);
+    const key = before.thread ?? "";
+    const active = this.reconciliations.get(key);
+    if (active) {
+      active.more = true;
+      this.list.value = { ...before, loadingMore: true, error: undefined };
+      return active.promise;
+    }
+    const generation = this.listGeneration;
+    const state = { dirty: false, more: true, promise: Promise.resolve() };
+    this.reconciliations.set(key, state);
+    this.list.value = { ...before, loadingMore: true, error: undefined };
+    state.promise = (async () => {
+      try {
+        const out = await this.ops.appsList(before.thread, before.next);
+        const current = this.list.peek();
+        if (generation !== this.listGeneration || current.thread !== before.thread) return;
+        if (!out.ok) {
+          this.list.value = { ...current, loadingMore: false, error: out.error };
+          state.more = false;
+          return;
+        }
+        if (state.dirty && before.thread === undefined) {
+          await this.runGlobalReconciliation(state);
+          return;
+        }
+        const seen = new Set(current.apps.map((app) => app.name));
+        const page = readApps(out.value).filter((app) => !seen.has(app.name));
+        this.list.value = { ...current, apps: [...current.apps, ...page], next: str(out.value.next_cursor), pages: current.pages + 1, loadingMore: false, error: undefined };
+        state.more = false;
+      } finally {
+        if (this.reconciliations.get(key) === state) this.reconciliations.delete(key);
+      }
+    })();
+    return state.promise;
   }
 
   async loadInstances(name: string): Promise<void> {
