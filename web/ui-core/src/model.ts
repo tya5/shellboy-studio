@@ -1,3 +1,4 @@
+import { retainedStringBytes, type RetainedReservation } from "../../data/src/retained-budget";
 import { HistoryBodies, RetainedBodies, type BodyState } from "./history-bodies";
 export type { BodyState } from "./history-bodies";
 import { readThreadSettings } from "./resources";
@@ -79,6 +80,7 @@ export interface OutputState {
   loading: boolean;
   /** More output exists than this view reads. */
   cutOff: boolean;
+  continuation?: string;
   expired?: boolean;
   error: string | undefined;
 }
@@ -87,11 +89,8 @@ export interface OutputState {
 const AUTH_HINT_ATTEMPTS = 2;
 /** `shell.list` page for one Thread; steps beyond it fall back to the state in history. */
 const SHELL_LIST_LIMIT = 200;
-/** Shell output cache: oldest entries are dropped first. */
-const CACHE_ENTRIES = 64;
+const PANEL_OPERATION_LIMIT = 64;
 const COARSE_TICK_MS = 30_000;
-/** One output or body read stops after this many pages (64 KiB each by the owner's default). */
-const MAX_PAGES = 8;
 
 interface UnreadPreferences {
   read(): UnreadRecord[];
@@ -120,14 +119,6 @@ function latestAssistant(rows: readonly import("../../data/src").HistoryItem[]) 
     assistantsByRows.set(rows, candidate);
   }
   return assistantsByRows.get(rows);
-}
-
-export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<string, V> {
-  const next = new Map(map);
-  next.delete(key);
-  next.set(key, value);
-  while (next.size > CACHE_ENTRIES) next.delete(next.keys().next().value as string);
-  return next;
 }
 
 export const errorMessage = (e: OpError): string => e.message;
@@ -309,6 +300,7 @@ export class AppModel {
 
   private readonly lastThread = signal<string | undefined>(undefined);
   private readonly watchedOutputs = new Map<string, { count: number; state: string | undefined }>();
+  private readonly retainedOutputs = new Map<string, { reservation: RetainedReservation; unpin?: () => void }>();
   private readonly nowMs: () => number;
   private readonly onNavigate: ((hash: string) => void) | undefined;
   private listHandle: Handle | undefined;
@@ -396,12 +388,12 @@ export class AppModel {
     this.unreadPreferences = options.unreadPreferences;
     this.data = options.data;
     this.retainedBodies = new RetainedBodies(this.data.retainedBudget);
-    this.disposers.push(() => this.retainedBodies.clear());
+    this.disposers.push(() => { this.retainedBodies.clear(); this.clearOutputs(); });
     let bodyOwner: string | undefined;
     this.disposers.push(effect(() => {
       const owner = this.data.owner.value;
       const instance = owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined;
-      if (instance !== bodyOwner) { bodyOwner = instance; this.retainedBodies.clear(); }
+      if (instance !== bodyOwner) { bodyOwner = instance; this.retainedBodies.clear(); this.clearOutputs(true); }
     }));
     this.attachmentSection = new AttachmentSection(this.data);
     this.artifacts = new ArtifactObservation(this.data);
@@ -949,6 +941,7 @@ export class AppModel {
     if (view !== "conversation") {
       if (current && !this.handlePaused) {
         this.handlePaused = true;
+        this.releaseOutputWatches();
         current.pause();
         this.cancelThreadReads();
       }
@@ -971,7 +964,7 @@ export class AppModel {
     this.panelOpener.value = {};
     this.panelOperations.value = new Map();
     this.panelDetail.value = undefined;
-    this.watchedOutputs.clear();
+    this.releaseOutputWatches();
     this.sendState.value = { kind: "idle" };
     this.openToolGroups.value = new Set();
     this.toolStepChoices.value = new Map();
@@ -1013,14 +1006,49 @@ export class AppModel {
     }
   }
 
-  /** A step was opened: read its output now and again when a hint shows it may have changed. */
+  private writeOutput(id: string, next?: OutputState): void {
+    const outputs = new Map(this.outputs.peek());
+    if (next) outputs.set(id, next); else outputs.delete(id);
+    this.outputs.value = outputs;
+  }
+
+  private releaseOutputWatches(): void {
+    const ids = [...this.watchedOutputs.keys()];
+    this.watchedOutputs.clear();
+    for (const id of ids) this.releaseOutput(id);
+  }
+
+  private releaseOutput(id: string): void {
+    const cancel = this.outputReads.get(id);
+    const retained = this.retainedOutputs.get(id);
+    this.outputReads.delete(id);
+    if (this.outputs.peek().get(id)?.loading) this.writeOutput(id);
+    cancel?.cancel();
+    const unpin = retained?.unpin;
+    if (retained) retained.unpin = undefined;
+    unpin?.();
+  }
+
+  private clearOutputs(keepWatches = false): void {
+    if (keepWatches) {
+      for (const id of this.watchedOutputs.keys()) this.releaseOutput(id);
+      for (const watch of this.watchedOutputs.values()) watch.state = undefined;
+    } else this.releaseOutputWatches();
+    for (const { reservation } of this.retainedOutputs.values()) reservation.release();
+    this.retainedOutputs.clear();
+    this.outputs.value = new Map();
+  }
+
+  /** A step owns a pin while open. Reopening shows the cached result while the owner validates it. */
   watchOutput(executionId: string): () => void {
     let watch = this.watchedOutputs.get(executionId);
     if (watch) watch.count++;
     else {
       watch = { count: 1, state: this.shells.peek().get(executionId)?.state };
       this.watchedOutputs.set(executionId, watch);
-      void this.readOutput(executionId);
+      const retained = this.retainedOutputs.get(executionId);
+      if (retained) { retained.reservation.touch(); retained.unpin = retained.reservation.pin(); }
+      if (!this.outputs.peek().get(executionId)?.cutOff) void this.readOutput(executionId);
     }
     let released = false;
     return () => {
@@ -1028,82 +1056,107 @@ export class AppModel {
       released = true;
       if (--watch.count > 0) return;
       this.watchedOutputs.delete(executionId);
-      const cancel = this.outputReads.get(executionId);
-      this.outputReads.delete(executionId);
-      if (this.outputs.peek().get(executionId)?.loading) {
-        const next = new Map(this.outputs.peek()); next.delete(executionId); this.outputs.value = next;
-      }
-      cancel?.cancel();
+      this.releaseOutput(executionId);
     };
   }
 
-  private async readOutput(executionId: string): Promise<void> {
+  continueOutput(executionId: string): void {
+    if (this.watchedOutputs.has(executionId) && !this.outputReads.has(executionId)) void this.readOutput(executionId, true);
+  }
+
+  private async readOutput(executionId: string, resume = false): Promise<void> {
     const previous = this.outputReads.get(executionId);
     const cancel = new Cancel();
     this.outputReads.set(executionId, cancel);
     previous?.cancel();
-    if (this.outputReads.get(executionId) !== cancel) return;
     const forget = this.threadReads.add(() => cancel.cancel());
     try {
-      await this.readOutputPages(executionId, cancel);
+      await this.readOutputPages(executionId, cancel, resume);
     } finally {
       forget();
       if (this.outputReads.get(executionId) === cancel) this.outputReads.delete(executionId);
     }
   }
 
-  private async readOutputPages(executionId: string, cancel: Cancel): Promise<void> {
-    const cur = this.outputs.peek().get(executionId);
-    // A validated empty output is still a saved result, not first-load absence.
-    if (!cur || cur.loading || (cur.error !== undefined && !cur.expired)) this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
-      text: cur?.text ?? "",
-      ...(cur?.stderr && { stderr: cur.stderr }),
-      loading: true,
-      cutOff: cur?.cutOff ?? false,
-      error: undefined,
-    });
-    let text = "";
-    const stderr: StderrRange[] = [];
-    let cursor: string | undefined;
-    let error: string | undefined;
+  private async readOutputPages(id: string, cancel: Cancel, resume: boolean): Promise<void> {
+    const cur = this.outputs.peek().get(id);
+    const prefix = resume && cur?.continuation !== undefined ? cur : undefined;
+    let text = prefix?.text ?? "";
+    let stderr = [...(prefix?.stderr ?? [])];
+    let cursor = prefix?.continuation;
     let cutOff = false;
+    let error: string | undefined;
     let expired = false;
-    for (let page = 0; ; page++) {
-      if (page === MAX_PAGES) {
-        cutOff = true;
-        break;
+    const current = () => !cancel.cancelled && this.outputReads.get(id) === cancel;
+    const bytes = (payload: string, ranges: readonly StderrRange[], next?: string) =>
+      96 + retainedStringBytes(id) + retainedStringBytes(payload) + ranges.length * 48 + (next === undefined ? 0 : retainedStringBytes(next));
+    let reservation: RetainedReservation | undefined;
+    const evict = () => {
+      if (this.retainedOutputs.get(id)?.reservation === reservation) {
+        this.retainedOutputs.delete(id);
+        this.writeOutput(id);
       }
-      const out = await this.ops.shellRead({ execution_id: executionId, segments: true, ...(cursor !== undefined && { cursor }) }, { cancel });
-      if (this.outputReads.get(executionId) !== cancel) return;
-      if (!out.ok) {
-        if (out.error.kind === "cancelled") {
-          // Keep an already validated snapshot; only discard an unfinished first load.
-          if (cur && !cur.loading && cur.error === undefined) return;
-          const next = new Map(this.outputs.peek());
-          next.delete(executionId);
-          this.outputs.value = next;
-          return;
-        }
-        expired = out.error.kind === "owner" && out.error.code === "output_expired";
-        error = errorMessage(out.error);
-        break;
-      }
-      if (out.value.execution_id !== executionId) {
-        error = "shell.read returned a different execution";
-        break;
-      }
-      for (const { start, end } of out.value.stderr ?? []) stderr.push({ start: text.length + start, end: text.length + end });
-      text += out.value.text;
-      cursor = out.value.cursor;
-      if (out.value.text === "" || cursor === undefined) break;
+    };
+    reservation = this.data.retainedBudget.reserve(bytes(text, stderr, cursor), evict);
+    if (!reservation) {
+      if (cur && !cur.cutOff) return;
+      this.writeOutput(id, { text: cur?.text ?? "", stderr: cur?.stderr, loading: false, cutOff: true, continuation: cur?.continuation, error: undefined });
+      return;
     }
-    const ranges = expired ? undefined : error !== undefined ? cur?.stderr : stderr.length ? stderr : undefined;
-    const next: OutputState = { text: expired ? "" : error !== undefined ? (cur?.text ?? "") : text, loading: false, cutOff, error, ...(ranges && { stderr: ranges }), ...(expired && { expired }) };
-    const current = this.outputs.peek().get(executionId);
-    if (current?.text === next.text && current.loading === next.loading && current.cutOff === next.cutOff && current.error === next.error && current.expired === next.expired &&
-        current.stderr?.length === ranges?.length &&
-        (!ranges || ranges.every(({ start, end }, i) => current.stderr?.[i]?.start === start && current.stderr[i]?.end === end))) return;
-    this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, next);
+    const pin = reservation.pin();
+    const releaseOnCancel = cancel.add(() => {
+      reservation?.release();
+      if (this.outputReads.get(id) === cancel && this.outputs.peek().get(id)?.loading) this.writeOutput(id);
+    });
+    let adopted = false;
+    try {
+      if (!cur) this.writeOutput(id, { text: "", loading: true, cutOff: false, error: undefined });
+      while (current()) {
+        const out = await this.ops.shellRead({ execution_id: id, segments: true, ...(cursor !== undefined && { cursor }) }, { cancel });
+        if (!current()) return;
+        if (!out.ok) {
+          if (out.error.kind === "cancelled") return;
+          expired = out.error.kind === "owner" && out.error.code === "output_expired";
+          error = errorMessage(out.error);
+          break;
+        }
+        if (out.value.execution_id !== id) { error = "shell.read returned a different execution"; break; }
+        const next = out.value.output_complete === true ? undefined : out.value.cursor ?? undefined;
+        const chunk = out.value.text;
+        if (chunk && next !== undefined && next === cursor) { error = "Shell output continuation did not advance"; break; }
+        const ranges = out.value.stderr ?? [];
+        if (!reservation.resize(bytes(text, stderr, next) + retainedStringBytes(chunk) + ranges.length * 48)) {
+          cutOff = true;
+          break;
+        }
+        stderr.push(...ranges.map(({ start, end }) => ({ start: text.length + start, end: text.length + end })));
+        text += chunk;
+        cursor = next;
+        if (!chunk || cursor === undefined) break;
+      }
+      if (!current()) return;
+      if (error !== undefined) {
+        text = expired ? "" : cur?.text ?? "";
+        stderr = expired ? [] : [...(cur?.stderr ?? [])];
+        cursor = undefined;
+      }
+      const ranges = stderr.length ? stderr : undefined;
+      const next: OutputState = { text, loading: false, cutOff, error, ...(ranges && { stderr: ranges }), ...(expired && { expired }), ...(cutOff && cursor !== undefined && { continuation: cursor }) };
+      if (cur && cur.text === next.text && !cur.loading && cur.cutOff === next.cutOff && cur.continuation === next.continuation && cur.error === next.error && cur.expired === next.expired &&
+          cur.stderr?.length === ranges?.length && (!ranges || ranges.every(({ start, end }, i) => cur.stderr?.[i]?.start === start && cur.stderr?.[i]?.end === end))) return;
+      if (cutOff && cur && !cur.cutOff && !text) return;
+      if (!reservation.resize(bytes(text, stderr, next.continuation) + (error ? retainedStringBytes(error) : 0))) return;
+      batch(() => {
+        this.retainedOutputs.get(id)?.reservation.release();
+        this.retainedOutputs.set(id, { reservation, unpin: pin });
+        adopted = true;
+        this.writeOutput(id, next);
+        if (!this.watchedOutputs.has(id)) this.releaseOutput(id);
+      });
+    } finally {
+      releaseOnCancel();
+      if (!adopted) reservation.release();
+    }
   }
 
   /** Read one message beyond its excerpt. On request only. */
@@ -1439,7 +1492,7 @@ export class AppModel {
     const previous = next.get(id);
     const handle = this.handle.peek();
     if (!handle || this.connection.peek() !== "connected" || (previous && previous.disposition !== "failed")) return;
-    if (!next.has(id) && next.size >= CACHE_ENTRIES) {
+    if (!next.has(id) && next.size >= PANEL_OPERATION_LIMIT) {
       const settled = [...next].find(([, state]) => state.disposition === "failed");
       if (!settled) return;
       next.delete(settled[0]);

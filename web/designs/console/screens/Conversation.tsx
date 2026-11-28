@@ -433,7 +433,7 @@ function useOutputBody({ model, id, command, complete, boxed }: OutputProps, inl
     : <>
       <div class={`output-log${wrap ? " output-wrapped" : ""}`}>{lines && !raw ? <OutputLines lines={lines} boxed={boxed ?? false} /> : <LogBlock text={out.text || t("details.outputEmpty")} boxed={boxed ?? false} />}</div>
       {out.error ? <div class="caption muted">{t("details.outputError", { message: out.error })}</div> : null}
-      {out.cutOff ? <div class="caption muted" role="note">{t("details.outputMore")}</div> : null}
+      {out.cutOff ? <div class="caption muted" role="note">{t("details.outputMore")} <Button variant="ghost" onClick={() => model.continueOutput(id)}>{t("action.retry")}</Button></div> : null}
     </>;
   return { out, available, body, wrap, setWrap, raw, setRaw, lines, loading, stderrCount: projection?.stderrCount ?? 0 };
 }

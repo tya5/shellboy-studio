@@ -765,6 +765,39 @@ it("output first load is loading, unchanged refresh is silent and real changes s
   next(); stop(); model.dispose();
 });
 
+it("continues a byte-limited shell result at its cursor, beyond the old eight-page cap", async () => {
+  const { model, t, db } = await fixtureModel();
+  const budget = model.data.retainedBudget;
+  budget.setLimit(budget.usage.peek().used + 1500);
+  const stop = model.watchOutput("exec-1");
+  const reply = async (text: string, cursor?: string) => {
+    await flush();
+    const call = t.calls("shell.read").at(-1)!;
+    expect(db.answered.has(call.id)).toBe(false);
+    db.answered.add(call.id);
+    t.ok(call.id, { execution_id: "exec-1", text, cursor });
+    await flush();
+  };
+  try {
+    await reply("a".repeat(256), "second");
+    await reply("b".repeat(512), "third");
+    expect(model.outputs.peek().get("exec-1")).toMatchObject({ text: "a".repeat(256), cutOff: true });
+    const before = t.calls("shell.read").length;
+    budget.setLimit(64 * 1024 * 1024);
+    await flush();
+    expect(t.calls("shell.read")).toHaveLength(before);
+    model.continueOutput("exec-1");
+    await flush();
+    expect(t.calls("shell.read").at(-1)?.args).toMatchObject({ cursor: "second" });
+    for (let i = 0; i < 10; i++) await reply(String(i), i === 9 ? undefined : `cursor-${i}`);
+    expect(model.outputs.peek().get("exec-1")).toMatchObject({ text: "a".repeat(256) + "0123456789", cutOff: false });
+    stop();
+    expect(model.outputs.peek().get("exec-1")?.text).toHaveLength(266);
+    budget.setLimit(0);
+    expect(model.outputs.peek().has("exec-1")).toBe(false);
+  } finally { stop(); model.dispose(); }
+});
+
 it('reservation notification is synchronous, owns text/op before dispatch and isolates observer throws',async()=>{
  const f=await fixtureModel();
  try{
