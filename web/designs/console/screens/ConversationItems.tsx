@@ -178,7 +178,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const renderLocalAt = (position: number) => (localByPosition.get(position) ?? []).map(tail => {
       if (tail.kind === "live") return <Fragment key={`conversation:${tail.item.key}`}>{content(tail.item, false, false)}{localRegion!.renderRow(tail)}</Fragment>;
       const id = tail.row.messageId;
-      const key = id === undefined ? `own:${tail.row.operationId}` : canonicalSavedItemKey(id, JSON.stringify([id, "/content/0"]));
+      const key = id === undefined ? `own:${tail.row.pendingKey}` : canonicalSavedItemKey(id, JSON.stringify([id, "/content/0"]));
       return <Fragment key={`conversation:${key}`}>{row(key, localRegion!.renderRow(tail.row))}</Fragment>;
     });
     const renderPosition = (position: number, hostedContainer?: string): ComponentChildren[] => {

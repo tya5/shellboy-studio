@@ -213,16 +213,16 @@ describe("Operations", () => {
     const arch = ops.threadArchive(["a", "b"], { descendants: true });
     const cmds = t.calls();
     expect(cmds.map((c) => [c.command, c.operation_id])).toEqual([
-      ["message.send", "uuid-1"],
-      ["run.stop", "uuid-2"],
+      ["message.send", undefined],
+      ["run.stop", undefined],
       ["run.retry", "mine"],
-      ["thread.archive", "uuid-3"],
+      ["thread.archive", undefined],
     ]);
     expect(cmds[0]!.args).toEqual({ thread_id: "a", text: "hi", deliver: "complete" }); // bridge sets human/sender_label
     expect(cmds[3]!.args).toEqual({ thread_ids: ["a", "b"], descendants: true });
     for (const c of cmds) t.ok(c.id, c.command === "message.send" ? {message_id:"accepted-message",thread_id:"a"} : { done: true });
     await flush();
-    expect(await send).toEqual({ ok: true, ownerOperationId: "op", value: {message_id:"accepted-message",thread_id:"a"}, operationId: "uuid-1" });
+    expect(await send).toEqual({ ok: true, ownerOperationId: "epoch-test:1", value: {message_id:"accepted-message",thread_id:"a"}, operationId: "epoch-test:1" });
     expect(await retry).toMatchObject({ operationId: "mine" });
     expect(await stop).toMatchObject({ ok: true });
     expect(await arch).toMatchObject({ ok: true });
@@ -267,7 +267,7 @@ describe("Operations", () => {
     const cwds = ops.threadCwds({ limit: 200, cursor: "c" });
     const list = ops.threadList({ limit: 100, tags: ["x", "y"], cwd: "/w" });
     const cmds = t.calls();
-    expect(cmds.map((c) => [c.command, c.operation_id])).toEqual([["thread.tag", "uuid-1"], ["thread.tags", undefined], ["thread.cwds", undefined], ["thread.list", undefined]]);
+    expect(cmds.map((c) => [c.command, c.operation_id])).toEqual([["thread.tag", undefined], ["thread.tags", undefined], ["thread.cwds", undefined], ["thread.list", undefined]]);
     expect(cmds[0]!.args).toEqual({ thread_ids: ["a"], add: ["x"] });
     expect(cmds[3]!.args).toEqual({ limit: 100, tags: ["x", "y"], cwd: "/w" });
     t.ok(cmds[0]!.id, { changed: ["a"], unchanged: [], not_found: [], add: ["x"], remove: [] });
@@ -286,10 +286,10 @@ describe("Operations", () => {
     const first = ops.messageSend({ thread_id: "a", text: "hi" });
     t.drop();
     const r = await first;
-    expect(r).toMatchObject({ ok: false, error: { kind: "unconfirmed", operationId: "uuid-1" }, operationId: "uuid-1" });
+    expect(r).toMatchObject({ ok: false, error: { kind: "unconfirmed", operationId: "epoch-test:1" }, operationId: "epoch-test:1" });
     t.open();
-    const again = ops.messageSend({ thread_id: "a", text: "hi" }, "uuid-1");
-    expect(t.calls().at(-1)!.operation_id).toBe("uuid-1");
+    const again = ops.messageSend({ thread_id: "a", text: "hi" }, r.operationId!);
+    expect(t.calls().at(-1)!.operation_id).toBe(r.operationId);
     t.ok(t.calls().at(-1)!.id, { message_id:"accepted-message",thread_id:"a",receipt: "same" });
     expect(await again).toMatchObject({ ok: true });
   });
@@ -340,9 +340,9 @@ describe("Operations added for the presentation", () => {
     const { t, ops } = setup();
     const made = ops.threadCreate({ cwd: "/w" });
     const call = t.calls("thread.create")[0]!;
-    expect(call.operation_id).toBe("uuid-1");
+    expect(call.operation_id).toBeUndefined();
     t.ok(call.id, details("a"));
-    expect(await made).toMatchObject({ ok: true, value: { thread_id: "a" }, operationId: "uuid-1" });
+    expect(await made).toMatchObject({ ok: true, value: { thread_id: "a" }, operationId: "epoch-test:1" });
   });
 
   it("an undecodable shell entry is a loud invalid_response", async () => {
@@ -459,9 +459,9 @@ describe("Reads and mutations for Branches and Threads", () => {
     expect(preview).toMatchObject({ command: "thread.rewind", args: { thread_id: "a", node_id: "n", dry_run: true } });
     expect(preview!.operation_id).toBeUndefined();
     expect(rewind!.args).toEqual({ thread_id: "a", node_id: "n" });
-    expect(rewind!.operation_id).toBeTruthy();
+    expect(rewind!.operation_id).toBeUndefined();
     expect(fork).toMatchObject({ command: "thread.fork", args: { thread_id: "a", node_id: "n" } });
-    expect(fork!.operation_id).toBeTruthy();
+    expect(fork!.operation_id).toBeUndefined();
     expect(unarchive).toMatchObject({ command: "thread.unarchive", args: { thread_ids: ["a"], descendants: true } });
   });
   it("branches sends the owner's argument names", async () => {
@@ -536,7 +536,7 @@ it("sends Core v0.16 shell and interrupt commands with their typed protocol targ
   for (const [command,invoke,args] of cases) {
     const promise=invoke();
     const call=t.calls().at(-1)!;
-    expect(call).toMatchObject({command,args,operation_id:expect.any(String)});
+    expect(call).toMatchObject({command,args}); expect(call.operation_id).toBeUndefined();
     t.ok(call.id,{});
     await expect(promise).resolves.toMatchObject({ok:true,value:{}});
   }

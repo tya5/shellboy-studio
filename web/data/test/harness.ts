@@ -34,6 +34,13 @@ export class FakeTransport implements Transport {
   isOpen = false;
   sent: ClientFrame[] = [];
   onCall?: (call: CallFrame) => void;
+  announceMutations = true;
+  private announced = new Map<number, string>();
+  operationId(callId: number): string | undefined { return this.announced.get(callId); }
+  announce(callId: number, operationId = `epoch-test:${callId}`): void {
+    this.announced.set(callId, operationId);
+    this.handlers?.onFrame({ t: "operation_id", id: callId, operation_id: operationId });
+  }
 
   start(handlers: TransportHandlers): void {
     this.handlers = handlers;
@@ -41,7 +48,12 @@ export class FakeTransport implements Transport {
   send(frame: ClientFrame): boolean {
     if (!this.isOpen) return false;
     this.sent.push(frame);
-    if (frame.t === "call") this.onCall?.(frame);
+    if (frame.t === "call") {
+      if (this.announceMutations && ["message.send", "thread.fork", "thread.rewind", "thread.create", "thread.delete", "thread.delete_set", "thread.archive", "thread.set", "thread.tag", "run.stop", "run.retry", "turn.interrupt", "message.cancel", "message.reply"].includes(frame.command) && frame.operation_id === undefined) {
+        this.announce(frame.id);
+      }
+      this.onCall?.(frame);
+    }
     return true;
   }
   stop(): void {
@@ -75,7 +87,9 @@ export class FakeTransport implements Transport {
     this.okRaw(id, recordFixture(this.calls().find(call => call.id === id), result));
   }
   okRaw(id: number, result: unknown): void {
-    this.push({ t: "result", id, response: okResponse(result) });
+    const call = this.calls().find(candidate => candidate.id === id);
+    const mutation = call && ["message.send", "thread.fork", "thread.rewind", "thread.create", "thread.delete", "thread.delete_set", "thread.archive", "thread.set", "thread.tag", "run.stop", "run.retry", "turn.interrupt", "message.cancel", "message.reply"].includes(call.command);
+    this.push({ t: "result", id, response: { ...okResponse(result), ...(mutation && { operation_id: call.operation_id ?? `epoch-test:${id}` }) } });
   }
   ownerError(id: number, code: string, message = code, details?: unknown): void {
     this.push({

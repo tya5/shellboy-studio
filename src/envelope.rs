@@ -96,6 +96,10 @@ pub enum ServerFrame {
     LauncherDiagnostic {
         message: Option<String>,
     },
+    OperationId {
+        id: u64,
+        operation_id: String,
+    },
     Result {
         id: u64,
         #[serde(skip_serializing_if = "Option::is_none")]

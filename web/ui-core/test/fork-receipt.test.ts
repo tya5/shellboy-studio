@@ -19,7 +19,7 @@ describe("fork receipt repair", () => {
   it("lost reply retries identical fork ID/args and never targets parent rewind", async () => {
     const f=fixture();const first=f.b.forkAt(f.target);const one=f.t.calls("thread.fork")[0]!;
     f.t.drop();await first;f.t.open();const retry=f.b.forkAt(f.target);const two=f.t.calls("thread.fork")[1]!;
-    expect(two.operation_id).toBe(one.operation_id);expect(two.args).toEqual(one.args);expect(two.args).toEqual({thread_id:"parent",node_id:"point"});
+    expect(one.operation_id).toBeUndefined(); expect(two.operation_id).toBe("epoch-test:1");expect(two.args).toEqual(one.args);expect(two.args).toEqual({thread_id:"parent",node_id:"point"});
     expect(f.t.calls("thread.rewind")).toHaveLength(0);f.t.drop();await retry;f.link.stop();
   });
   it("inflight duplicates join and changed payload is refused",async()=>{
@@ -51,9 +51,9 @@ describe("fork receipt repair", () => {
 
 it("old-owner opaque receipt cannot establish success; explicit original-owner retry keeps the ID",async()=>{
   const f=fixture();const p=f.b.forkAt(f.target,"fixed");const sent=f.t.calls("thread.fork")[0]!;f.t.drop();await p;f.t.open();f.change("b");
-  const lookup=f.b.forkAt(f.target,"fixed");f.t.ok(f.t.calls("operation.get")[0]!.id,{operation_id:sent.operation_id,state:"completed",replay_policy:"return_saved_outcome",outcome:{result:child}});await lookup;
+  const lookup=f.b.forkAt(f.target,"fixed");f.t.ok(f.t.calls("operation.get")[0]!.id,{operation_id:"epoch-test:1",state:"completed",replay_policy:"return_saved_outcome",outcome:{result:child}});await lookup;
   expect(f.t.calls("thread.fork")).toHaveLength(1);expect(f.t.calls("message.send")).toHaveLength(0);
-  f.change("a");const retry=f.b.forkAt(f.target,"fixed");expect(f.t.calls("thread.fork")[1]!.operation_id).toBe(sent.operation_id);
+  f.change("a");const retry=f.b.forkAt(f.target,"fixed");expect(f.t.calls("thread.fork")[1]!.operation_id).toBe("epoch-test:1");
   f.t.ok(f.t.calls("thread.fork")[1]!.id,child);await flush();f.t.ok(f.t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(f.t.calls("message.send")[0]!.args as {thread_id:string}).thread_id});await retry;f.link.stop();
 });
 it("owner unavailable roundtrip during send keeps the original receipt and blocks late projection",async()=>{
@@ -76,7 +76,7 @@ it("synchronous transport reentry joins before the first fork send",async()=>{
 });
 it("expired/invalid canonical responses retain immutable ID and refuse changed parent or text",async()=>{
   const f=fixture();const first=f.b.forkAt(f.target,"fixed");const sent=f.t.calls("thread.fork")[0]!;f.t.ownerError(sent.id,"operation_expired");await first;
-  const retry=f.b.forkAt(f.target,"fixed");const same=f.t.calls("thread.fork")[1]!;expect(same.operation_id).toBe(sent.operation_id);f.t.ok(same.id,"malformed");await retry;
+  const retry=f.b.forkAt(f.target,"fixed");const same=f.t.calls("thread.fork")[1]!;expect(same.operation_id).toBe("epoch-test:1");f.t.ok(same.id,"malformed");await retry;
   await f.b.forkAt({threadId:"other",nodeId:"other"},"fixed");await f.b.forkAt(f.target,"changed");expect(f.t.calls("thread.fork")).toHaveLength(2);f.link.stop();
 });
 
@@ -127,7 +127,7 @@ it.each(["fork", "rewind"] as const)("%s joins an in-flight mutation and explici
       expect(f.b.rewind.value.kind).toBe("ready");
     }
     const submit = () => action === "fork" ? f.b.forkAt(f.target) : f.b.confirmRewind();
-    const mutations = () => f.t.calls(command).filter(call => call.operation_id);
+    const mutations = () => f.t.calls(command).filter(call => action !== "rewind" || (call.args as { dry_run?: boolean }).dry_run !== true);
     const first = submit();
     const joined = submit();
     expect(mutations()).toHaveLength(1);
@@ -140,7 +140,7 @@ it.each(["fork", "rewind"] as const)("%s joins an in-flight mutation and explici
     const retry = submit();
     expect(mutations()).toHaveLength(2);
     const replay = mutations()[1]!;
-    expect(replay.operation_id).toBe(original.operation_id);
+    expect(original.operation_id).toBeUndefined(); expect(replay.operation_id).toBe(`epoch-test:${action === "rewind" ? 2 : 1}`);
     expect(replay.args).toEqual({ thread_id: "parent", node_id: "point" });
     expect(replay.args).toEqual(original.args);
     f.t.ok(replay.id, action === "fork" ? child : { thread_id: "parent", node_id: "point", branch_thread_id: "kept" });

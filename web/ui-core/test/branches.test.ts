@@ -153,7 +153,7 @@ describe("Branches over the fake transport", () => {
     await settle(t, db);
     const real = t.calls("thread.rewind")[1]!;
     expect(real.args).toEqual({ thread_id: "lead", node_id: "n100" });
-    expect(real.operation_id).toBeTruthy();
+    expect(real.operation_id).toBeUndefined();
     expect(b.rewind.value).toMatchObject({ kind: "done", facts: { branchThreadId: "kept" } });
   });
   it("choosing another point withdraws the preview", async () => {
@@ -195,7 +195,7 @@ describe("Branches over the fake transport", () => {
     void model.branches.forkAt({ threadId: "lead", nodeId: "n100" });
     await settle(t, db);
     expect(model.branches.fork.value).toMatchObject({ kind: "done", threadId: "forked" });
-    expect(t.calls("thread.fork")[0]!.operation_id).toBeTruthy();
+    expect(t.calls("thread.fork")[0]!.operation_id).toBeUndefined();
     expect(t.calls("thread.branches").length).toBe(before + 1);
   });
   it("a list hint re-reads while open and not after leaving", async () => {

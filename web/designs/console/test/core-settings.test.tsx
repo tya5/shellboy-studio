@@ -84,7 +84,8 @@ it("shows only Stop for an external owner, then hides it after the typed TUI ref
   expect(button(host, "Restart owner")).toBeUndefined();
   await step(() => button(host, "Stop Core")!.click());
   expect(host.querySelector("dialog")).toBeNull();
-  expect(f.t.calls("owner.shutdown")[0]).toMatchObject({ args: { instance_id: "i1" }, operation_id: expect.any(String) });
+  expect(f.t.calls("owner.shutdown")[0]!.args).toEqual({ instance_id: "i1" });
+  expect(f.t.calls("owner.shutdown")[0]!.operation_id).toBeUndefined();
   expect(host.textContent).toContain("invalid_state: shutdown is only available for serve owners");
   expect(button(host, "Stop Core")).toBeUndefined();
 }));

@@ -103,7 +103,7 @@ describe("bounded named reply inbox", () => {
     const base = f.t.calls("thread.list").filter(c => !(c.args as Record<string, unknown>).awaiting).at(-1)!; f.t.ok(base.id, { items: [] }); await flush(); await fill(f);
     expect((await f.inbox.answer("h", "different")).ok).toBe(false);
     const retry = f.inbox.answer("h", "answer"); await flush(); const resent = f.t.calls("message.reply").at(-1)!;
-    expect(resent.operation_id).toBe(sent.operation_id); f.t.ok(resent.id, replyResult(resent)); await flush(); f.t.ok(f.t.calls("message.list").at(-1)!.id, { items: [] }); await retry; f.close();
+    expect(resent.operation_id).toBe(`epoch-test:${sent.id}`); f.t.ok(resent.id, replyResult(resent)); await flush(); f.t.ok(f.t.calls("message.list").at(-1)!.id, { items: [] }); await retry; f.close();
   });
   it("reports expired cursors instead of silently scanning/restarting, keeps the loaded questions, and cancels on close", async () => {
     const f = await fixture(); await fill(f); const more = f.inbox.more(); await flush();
@@ -298,7 +298,7 @@ it("explicit same-owner reconnect retry dispatches a new call with the ORIGINAL 
  f.t.drop();await flush();await answer;f.t.open();f.t.push({t:"hello",bridge_version:"test",data_dir:"/synthetic",owner:connected});
  await flush();await fill(f);
  const before=f.t.calls("message.reply").length;const retry=f.inbox.answer("h","exact text");await flush();
- expect(f.t.calls("message.reply")).toHaveLength(before+1);const next=f.t.calls("message.reply").at(-1)!;expect(next.id).not.toBe(original.id);expect(next.operation_id).toBe(original.operation_id);expect(next.args).toEqual(original.args);
+ expect(f.t.calls("message.reply")).toHaveLength(before+1);const next=f.t.calls("message.reply").at(-1)!;expect(next.id).not.toBe(original.id);expect(next.operation_id).toBe(`epoch-test:${original.id}`);expect(next.args).toEqual(original.args);
  f.t.ownerError(next.id,"delivery_unconfirmed");await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[]});await flush();await retry;f.close();
 });
 it.each(["owner","query"])("page-two completion reset callback %s change cannot be recaptured as a fresh first-page intent",async transition=>{

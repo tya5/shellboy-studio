@@ -74,6 +74,24 @@ describe("Link", () => {
     expect(await queued.promise).toMatchObject({ error: { kind: "not_connected" } });
   });
 
+  it("a drop before Core announces an ID was not sent; after announcement it is unconfirmed by that ID", async () => {
+    const before = setup();
+    before.t.announceMutations = false;
+    const unsent = before.link.call("message.send", { text: "before" }, { mutation: true });
+    const beforeId = before.t.calls()[0]!.id;
+    before.t.drop();
+    expect(await unsent.promise).toMatchObject({ error: { kind: "connection_lost" } });
+    expect(before.t.sent).toContainEqual({ t: "call", id: beforeId, command: "message.send", args: { text: "before" } });
+
+    const after = setup();
+    after.t.announceMutations = false;
+    const submitted = after.link.call("message.send", { text: "after" }, { mutation: true });
+    const afterId = after.t.calls()[0]!.id;
+    after.t.push({ t: "operation_id", id: afterId, operation_id: "epoch:receipt-7" });
+    after.t.drop();
+    expect(await submitted.promise).toMatchObject({ error: { kind: "unconfirmed", operationId: "epoch:receipt-7" } });
+  });
+
   it("cancel: queued call is dropped silently, sent call gets a cancel frame and its reply is discarded", async () => {
     const { t, link } = setup();
     const sent = link.call("thread.get", { a: 1 });

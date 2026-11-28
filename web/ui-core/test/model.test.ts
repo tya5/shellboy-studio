@@ -536,11 +536,11 @@ describe("AppModel over the fake transport", () => {
     expect(model.pendingOwnMessage.peek()).toBeDefined();
     expect(model.sendState.peek().kind).toBe("unconfirmed");
     expect(await model.send("must not replace uncertain text")).toBe(false);
-    expect(model.pendingOwnMessage.peek()?.operationId).toBe(first.operation_id);
+    expect(model.pendingOwnMessage.peek()?.operationId).toBe(`epoch-test:${first.id}`);
     const again = model.resend();
     await flush();
     const second = t.calls("message.send")[1]!;
-    expect(second.operation_id).toBe(first.operation_id);
+    expect(second.operation_id).toBe(`epoch-test:${first.id}`);
     t.ok(second.id, {message_id:"confirmed-original",thread_id:"lead"});
     expect(await again).toBe(true);
   });
@@ -752,7 +752,7 @@ it('publishes accepted ownership and pending removal in one ACK frame for the ex
   f.t.ok(call.id,{thread_id:'lead',message_id:'exact-saved-node'});expect(await sent).toBe(true);
   expect(frames.some(frame=>frame.pending&&frame.accepted>0)).toBe(false);
   expect(frames.filter(frame=>frame.accepted>0).every(frame=>frame.rows===1&&frame.phase==='idle')).toBe(true);
-  expect(f.model.acceptedOwnMessages.peek()[0]).toMatchObject({operationId:call.operation_id,messageId:'exact-saved-node',text:'Original owned draft'});
+  expect(f.model.acceptedOwnMessages.peek()[0]).toMatchObject({operationId:`epoch-test:${call.id}`,messageId:'exact-saved-node',text:'Original owned draft'});
  }finally{stopAccepted();stopPending();f.model.dispose();f.data.stop();}
 });
 it.each(['reserve-next','invalidate-route','invalidate-owner'] as const)('ACK subscribers see a complete ownership commit before synchronous %s reentry',async mode=>{
@@ -770,7 +770,8 @@ it.each(['reserve-next','invalidate-route','invalidate-owner'] as const)('ACK su
   f.t.ok(first.id,{thread_id:'lead',message_id:'first-exact-node'});await sent;await flush();
   expect(observed).toEqual({pending:undefined,phase:'idle'});
   if(mode==='reserve-next'){
-   const second=f.t.calls('message.send').at(-1)!;expect(second.operation_id).not.toBe(first.operation_id);
+   const second=f.t.calls('message.send').at(-1)!;expect(second.operation_id).toBeUndefined();
+   expect(f.model.pendingOwnMessage.peek()?.operationId).toBe(f.t.operationId(second.id));
    expect(f.model.pendingOwnMessage.peek()?.text).toBe('Next original operation');expect(f.model.sendState.peek().kind).toBe('sending');
    f.t.ownerError(second.id,'temporary_failure');await next;
   }else expect(f.t.calls('message.send')).toHaveLength(1);

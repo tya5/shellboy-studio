@@ -58,6 +58,7 @@ export type ClientFrame =
 
 export type ServerFrame =
   | { t: "hello"; bridge_version: string; listen?: string; data_dir?: string; owner: OwnerState; desktop?: boolean; core_management?: boolean }
+  | { t: "operation_id"; id: number; operation_id: string }
   | { t: "result"; id: number; response?: OwnerResponse; error?: BridgeError }
   | { t: "changed"; thread_ids: string[]; list: boolean; config_changed: boolean }
   | { t: "live"; thread_id: string; attempt_id: string; input_through_node_id?: string | null; gap: boolean; deltas: { offset: number; reasoning: boolean; text: string }[] }
@@ -113,6 +114,9 @@ export function parseServerFrame(text: string): ParsedFrame {
   switch (v.t) {
     case "hello":
       if (typeof v.bridge_version !== "string" || !validOwnerState(v.owner)) return bad("bad fields");
+      return { ok: true, frame: v as unknown as ServerFrame };
+    case "operation_id":
+      if (typeof v.id !== "number" || typeof v.operation_id !== "string" || !v.operation_id) return bad("bad fields");
       return { ok: true, frame: v as unknown as ServerFrame };
     case "result":
       if (typeof v.id !== "number" || (!isObject(v.response) && !isObject(v.error)))

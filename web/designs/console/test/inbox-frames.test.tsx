@@ -130,7 +130,7 @@ it("cancels the selected human question and waits for the owner hint to remove i
   expect(transport.calls("message.cancel")).toHaveLength(2);
   const retry = transport.calls("message.cancel")[1]!;
   expect(retry.args).toEqual(refused.args);
-  expect(retry.operation_id).not.toBe(refused.operation_id);
+  expect(refused.operation_id).toBeUndefined(); expect(retry.operation_id).toBeUndefined();
   await act(async () => { transport.ok(retry.id, { items: [{ message_id: "second", outcome: "cancelled", archive_draft_id: "archive-second" }] }); await flush(); });
   expect(alert()).toBeNull();
   expect(row(second.excerpt)).toBeDefined();

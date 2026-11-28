@@ -12,24 +12,34 @@ pub trait Owner: Send + Sync + 'static {
         false
     }
 
-    /// Read stable owner identity and the current operation epoch from Core status.
-    fn owner_facts(&self) -> impl Future<Output = Option<(String, String)>> + Send {
-        async {
-            let response = self
-                .call(
-                    Command::Status(shellboy::protocol::StatusArgs {
-                        limit: 1,
-                        ..Default::default()
-                    }),
-                    None,
-                    None,
-                )
-                .await
-                .ok()?;
-            let result = response.result?;
-            Some((
-                result.get("instance_id")?.as_str()?.to_owned(),
-                result.get("operation_epoch")?.as_str()?.to_owned(),
+    /// Return the Welcome from the same connection as the event reply.
+    fn call_with_welcome(
+        &self,
+        command: Command,
+        operation_id: Option<String>,
+        origin: Option<Origin>,
+    ) -> impl Future<Output = Result<(ipc::Welcome, Response<Value>), ApiError>> + Send {
+        async move {
+            let _ = (command, operation_id, origin);
+            Err(ApiError::new(
+                shellboy::protocol::ErrorCode::InvalidState,
+                "owner does not expose request Welcome",
+            ))
+        }
+    }
+
+    /// Mint and announce a fresh ID on the same connection before sending the request.
+    fn call_announcing(
+        &self,
+        command: Command,
+        origin: Option<Origin>,
+        announce: &mut (dyn FnMut(&str) + Send),
+    ) -> impl Future<Output = Result<Response<Value>, ApiError>> + Send {
+        async move {
+            let _ = (command, origin, announce);
+            Err(ApiError::new(
+                shellboy::protocol::ErrorCode::InvalidState,
+                "owner does not support pre-send operation ID announcements",
             ))
         }
     }
@@ -67,6 +77,24 @@ impl Owner for IpcOwner {
         origin: Option<Origin>,
     ) -> Result<Response<Value>, ApiError> {
         ipc::call(&self.data_dir, command, operation_id, origin).await
+    }
+
+    async fn call_with_welcome(
+        &self,
+        command: Command,
+        operation_id: Option<String>,
+        origin: Option<Origin>,
+    ) -> Result<(ipc::Welcome, Response<Value>), ApiError> {
+        ipc::call_with_welcome(&self.data_dir, command, operation_id, origin).await
+    }
+
+    async fn call_announcing(
+        &self,
+        command: Command,
+        origin: Option<Origin>,
+        announce: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Response<Value>, ApiError> {
+        ipc::call_announcing(&self.data_dir, command, origin, announce).await
     }
 }
 

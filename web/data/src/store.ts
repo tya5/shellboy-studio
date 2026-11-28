@@ -298,7 +298,7 @@ export class ShellboyData {
     this.link = new Link(options.transport);
     this.schedule = options.schedule ?? microtaskSchedule;
     const newId = options.newId ?? defaultNewId;
-    this.operations = new Operations(this.link, () => withInstance(this.ownerSig.peek(), newId()), () => this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW));
+    this.operations = new Operations(this.link, newId, () => this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW));
     this.refresher = new Refresher((key, onSent) => this.read(key, onSent));
     this.connection = this.link.connection;
     this.failedAttempts = this.link.failedAttempts;
@@ -1043,12 +1043,6 @@ function listArgs(filter: ListFilter): ThreadListArgs {
     ...(!constrained ? { order: "created" as const } : {}),
     limit: PAGE_LIMIT,
   };
-}
-
-/** Mint in the owner-published rolling epoch; this value stays opaque after creation. */
-function withInstance(owner: OwnerView, id: string): string {
-  const epoch = owner.state === "connected" ? owner.info.operation_epoch : null;
-  return epoch ? `${epoch}:${id}` : id;
 }
 
 function defaultNewId(): string {

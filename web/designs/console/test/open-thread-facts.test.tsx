@@ -292,13 +292,13 @@ for (const lang of ['en', 'ja'] as const) {
           const send = model.send('Synthetic input');
           const call = t.calls('message.send').at(-1)!;
           db.answered.add(call.id);
-          requestId = call.operation_id;
+          requestId = t.operationId(call.id);
           expect(requestId).toBeTruthy();
           expect(requestId).not.toBe('owner-receipt');
           if (state === 'bridge_refusal') t.push({ t: 'result', id: call.id, error: { code: 'busy', message: 'Bridge refused admission' } });
-          else if (state === 'held') t.push({ t: 'result', id: call.id, response: { protocol_version: 5, operation_id: 'owner-receipt', ok: true,
+          else if (state === 'held') t.push({ t: 'result', id: call.id, response: { protocol_version: 5, operation_id: requestId!, ok: true,
             result: { thread_id: thread, message_id: 'fixture-held', assignment: 'pending', delivery_status: 'held' } } });
-          else t.push({ t: 'result', id: call.id, response: { protocol_version: 5, operation_id: 'owner-receipt', ok: false,
+          else t.push({ t: 'result', id: call.id, response: { protocol_version: 5, operation_id: requestId!, ok: false,
             error: { code: 'io_failed', message: 'Saved evidence', hint: 'Choose an action' } } });
           await send;
           await settle(t, db);
@@ -321,9 +321,9 @@ for (const lang of ['en', 'ja'] as const) {
         }
       }
       const receiptLabel = lang === 'ja' ? '操作ID:' : 'Operation ID:';
-      if (state === 'failed' || state === 'held') expect(text).toContain(`${receiptLabel} owner-receipt`);
+      if (state === 'failed' || state === 'held') expect(text).toContain(`${receiptLabel} ${requestId}`);
       else expect(text).not.toContain(receiptLabel);
-      if (requestId) expect(text).not.toContain(requestId);
+      if (state === 'recovery_wait') expect(requestId).toBeUndefined();
       await act(async () => { t.push({ t: 'changed', thread_ids: [thread], list: false, config_changed: false }); await settle(t, db); });
       expect(diagnostic()).toBe(initial);
       expect(diagnostic()?.textContent).toBe(text);

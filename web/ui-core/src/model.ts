@@ -64,7 +64,8 @@ type PanelPreference = Readonly<{ visible: () => boolean; collapsed: () => boole
 export interface PendingOwnMessage {
   readonly threadId: string;
   readonly scope: string;
-  readonly operationId: string;
+  readonly pendingKey: string;
+  readonly operationId?: string;
   readonly text: string;
   readonly phase: "sending" | "accepted" | "failed" | "unconfirmed";
   readonly messageId?: string;
@@ -862,8 +863,9 @@ export class AppModel {
     const { scope, workValue, current, records, accepted, pending, eligible, identity } = this.windowConversationSource(reader, handle, snapshot, replacement);
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId, records,
       work: captureCurrentWork(handle.threadId, workValue), current, retiring });
-    const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
-    const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId ? pending : undefined;
+    const cohortAccepted = eligible ? accepted.filter((row): row is PendingOwnMessage & { operationId: string } => row.scope === scope && row.threadId === handle.threadId && !!row.operationId) : [];
+    const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId
+      ? { ...pending, operationId: pending.operationId ?? pending.pendingKey } : undefined;
     const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
     const decision = ownSendPresentation(scope, current() ? localRows : [], snapshot.rows, input.liveTail ?? [], input.projection);
     return { ...input, identity: { ...identity, work: input.identity.work },
@@ -1189,7 +1191,7 @@ export class AppModel {
     const threadId = this.selectedId.value;
     const pending = this.pendingOwnMessage.peek();
     if (!pending || (original && original!==pending) || !this.ownSendCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
-    return this.deliver(threadId, pending.text, pending.operationId);
+    return this.deliver(threadId, pending.text, pending.operationId, undefined, pending.pendingKey);
   }
 
   localSendAdmission(text:string) {
@@ -1221,17 +1223,17 @@ export class AppModel {
     const region = plan.localRegion;
     if (!region.retire.length || !this.ownSendCurrent?.()) return;
     const rows = this.ownMutationRows(region.scope);
-    const sameRow = (a: PendingOwnMessage, b: PendingOwnMessage) => a.operationId === b.operationId
+    const sameRow = (a: PendingOwnMessage, b: PendingOwnMessage) => a.pendingKey === b.pendingKey
       && a.threadId === b.threadId && a.scope === b.scope && a.messageId === b.messageId
       && a.phase === b.phase && a.plainMessageSend === b.plainMessageSend;
     if (rows.length !== region.cohort.length || rows.some((row, index) => !sameRow(row, region.cohort[index]!)) || !current()) return;
-    const retiring = new Set(region.retire.map(row => row.operationId));
+    const retiring = new Set(region.retire.map(row => row.operationId).filter((id): id is string => !!id));
     const previous = this.acceptedOwnMessages.peek();
-    const kept = previous.filter(row => !retiring.has(row.operationId));
+    const kept = previous.filter(row => !!row.operationId && !retiring.has(row.operationId));
     const pending = this.pendingOwnMessage.peek();
     batch(() => {
       if (kept.length !== previous.length) this.acceptedOwnMessages.value = kept;
-      if (pending && retiring.has(pending.operationId)) {
+      if (pending?.operationId && retiring.has(pending.operationId)) {
         this.pendingOwnMessage.value = undefined;
         this.sendState.value = { kind: "idle" };
       }
@@ -1239,12 +1241,12 @@ export class AppModel {
     });
   }
 
-  private async deliver(threadId: string, text: string, operationId = this.ops.mutationId(), onReserved?: () => void): Promise<boolean> {
+  private async deliver(threadId: string, text: string, operationId?: string, onReserved?: () => void, pendingKey?: string): Promise<boolean> {
     const handle = this.handle.peek(), route = this.route.peek();
     if (!handle || handle.threadId !== threadId) return false;
     const old = this.pendingOwnMessage.peek();
-    if (old && (old.operationId !== operationId || old.text !== text)) return false;
-    if (old?.operationId === operationId && old.phase === "sending") return false;
+    if (old && ((operationId && old.operationId !== operationId) || (pendingKey && old.pendingKey !== pendingKey) || old.text !== text)) return false;
+    if (old && old.phase === "sending") return false;
     if (!old) {
       const admission=localSendAdmission(false,this.acceptedOwnMessages.peek(),text);
       if(admission!=="ready"){this.ownSendCapacityReason.value=true;return false;}
@@ -1258,10 +1260,10 @@ export class AppModel {
         (now.state !== "connected" || now.info.instance_id === owner.info.instance_id);
     };
     this.ownSendCurrent = current;
-    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true,clientOrdinal:old?.clientOrdinal ?? this.nextTailOrdinal()};
+    this.pendingOwnMessage.value = {threadId,scope,pendingKey:pendingKey ?? `pending:${this.nextTailOrdinal()}`,...(operationId && {operationId}),text,phase:"sending",plainMessageSend:true,clientOrdinal:old?.clientOrdinal ?? this.nextTailOrdinal()};
     this.sendState.value = { kind: "sending" };
-    const originalPlainOperation=this.pendingOwnMessage.peek();
-    if(current()&&originalPlainOperation?.operationId===operationId){
+    let originalPlainOperation=this.pendingOwnMessage.peek();
+    if(current()&&originalPlainOperation){
       // A UI observer cannot orphan an already-owned send by throwing.
       try { onReserved?.(); } catch { /* The pending operation still owns the text. */ }
     }
@@ -1272,8 +1274,23 @@ export class AppModel {
       }
       return false;
     }
-    const out = await this.ops.messageSend({ thread_id: threadId, text, deliver: "next" }, operationId);
+    const out = await this.ops.messageSend({ thread_id: threadId, text, deliver: "next" }, operationId, announced => {
+      if (!current() || this.pendingOwnMessage.peek() !== originalPlainOperation) return;
+      operationId = announced;
+      originalPlainOperation = { ...originalPlainOperation!, operationId };
+      this.pendingOwnMessage.value = originalPlainOperation;
+    }, callId => {
+      if (!current() || this.pendingOwnMessage.peek() !== originalPlainOperation) return;
+      originalPlainOperation = { ...originalPlainOperation!, pendingKey: originalPlainOperation!.pendingKey ?? `call:${callId}` };
+      this.pendingOwnMessage.value = originalPlainOperation;
+    });
     if (!current() || this.pendingOwnMessage.peek() !== originalPlainOperation) return false;
+    const announcedId = out.operationId ?? (!out.ok && out.error.kind === "unconfirmed" ? out.error.operationId : undefined);
+    if (announcedId && announcedId !== operationId) {
+      operationId = announcedId;
+      originalPlainOperation = { ...originalPlainOperation!, operationId };
+      this.pendingOwnMessage.value = originalPlainOperation;
+    }
     if (out.ok && out.value.thread_id === threadId) {
       const accepted = originalPlainOperation;
       batch(() => {
@@ -1291,7 +1308,7 @@ export class AppModel {
     const uncertain = out.error.kind === "unconfirmed";
     this.pendingOwnMessage.value = {...originalPlainOperation,phase:uncertain?"unconfirmed":"failed"};
     this.sendState.value = uncertain
-      ? { kind: "unconfirmed", operationId, text }
+      ? (operationId ? { kind: "unconfirmed", operationId, text } : { kind: "failed", message: "Request was not announced; it was not sent" })
       : { kind: "failed", message: errorMessage(out.error), diagnostic: { ...(out.error.kind === "owner" ? { code: out.error.code, hint: out.error.hint } : out.error.kind === "bridge" ? { code: out.error.code } : {}), operationId: out.ownerOperationId }, ...(out.error.kind === "owner" && needsConnectionSetup(out.error.code, out.error.details) ? { configuration: true } : {}) };
     return false;
   }

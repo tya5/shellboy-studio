@@ -381,7 +381,7 @@ describe("Branches screen", () => {
     const fork = t.calls("thread.fork");
     expect(fork).toHaveLength(1);
     expect(fork[0]!.args).toEqual({ thread_id: "stream", node_id: "s10" });
-    expect(fork[0]!.operation_id).toBeTruthy();
+    expect(fork[0]!.operation_id).toBeUndefined();
     const send = t.calls("message.send");
     expect(send).toHaveLength(1);
     expect(send[0]!.args).toEqual({ thread_id: "fork-1", text: "Try a ring buffer" });
@@ -418,7 +418,7 @@ describe("Branches screen", () => {
     const real = t.calls("thread.rewind");
     expect(real).toHaveLength(2);
     expect(real[1]!.args).toEqual({ thread_id: "rel", node_id: "r6" });
-    expect(real[1]!.operation_id).toBeTruthy();
+    expect(real[1]!.operation_id).toBeUndefined();
     expect(text(el.querySelector(".lanes-actions"))).toContain("Rewound Release notes. 8 messages left it and stay in a new branch.");
     expect(el.querySelector<HTMLAnchorElement>(".lanes-actions a.nav-link")!.getAttribute("href")).toBe("#/conversation/rel-rewound");
     expect(el.querySelector(".branch-lanes > li[data-leaving]")).toBeNull();

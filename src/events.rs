@@ -57,20 +57,19 @@ pub async fn run_with_guide<O: Owner>(
     let mut connected_now = false;
     let mut announced_unreachable = false;
     let mut last_instance: Option<String> = None;
-    let mut last_epoch: Option<String> = None;
     let mut backoff = config.backoff_min;
     loop {
         let args = seam::events_args(cursor.clone(), if more { 0 } else { config.long_poll_ms });
         let outcome = tokio::select! {
             biased;
             _ = cancel.cancelled() => return,
-            outcome = owner.call(Command::EventsWait(args), None, None) => outcome,
+            outcome = owner.call_with_welcome(Command::EventsWait(args), None, None) => outcome,
         };
         // "Local IPC work capacity is busy": nothing was applied. Routine for a looping client:
         // keep the cursor and the connection state, wait, and poll again (events-and-external-protocol 2.5).
         let refusal = match &outcome {
             Err(error) => Some(error),
-            Ok(response) if !response.ok => response.error.as_ref(),
+            Ok((_, response)) if !response.ok => response.error.as_ref(),
             Ok(_) => None,
         };
         if refusal.is_some_and(is_capacity_busy) {
@@ -82,19 +81,19 @@ pub async fn run_with_guide<O: Owner>(
             continue;
         }
         let decoded = match outcome {
-            Ok(response) if response.ok => response
+            Ok((welcome, response)) if response.ok => response
                 .result
                 .clone()
                 .ok_or_else(|| "events.wait reply has no result".to_owned())
                 .and_then(seam::decode_events_result)
-                .map(|(result, text)| (result, text)),
-            Ok(response) => Err(response
+                .map(|(result, text)| (welcome, result, text)),
+            Ok((_, response)) => Err(response
                 .error
                 .map(|e| format!("{:?}: {}", e.code, e.message))
                 .unwrap_or_else(|| "owner refused events.wait".into())),
             Err(error) => Err(format!("{:?}: {}", error.code, error.message)),
         };
-        let (result, text) = match decoded {
+        let (welcome, result, text) = match decoded {
             Ok(ok) => ok,
             Err(reason) => {
                 if !announced_unreachable {
@@ -131,14 +130,11 @@ pub async fn run_with_guide<O: Owner>(
             .send_if_modified(|stage| stage.take().is_some());
         backoff = config.backoff_min;
         announced_unreachable = false;
-        let (instance, operation_epoch) = if connected_now {
-            (last_instance.clone(), last_epoch.clone())
-        } else {
-            owner.owner_facts().await.unzip()
-        };
-        let restarted = last_instance.is_some() && instance != last_instance;
-        let epoch_changed = last_epoch.is_some() && operation_epoch != last_epoch;
-        let owner_transition = if !connected_now || restarted || epoch_changed {
+        let instance = Some(welcome.instance_id.clone());
+        let restarted = last_instance
+            .as_deref()
+            .is_some_and(|last| last != welcome.instance_id);
+        let owner_transition = if !connected_now || restarted {
             #[cfg(feature = "next-shellboy")]
             if (!connected_now || restarted)
                 && let (Some((config_dir, data_dir)), Some(instance_id)) = (&guide, &instance)
@@ -167,13 +163,15 @@ pub async fn run_with_guide<O: Owner>(
             } else {
                 OwnerEvent::Connected
             };
-            Some((connected(instance.clone(), operation_epoch.clone()), event))
+            Some((
+                connected(instance.clone(), Some(welcome.operation_epoch.clone())),
+                event,
+            ))
         } else {
             None
         };
         connected_now = true;
         last_instance = instance;
-        last_epoch = operation_epoch;
         cursor = Some(result.cursor);
         more = result.more;
         let reset = matches!(

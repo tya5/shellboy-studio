@@ -480,24 +480,30 @@ export class Operations {
     private readonly historyWindowSupported: () => boolean = () => false,
   ) {}
 
-  /** Reserve a receipt before publishing an in-flight model attempt. */
-  mutationId(): string { return this.newId(); }
+  /** Local reservation key; the gateway replaces it with Core's ID before the owner write. */
+  mutationId(): string {
+    const id = `studio-pending:${this.newId()}`;
+    return id;
+  }
 
   private async run<T>(
     command: string,
     args: unknown,
     decode: (raw: unknown) => Outcome<T>,
-    mutation?: { operationId: string },
+    mutation?: { operationId?: string; onCallId?: (id: number) => void; onOperationId?: (id: string) => void },
     read?: ReadOptions,
   ): Promise<Outcome<T>> {
     const { cancel, ...options } = read ?? {};
-    const handle = this.link.call(command, args, mutation ? { operationId: mutation.operationId, mutation: true } : options);
+    const pendingId = mutation?.operationId;
+    const fresh = pendingId === undefined || pendingId.startsWith("studio-pending:");
+    const handle = this.link.call(command, args, mutation ? { ...(fresh ? {} : { operationId: pendingId }), mutation: true, ...(mutation.onCallId ? { onCallId: mutation.onCallId } : {}), ...(mutation.onOperationId ? { onOperationId: mutation.onOperationId } : {}) } : options);
     const forget = cancel?.add(() => handle.cancel());
     const reply = await handle.promise;
     forget?.();
-    const extra = mutation ? { operationId: mutation.operationId } : {};
+    const ownerOperationId = reply.ok ? reply.response.operation_id : undefined;
+    const operationId = mutation ? (reply.ok && typeof ownerOperationId === "string" ? ownerOperationId : !reply.ok && reply.error.kind === "unconfirmed" ? reply.error.operationId : fresh ? undefined : pendingId) : undefined;
+    const extra = operationId ? { operationId } : {};
     if (!reply.ok) return { ok: false, error: reply.error, ...extra };
-    const ownerOperationId = reply.response.operation_id;
     return { ...unwrap(reply.response, decode), ...extra,
       ...(typeof ownerOperationId === "string" && ownerOperationId.trim() !== "" && { ownerOperationId }) };
   }
@@ -509,10 +515,10 @@ export class Operations {
       return value ? { ok: true, value } : { ok: false, reason: "invalid schedule or service list" };
     }), undefined, read);
   }
-  scheduleAction(action: "enable" | "disable" | "remove", id: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+  scheduleAction(action: "enable" | "disable" | "remove", id: string, operationId = this.mutationId()): Promise<Outcome<MutationResult>> {
     return this.run(`schedule.${action}`, { schedule_id: id }, outcomeDecoder(decodeRecord), { operationId });
   }
-  serviceAction(action: "start" | "stop", id: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+  serviceAction(action: "start" | "stop", id: string, operationId = this.mutationId()): Promise<Outcome<MutationResult>> {
     return this.run(`service.${action}`, { service_id: id }, outcomeDecoder(decodeRecord), { operationId });
   }
 
@@ -565,10 +571,10 @@ export class Operations {
   shellRead(args: ShellReadArgs, read?: ReadOptions): Promise<Outcome<ShellOutput>> {
     return this.run("shell.read", args, outcomeDecoder(decodeShellOutput), undefined, read);
   }
-  shellBackground(executionId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+  shellBackground(executionId: string, operationId = this.mutationId()): Promise<Outcome<Record<string, unknown>>> {
     return this.run("shell.background", { execution_id: executionId }, outcomeDecoder(decodeRecord), { operationId });
   }
-  shellStop(executionId: string, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+  shellStop(executionId: string, operationId = this.mutationId()): Promise<Outcome<Record<string, unknown>>> {
     return this.run("shell.stop", { execution_id: executionId }, outcomeDecoder(decodeRecord), { operationId });
   }
 
@@ -608,7 +614,7 @@ export class Operations {
         ? page : { ok: false, reason: "invalid work status for this Core instance" };
     }), undefined, read);
   }
-  ownerShutdown(instance: string, operationId = this.newId()): Promise<Outcome<true>> {
+  ownerShutdown(instance: string, operationId = this.mutationId()): Promise<Outcome<true>> {
     return this.run("owner.shutdown", { instance_id: instance }, outcomeDecoder(raw =>
       isObject(raw) && raw.instance_id === instance && raw.state === "accepted" && raw.shutdown_complete === false
         ? { ok: true, value: true as const } : { ok: false, reason: "invalid owner.shutdown receipt" }), { operationId });
@@ -625,11 +631,11 @@ export class Operations {
   }
   /** One field at a time. In particular, cwd and title must be standalone owner calls. */
   setThreadSetting(threadId: string, field: "title" | "cwd" | "agents" | "connection" | "model" | "effort" | "max_tokens" | "auto_compact_at" | "auto_compact_target_percent" | "summary_max_chars" | "spill", value: string): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.set", { thread_id: threadId, [field]: value }, outcomeDecoder(decodeDetails), { operationId: this.newId() });
+    return this.run("thread.set", { thread_id: threadId, [field]: value }, outcomeDecoder(decodeDetails), { operationId: this.mutationId() });
   }
   /** Update only model settings for this Thread; owner validates values. */
   setThreadModel(threadId: string, changes: { model?: string; connection?: string; effort?: string; agents?: string; auto_compact_at?: string; max_tokens?: string }): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.set", { thread_id: threadId, ...changes }, outcomeDecoder(decodeDetails), { operationId: this.newId() });
+    return this.run("thread.set", { thread_id: threadId, ...changes }, outcomeDecoder(decodeDetails), { operationId: this.mutationId() });
   }
   /** One page of a Thread's family: ancestors, then breadth first. */
   threadBranches(args: ThreadBranchesArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
@@ -686,35 +692,35 @@ export class Operations {
   }
 
   // ---- mutations: pass `operationId` to retry the same logical mutation idempotently ----
-  threadCreate(args: ThreadCreateArgs = {}, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
+  threadCreate(args: ThreadCreateArgs = {}, operationId = this.mutationId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.create", args, outcomeDecoder(decodeDetails), { operationId });
   }
   /** Sender identity (`human`, `sender_label: "web"`) is set by the bridge, not here. */
-  messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MessageAccepted>> {
-    return this.run("message.send", args, outcomeDecoder(decodeMessageAccepted), { operationId });
+  messageSend(args: MessageSendArgs, operationId?: string, onOperationId?: (id: string) => void, onCallId?: (id: number) => void): Promise<Outcome<MessageAccepted>> {
+    return this.run("message.send", args, outcomeDecoder(decodeMessageAccepted), { operationId, onOperationId, onCallId });
   }
   messageList(direction: ReplyDirection, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<PendingReply, MessageListFilters>>> {
     const selector = "owed_by" in direction ? { owed_by_thread_id: direction.owed_by }
       : "asked_by" in direction ? { asked_by_thread_id: direction.asked_by } : { to: direction.to };
     return this.run("message.list", { ...selector, limit: REPLY_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(replyPage(direction)), undefined, read);
   }
-  messageReply(messageId: string, text: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+  messageReply(messageId: string, text: string, operationId = this.mutationId()): Promise<Outcome<MutationResult>> {
     return this.run("message.reply", { message_id: messageId, text }, outcomeDecoder(decodeMessageReplied), { operationId });
   }
-  messageCancel(messageId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+  messageCancel(messageId: string, operationId = this.mutationId()): Promise<Outcome<MutationResult>> {
     return this.run("message.cancel", { message_ids: [messageId] }, outcomeDecoder(decodeRecord), { operationId });
   }
-  runStop(runId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+  runStop(runId: string, operationId = this.mutationId()): Promise<Outcome<MutationResult>> {
     return this.run("run.stop", { run_id: runId }, outcomeDecoder(decodeRecord), { operationId });
   }
-  turnInterrupt(turnId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+  turnInterrupt(turnId: string, operationId = this.mutationId()): Promise<Outcome<MutationResult>> {
     return this.run("turn.interrupt", { turn_id: turnId }, outcomeDecoder(decodeRecord), { operationId });
   }
-  runRetry(runId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+  runRetry(runId: string, operationId = this.mutationId()): Promise<Outcome<MutationResult>> {
     return this.run("run.retry", { run_id: runId }, outcomeDecoder(decodeRecord), { operationId });
   }
-  threadFork(args: ThreadForkArgs, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.fork", args, outcomeDecoder(decodeDetails), { operationId });
+  threadFork(args: ThreadForkArgs, operationId = this.mutationId(), onOperationId?: (id: string) => void): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.fork", args, outcomeDecoder(decodeDetails), { operationId, onOperationId });
   }
   /** `parent: ""` detaches. Needs an owner and bridge with the `thread.reparent` capability. */
   /** Needs an owner newer than v0.10.0; see `CAPABILITY_CONFIG`. */
@@ -723,7 +729,7 @@ export class Operations {
   }
   onConfigWrite?: (fields: readonly string[]) => ((result: Record<string, unknown>) => void) | undefined;
   /** Not cancellable: a started write finishes and is reported. A missing `value` removes the key. */
-  async configSet(expectedHash: string, changes: { field: string; value?: unknown }[], operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+  async configSet(expectedHash: string, changes: { field: string; value?: unknown }[], operationId = this.mutationId()): Promise<Outcome<Record<string, unknown>>> {
     const settle = this.onConfigWrite?.(changes.map(change => change.field));
     const out = await this.run("config.set", { expected_hash: expectedHash, changes }, outcomeDecoder(decodeRecord), { operationId });
     if (out.ok) settle?.(out.value);
@@ -734,29 +740,29 @@ export class Operations {
     return this.run("connection.test", encodeTest(target), outcomeDecoder(decodeTest), undefined, read);
   }
   /** Write-only. The value is sent once and never returned. */
-  credentialsSet(connection: string, value: string, operationId = this.newId()): Promise<Outcome<CredentialsSetResult>> {
+  credentialsSet(connection: string, value: string, operationId = this.mutationId()): Promise<Outcome<CredentialsSetResult>> {
     return this.run("credentials.set", encodeCredentialsSet(connection, value), outcomeDecoder(decodeCredentialsSet), { operationId });
   }
-  credentialsClear(connection: string, operationId = this.newId()): Promise<Outcome<CredentialsClearResult>> {
+  credentialsClear(connection: string, operationId = this.mutationId()): Promise<Outcome<CredentialsClearResult>> {
     return this.run("credentials.clear", encodeCredentialsClear(connection), outcomeDecoder(decodeCredentialsClear), { operationId });
   }
-  threadSetTitle(threadId: string, title: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
+  threadSetTitle(threadId: string, title: string, operationId = this.mutationId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, title }, outcomeDecoder(decodeDetails), { operationId });
   }
-  threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
+  threadSetParent(threadId: string, parent: string, operationId = this.mutationId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, parent_thread_id: parent }, outcomeDecoder(decodeDetails), { operationId });
   }
   /** Add and remove tags on several Threads at once. Needs `thread.tags`. */
-  threadTag(args: ThreadTagArgs, operationId = this.newId()): Promise<Outcome<TagResult>> {
+  threadTag(args: ThreadTagArgs, operationId = this.mutationId()): Promise<Outcome<TagResult>> {
     return this.run("thread.tag", args, outcomeDecoder(decodeTagResult), { operationId });
   }
-  threadRewind(args: ThreadRewindArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
-    return this.run("thread.rewind", args, outcomeDecoder(decodeRecord), { operationId });
+  threadRewind(args: ThreadRewindArgs, operationId = this.mutationId(), onOperationId?: (id: string) => void): Promise<Outcome<MutationResult>> {
+    return this.run("thread.rewind", args, outcomeDecoder(decodeRecord), { operationId, onOperationId });
   }
   threadUnarchive(
     threadIds: string[],
     options: { descendants?: boolean } = {},
-    operationId = this.newId(),
+    operationId = this.mutationId(),
   ): Promise<Outcome<ArchiveResult>> {
     const args: Record<string, unknown> = { thread_ids: threadIds };
     if (options.descendants) args.descendants = true;
@@ -765,21 +771,21 @@ export class Operations {
   threadDeleteSetPreview(threadIds: readonly string[]): Promise<Outcome<ThreadDeleteSetPreview>> {
     return this.run("thread.delete_set_preview", { thread_ids: threadIds }, outcomeDecoder(decodeDeleteSetPreview(threadIds)));
   }
-  threadDeleteSet(threadIds: readonly string[], marker: DeleteMarker, operationId = this.newId()): Promise<Outcome<{ accepted: true }>> {
+  threadDeleteSet(threadIds: readonly string[], marker: DeleteMarker, operationId = this.mutationId()): Promise<Outcome<{ accepted: true }>> {
     return this.run("thread.delete_set", { thread_ids: threadIds, preview_marker: marker }, outcomeDecoder(raw =>
       isObject(raw) && raw.accepted === true ? { ok: true, value: { accepted: true as const } } : { ok: false, reason: "missing delete acceptance" }), { operationId });
   }
   threadDeletePreview(threadId: string): Promise<Outcome<ThreadDeletePreview>> {
     return this.run("thread.delete_preview", { thread_id: threadId, descendants: false }, outcomeDecoder(decodeThreadDeletePreview));
   }
-  threadDelete(threadId: string, previewMarker: { thread_count: number; ids_hash: string }, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+  threadDelete(threadId: string, previewMarker: { thread_count: number; ids_hash: string }, operationId = this.mutationId()): Promise<Outcome<Record<string, unknown>>> {
     return this.run("thread.delete", { thread_id: threadId, descendants: false, preview_marker: previewMarker }, outcomeDecoder(decodeRecord), { operationId });
   }
 
   threadArchive(
     threadIds: string[],
     options: { descendants?: boolean } = {},
-    operationId = this.newId(),
+    operationId = this.mutationId(),
   ): Promise<Outcome<ArchiveResult>> {
     const args: Record<string, unknown> = { thread_ids: threadIds };
     if (options.descendants) args.descendants = true;

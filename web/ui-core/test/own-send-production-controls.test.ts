@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { ownSendPresentation } from "../src/own-send-presentation";
 import type { PendingOwnMessage } from "../src/model";
 
-const row: PendingOwnMessage = { scope: "scope", threadId: "t", operationId: "op", messageId: "own", text: "Original", phase: "accepted", plainMessageSend: true, clientOrdinal: 1 };
+const row: PendingOwnMessage = { scope: "scope", threadId: "t", pendingKey: "call:1", operationId: "op", messageId: "own", text: "Original", phase: "accepted", plainMessageSend: true, clientOrdinal: 1 };
 
 it("adopts the exact saved user node even when its body is deferred", () => {
   const result = ownSendPresentation("scope", [row], [{ node_id: "own", kind: "user", provenance: { client_operation_id: "op" }, items: null, items_unavailable_reason: "response_budget" }], []);

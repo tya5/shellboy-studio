@@ -479,8 +479,33 @@ mod guide_startup {
         fail: bool,
     }
     impl Owner for ConfigGate {
-        async fn owner_facts(&self) -> Option<(String, String)> {
-            self.inner.owner_facts().await
+        fn call_with_welcome(
+            &self,
+            command: Command,
+            operation_id: Option<String>,
+            origin: Option<Origin>,
+        ) -> impl std::future::Future<
+            Output = Result<
+                (
+                    shellboy::ipc::Welcome,
+                    shellboy::protocol::Response<serde_json::Value>,
+                ),
+                ApiError,
+            >,
+        > + Send {
+            async move {
+                let response = self.call(command, operation_id, origin).await?;
+                Ok((
+                    shellboy::ipc::Welcome {
+                        protocol_version: 51,
+                        instance_id: "mock-instance".into(),
+                        operation_epoch: "epoch-test".into(),
+                        capabilities: vec![],
+                        owner_version: None,
+                    },
+                    response,
+                ))
+            }
         }
 
         async fn call(

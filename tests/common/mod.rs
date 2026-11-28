@@ -94,8 +94,45 @@ pub fn mock_replies(
 }
 
 impl Owner for MockOwner {
-    async fn owner_facts(&self) -> Option<(String, String)> {
-        Some(("mock-instance".into(), "mock-instance.0".into()))
+    fn call_announcing(
+        &self,
+        command: Command,
+        origin: Option<Origin>,
+        announce: &mut (dyn FnMut(&str) + Send),
+    ) -> impl std::future::Future<
+        Output = Result<shellboy::protocol::Response<Value>, shellboy::protocol::ApiError>,
+    > + Send {
+        async move {
+            let operation_id = format!("epoch-test:{}", uuid::Uuid::new_v4());
+            announce(&operation_id);
+            self.call(command, Some(operation_id), origin).await
+        }
+    }
+
+    fn call_with_welcome(
+        &self,
+        command: Command,
+        op: Option<String>,
+        origin: Option<Origin>,
+    ) -> impl std::future::Future<
+        Output = Result<
+            (shellboy::ipc::Welcome, shellboy::protocol::Response<Value>),
+            shellboy::protocol::ApiError,
+        >,
+    > + Send {
+        async move {
+            let response = self.call(command, op, origin).await?;
+            Ok((
+                shellboy::ipc::Welcome {
+                    protocol_version: 51,
+                    instance_id: "mock-instance".into(),
+                    operation_epoch: "epoch-test".into(),
+                    capabilities: vec![],
+                    owner_version: None,
+                },
+                response,
+            ))
+        }
     }
 
     async fn call(&self, command: Command, _op: Option<String>, _origin: Option<Origin>) -> Reply {

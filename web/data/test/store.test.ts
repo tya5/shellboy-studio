@@ -233,19 +233,19 @@ describe("resync, restart and loss", () => {
 });
 
 describe("operation ids", () => {
-  it("are minted in the connected owner's rolling operation epoch", async () => {
+  it("does not mint fresh IDs from the cached connected owner's epoch", async () => {
     const { t, data } = await setup();
     void data.operations.messageSend({ thread_id: "a", text: "x" });
     await flush();
-    expect(t.calls("message.send")[0]!.operation_id).toBe("i1.0:id");
+    expect(t.calls("message.send")[0]!.operation_id).toBeUndefined();
   });
-  it("uses a refreshed rolling epoch without changing stable owner identity", async () => {
+  it("uses Core's announcement after an epoch refresh without changing owner identity", async () => {
     const { t, data } = await setup();
     if (connected.state !== "connected") throw new Error("fixture owner must be connected");
     t.push({ t: "owner", event: "connected", owner: { state: "connected", info: { ...connected.info, operation_epoch: "i1.1" } } });
     void data.operations.messageSend({ thread_id: "a", text: "x" });
     await flush();
-    expect(t.calls("message.send")[0]!.operation_id).toBe("i1.1:id");
+    expect(t.calls("message.send")[0]!.operation_id).toBeUndefined();
     expect(data.owner.peek()).toEqual(expect.objectContaining({ state: "connected", info: expect.objectContaining({ instance_id: "i1", operation_epoch: "i1.1" }) }));
   });
   it("an explicit id is reused unchanged, so a retry stays the same operation", async () => {

@@ -19,7 +19,7 @@ export type ConnectionState = "connecting" | "open" | "closed";
 export type LinkEvent =
   | { kind: "open" }
   | { kind: "closed" }
-  | { kind: "frame"; frame: Exclude<ServerFrame, { t: "result" }> }
+  | { kind: "frame"; frame: Exclude<ServerFrame, { t: "result" | "operation_id" }> }
   | { kind: "invalid_frame"; reason: string };
 
 export type CallReply =
@@ -32,7 +32,9 @@ export interface CallOptions {
   /** Mutations jump ahead of queued reads. */
   mutation?: boolean;
   /** Called when the call is written to the socket (it can no longer be dropped silently). */
+  onCallId?: (callId: number) => void;
   onSent?: () => void;
+  onOperationId?: (operationId: string) => void;
   /**
    * A call that waits for something and holds no owner connection, such as an app's change hints. It goes
    * out at once and doesn't take one of the `MAX_IN_FLIGHT` slots, which would starve ordinary reads.
@@ -51,7 +53,9 @@ interface Pending {
   frame: ClientFrame & { t: "call" };
   mutation: boolean;
   operationId?: string;
+  onCallId?: (callId: number) => void;
   onSent?: () => void;
+  onOperationId?: (operationId: string) => void;
   sent: boolean;
   resolve: (r: CallReply) => void;
 }
@@ -97,6 +101,7 @@ export class Link {
       onInvalidFrame: (reason) => this.emit({ kind: "invalid_frame", reason }),
       onFrame: (frame) => {
         if (frame.t === "result") this.onResult(frame);
+        else if (frame.t === "operation_id") this.onOperationId(frame);
         else this.emit({ kind: "frame", frame });
       },
     });
@@ -140,7 +145,9 @@ export class Link {
       sent: false,
       resolve,
       ...(options.operationId !== undefined && { operationId: options.operationId }),
+      ...(options.onCallId && { onCallId: options.onCallId }),
       ...(options.onSent && { onSent: options.onSent }),
+      ...(options.onOperationId && { onOperationId: options.onOperationId }),
     };
     if (mutation) {
       // Behind earlier queued mutations, ahead of reads.
@@ -178,6 +185,7 @@ export class Link {
     while (this.inFlight.size - this.waiting.size < MAX_IN_FLIGHT && this.queue.length > 0) {
       const p = this.queue.shift()!;
       this.inFlight.set(p.id, p);
+      p.onCallId?.(p.id);
       if (!this.transport.send(p.frame)) {
         // Closed between check and send: nothing reached the bridge.
         this.inFlight.delete(p.id);
@@ -187,6 +195,13 @@ export class Link {
       p.sent = true;
       p.onSent?.();
     }
+  }
+
+  private onOperationId(frame: Extract<ServerFrame, { t: "operation_id" }>): void {
+    const pending = this.inFlight.get(frame.id);
+    if (!pending || !pending.mutation || pending.operationId !== undefined) return;
+    pending.operationId = frame.operation_id;
+    pending.onOperationId?.(frame.operation_id);
   }
 
   private onResult(frame: Extract<ServerFrame, { t: "result" }>): void {

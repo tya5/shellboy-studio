@@ -491,7 +491,7 @@ export class Branches {
       this.rewind.value = { kind: "rewinding", facts, target };
       if (!this.visible(attempt, token)) return;
     }
-    const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadRewind({ thread_id: target.threadId, node_id: target.nodeId }, id));
+    const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadRewind({ thread_id: target.threadId, node_id: target.nodeId }, id, announced => { attempt.receipt.id = announced; }));
     if (!out.ok) {
       attempt.uncertain = uncertainOutcome(out);
       if (this.visible(attempt, token)) {
@@ -546,7 +546,7 @@ export class Branches {
     }
     const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadFork({
       thread_id: attempt.target.threadId, node_id: attempt.target.nodeId,
-    }, id));
+    }, id, announced => { attempt.receipt.id = announced; }));
     if (!out.ok) {
       attempt.uncertain = uncertainOutcome(out);
       if (this.visible(attempt, token)) {

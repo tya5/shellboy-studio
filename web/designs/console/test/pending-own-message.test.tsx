@@ -139,7 +139,7 @@ for(const outcome of ['ack first','late ACK','late error','lost ACK'] as const)i
   }
   if(savedBeforeAck){
    await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:canonicalAttemptId(81),gap:false,deltas:[{offset:0,reasoning:false,text:'Answer in progress'}]});await flush();});
-   rows=[{node_id:'canonical-own',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:JSON.stringify(['canonical-own','/content/0']),text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'},client_operation_id:call.operation_id}}];f.db.history.t=rows;
+   rows=[{node_id:'canonical-own',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:JSON.stringify(['canonical-own','/content/0']),text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'},client_operation_id:f.t.operationId(call.id)!}}];f.db.history.t=rows;
    await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   }
   if(savedBeforeAck){
@@ -164,22 +164,22 @@ for(const outcome of ['ack first','late ACK','late error','lost ACK'] as const)i
   expect(composer.value).toBe('Own submitted message');
   await act(async()=>{composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(4);});
   expect(f.t.calls('message.send')).toHaveLength(2);expect(composer.value).toBe('');
-  expect(f.model.pendingOwnMessage.peek()).toMatchObject({text:'Own submitted message',operationId:f.t.calls('message.send').at(-1)!.operation_id});
+  expect(f.model.pendingOwnMessage.peek()).toMatchObject({text:'Own submitted message',operationId:f.t.operationId(f.t.calls('message.send').at(-1)!.id)});
   await act(async()=>{composer.value='Third draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
-  const next=f.t.calls('message.send').at(-1)!;expect(next.operation_id).not.toBe(call.operation_id);f.db.answered.add(next.id);
+  const next=f.t.calls('message.send').at(-1)!;expect(f.t.operationId(next.id)!).not.toBe(f.t.operationId(call.id)!);f.db.answered.add(next.id);
   await act(async()=>{f.t.ok(next.id,{message_id:'second-canonical',thread_id:'t'});await flush(8);});
   expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
   expect(composer.value).toBe('Third draft');
   const equalText:HistoryItem={node_id:'canonical-own',kind:'user',items:[{item_identity:'wrong',kind:'text',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}};
-  rows=[{...equalText,selection:{ordinal:0},provenance:{client_operation_id:next.operation_id+'-unrelated'}}];f.db.history.t=rows;
+  rows=[{...equalText,selection:{ordinal:0},provenance:{client_operation_id:f.t.operationId(next.id)!+'-unrelated'}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
-  expect(f.model.acceptedOwnMessages.peek().map(row=>row.operationId)).toEqual([call.operation_id,next.operation_id]);
-  rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0},provenance:{client_operation_id:call.operation_id}}];f.db.history.t=rows;
+  expect(f.model.acceptedOwnMessages.peek().map(row=>row.operationId)).toEqual([f.t.operationId(call.id)!,f.t.operationId(next.id)!]);
+  rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0},provenance:{client_operation_id:f.t.operationId(call.id)!}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect([...host.querySelectorAll('[data-pending-own-message]')].map(row=>row.textContent)).toEqual([expect.stringContaining('Own submitted message')]);
   expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);
-  rows=[...rows,{...equalText,node_id:'second-canonical',selection:{ordinal:1},provenance:{client_operation_id:next.operation_id},items:[{kind:'text',item_identity:'second',text:'Own submitted message',text_complete:true}]}];f.db.history.t=rows;
+  rows=[...rows,{...equalText,node_id:'second-canonical',selection:{ordinal:1},provenance:{client_operation_id:f.t.operationId(next.id)!},items:[{kind:'text',item_identity:'second',text:'Own submitted message',text_complete:true}]}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelector('[data-pending-own-message]')).toBeNull();
   expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);
@@ -224,11 +224,11 @@ it.each(['accepted', 'failed', 'scope ended'] as const)('settles an off-screen s
   let sent!:Promise<boolean>;
   await act(async () => { sent=f.model.send('sent off-screen'); await flush(); });
   const call=f.t.calls('message.send').at(-1)!; f.db.answered.add(call.id);
-  expect(f.model.pendingOwnMessage.peek()?.operationId).toBe(call.operation_id);
+  expect(f.model.pendingOwnMessage.peek()?.operationId).toBe(f.t.operationId(call.id)!);
   expect(host.querySelector('[data-pending-own-message]')).toBeNull();
   const earlier = node('earlier-answer','assistant_response');
   save(earlier); await mark();
-  expect(f.model.pendingOwnMessage.peek()?.operationId).toBe(call.operation_id);
+  expect(f.model.pendingOwnMessage.peek()?.operationId).toBe(f.t.operationId(call.id)!);
   await act(async () => {
    if (outcome==='scope ended') f.model.navigate({view:'conversation',threadId:'stream'});
    if (outcome==='failed') f.t.ownerError(call.id,'busy');
@@ -236,9 +236,9 @@ it.each(['accepted', 'failed', 'scope ended'] as const)('settles an off-screen s
    expect(await sent).toBe(outcome==='accepted'); await settle(f.t,f.db);
   });
   if (outcome==='accepted') {
-   save(earlier,node('accepted-node','user',call.operation_id),node('new-answer','assistant_response')); await mark();
+   save(earlier,node('accepted-node','user',f.t.operationId(call.id)!),node('new-answer','assistant_response')); await mark();
    expect(win.following.peek()).toBe(false);
-   expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:call.operation_id}]);
+   expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:f.t.operationId(call.id)!}]);
    expect(host.querySelector('[data-node="accepted-node"]')).toBeNull();
   }
   if (outcome!=='scope ended') {
@@ -258,14 +258,14 @@ it.each(['accepted', 'failed', 'scope ended'] as const)('settles an off-screen s
     f.db.answered.add(held.id);
     await scroll(1);
     expect(win.following.peek()).toBe(false);
-    expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:call.operation_id}]);
+    expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:f.t.operationId(call.id)!}]);
     await scroll(9880);
     expect(f.t.calls('history.window')).toHaveLength(windowReads+2);
     const obsolete=f.db.answer(held);
     if (!obsolete.ok) throw new Error('Expected a saved tail for the cancelled read');
     await act(async () => { f.t.ok(held.id,obsolete.result); await flush(); });
     expect(win.newer.peek()).toBe(true);
-    expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:call.operation_id}]);
+    expect(f.model.acceptedOwnMessages.peek()).toMatchObject([{operationId:f.t.operationId(call.id)!}]);
    }
    await act(async () => { await settle(f.t,f.db); });
    expect(win.newer.peek()).toBe(false);
@@ -374,7 +374,7 @@ it('real edits, even restored text, remain a different generation; composing Ent
 for (const renderMode of ['app','ordered'] as const) it(`actual own cohort differential: ${renderMode}`,async()=>{
  const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:2,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);}});
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
- const node=(id:string,text?:string,complete?:boolean):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal:id==='a'?0:1},items:text===undefined?[]:[{kind:'text',item_identity:id,text,text_complete:complete??false}],provenance:{sender:{kind:'human'},client_operation_id:f.t.calls('message.send')[id==='a'?0:1]?.operation_id}});
+ const node=(id:string,text?:string,complete?:boolean):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal:id==='a'?0:1},items:text===undefined?[]:[{kind:'text',item_identity:id,text,text_complete:complete??false}],provenance:{sender:{kind:'human'},client_operation_id:f.t.operationId(f.t.calls('message.send')[id==='a'?0:1]!.id)}});
  const sendAndAck=async(text:string,id:string)=>{const area=host.querySelector<HTMLTextAreaElement>('textarea');if(renderMode==='app'){area!.value=text;area!.dispatchEvent(new Event('input',{bubbles:true}));area!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();}else{const sent=f.model.send(text);await flush();expect(f.model.pendingOwnMessage.peek()?.text).toBe(text);void sent;}const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);await act(async()=>{f.t.ok(call.id,{message_id:id,thread_id:'t'});await flush(8);});};
  const paint=async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);};
  try{
@@ -391,7 +391,7 @@ it('actual committed local region rejects stale cohort retirement and retires on
   const accept=async(text:string,id:string)=>{const sent=f.model.send(text);await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:id,thread_id:'lead'});expect(await sent).toBe(true);};
   await accept('A','a');
   const win=f.model.longReader.value!,old=win.acceptedView.peek();
-  const node=(id:string,ordinal:number):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:id,text:id,text_complete:true}],provenance:{sender:{kind:'human'},client_operation_id:f.t.calls('message.send')[id==='a'?0:1]?.operation_id}});
+  const node=(id:string,ordinal:number):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:id,text:id,text_complete:true}],provenance:{sender:{kind:'human'},client_operation_id:f.t.operationId(f.t.calls('message.send')[id==='a'?0:1]!.id)}});
   f.db.history.lead=[node('a',0)];let newer:Promise<boolean>|undefined,reentered=false;
   const stop=win.acceptedView.subscribe(ref=>{
    expect(win.acceptedView.isCurrent(ref)).toBe(true);
@@ -430,7 +430,7 @@ for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])
   const ownTexts=ids.map(id=>`Diagnostic own ${id}`),expectedBefore=[...prefixTexts,'Diagnostic assistant receipt response',...ownTexts];
   f.db.history.t=[...prefixRows,assistantRow];revision++;await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.message-markdown')?.textContent?.trim())).toEqual(expectedBefore);const assistant=host.querySelector('[data-node="assistant-arrival"]');
-  const savedOwnRows=ids.map((id,index)=>({node_id:`own-${id}`,kind:'user' as const,selection:{ordinal:prefixRows.length+1+index},provenance:{client_operation_id:f.t.calls('message.send')[index]!.operation_id},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]}));
+  const savedOwnRows=ids.map((id,index)=>({node_id:`own-${id}`,kind:'user' as const,selection:{ordinal:prefixRows.length+1+index},provenance:{client_operation_id:f.t.operationId(f.t.calls('message.send')[index]!.id)!},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]}));
   f.db.history.t=[...prefixRows,assistantRow,...savedOwnRows];revision+=5;await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
   expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.message-markdown')?.textContent?.trim())).toEqual(expectedBefore);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
@@ -491,7 +491,7 @@ it('keeps the next draft across held ACK and same-stack submit guard, then accep
 it('recomputes local byte hint from the edited draft without reservation or clearing text',async()=>{
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  const scope=f.model.ownMutationScope();
- f.model.acceptedOwnMessages.value=[{threadId:'lead',scope,operationId:'retained',text:'x'.repeat(4194301),phase:'accepted',plainMessageSend:true,clientOrdinal:1}];
+ f.model.acceptedOwnMessages.value=[{threadId:'lead',scope,pendingKey:'call:retained',operationId:'retained',text:'x'.repeat(4194301),phase:'accepted',plainMessageSend:true,clientOrdinal:1}];
  const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend={true} busy={false} draftScope={scope} draftStatus={text=>{const reason=f.model.localSendAdmission(text);return {blocked:reason!=='ready',hint:reason};}} onSend={(text,notify)=>f.model.send(text,notify)}/>,host);
  try{
   await act(async()=>show());const input=host.querySelector('textarea')!;
@@ -512,7 +512,7 @@ it('a locally denied draft fires no reservation notification and preserves origi
   const original=f.model.pendingOwnMessage.peek()!;const before=f.t.calls('message.send').length;
   for(let n=0;n<3;n++)expect(f.model.canResend()).toBe(true);expect(f.t.calls('message.send')).toHaveLength(before);expect(f.model.pendingOwnMessage.peek()).toBe(original);
   const retried=f.model.resend();await flush(8);const second=f.t.calls('message.send').at(-1)!;
-  expect(second.operation_id).toBe(first.operation_id);expect(second.args).toEqual(first.args);expect(notified).toBe(0);
+  expect(second.operation_id).toBe('x');expect(second.args).toEqual(first.args);expect(notified).toBe(0);
   f.t.ownerError(second.id,'temporary_failure');await retried;
   f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);expect(f.model.canResend()).toBe(false);
   expect(await f.model.resend()).toBe(false);expect(f.t.calls('message.send')).toHaveLength(before+1);
@@ -661,7 +661,7 @@ async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | '
   const provisional = pendingRow(id);
   expect(provisional?.textContent).toContain('送信待ち');
   const call = f.t.calls('message.send').at(-1)!;
-  operationIds.set(id,call.operation_id!);
+  operationIds.set(id,f.t.operationId(call.id)!!);
   await act(async () => {
    f.db.answered.add(call.id); f.t.ok(call.id,{message_id:id,thread_id:'lead',delivery_status:held?'held':'accepted'});
    expect(await promise).toBe(true); await flush(8);
