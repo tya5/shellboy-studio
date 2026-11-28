@@ -130,13 +130,28 @@ export class AppsModel {
     // The list belongs to the Thread it was read for: another Thread's cards never wait under this one.
     const before = this.list.peek();
     this.list.value = before.thread === thread ? { ...before, loading: true, loadingMore: false } : { loading: true, loaded: false, thread, apps: [], next: undefined, loadingMore: false, error: undefined };
-    const out = await this.ops.appsList(thread);
-    if (this.listGeneration !== generation) return;
-    if (!out.ok) {
-      this.list.value = { ...this.list.peek(), loading: false, error: out.error };
-      return;
-    }
-    this.list.value = { loading: false, loaded: true, thread, apps: readApps(out.value), next: str(out.value.next_cursor), loadingMore: false, error: undefined };
+    const target = thread === undefined && before.thread === undefined ? before.apps.length : 0;
+    const apps: AppInfo[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    let next: string | undefined;
+    do {
+      const out = await this.ops.appsList(thread, cursor);
+      if (this.listGeneration !== generation) return;
+      if (!out.ok) {
+        this.list.value = { ...this.list.peek(), loading: false, error: out.error };
+        return;
+      }
+      for (const app of readApps(out.value)) {
+        if (!seen.has(app.name)) {
+          seen.add(app.name);
+          apps.push(app);
+        }
+      }
+      next = str(out.value.next_cursor);
+      cursor = next;
+    } while (thread === undefined && apps.length < target && cursor !== undefined);
+    this.list.value = { loading: false, loaded: true, thread, apps, next, loadingMore: false, error: undefined };
   }
 
   /** The next Core page, added after the apps already shown. */

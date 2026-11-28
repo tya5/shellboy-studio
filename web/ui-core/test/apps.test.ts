@@ -131,6 +131,50 @@ describe("AppsModel over the fake transport", () => {
     expect(model.apps.list.value.apps).toEqual([]);
     expect(model.apps.list.value.error).toBeDefined();
   });
+  it("reconciles the loaded global prefix and supersedes an in-flight Show more", async () => {
+    const { t, db, model } = await fixtureModel({ route: "apps" });
+    const plain = db.answer;
+    db.answer = (c) => c.command === "apps.list"
+      ? (c.args as { cursor?: string }).cursor === undefined
+        ? { ok: true, result: { apps: [{ name: "a2" }, { name: "a1" }], next_cursor: "opaque-next" } }
+        : { ok: true, result: { apps: [{ name: "stale-more" }] } }
+      : plain(c);
+    void model.apps.refresh(undefined);
+    await settle(t, db);
+    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["a2", "a1"]);
+    expect(model.apps.list.value.next).toBe("opaque-next");
+
+    void model.apps.more();
+    await flush();
+    const more = t.calls("apps.list").at(-1)!;
+    expect(more.args).toEqual({ cursor: "opaque-next" });
+    model.apps.ensure(undefined, 1);
+    await flush();
+    const reconcile = t.calls("apps.list").at(-1)!;
+    expect(reconcile.args).toEqual({});
+    t.ok(reconcile.id, { apps: [{ name: "a2" }, { name: "a1" }], next_cursor: "opaque-next" });
+    await flush();
+    t.ok(more.id, { apps: [{ name: "stale-more" }] });
+    await flush();
+    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["a2", "a1"]);
+    expect(model.apps.list.value.next).toBe("opaque-next");
+    expect(model.apps.list.value.loadingMore).toBe(false);
+    model.dispose();
+  });
+  it("does not retry opening or named instance creation on an owner list hint", async () => {
+    const { t, db, model } = await fixtureModel({ route: "apps" });
+    const plain = db.answer;
+    db.answer = (c) => c.command === "apps.open" ? { ok: false, code: "temporary_failure" } : plain(c);
+    model.applyRoute({ view: "apps", appName: "board", appInstance: "named" });
+    await settle(t, db);
+    expect(t.calls("apps.open")).toHaveLength(1);
+    expect(t.calls("apps.instance.create")).toHaveLength(1);
+    model.apps.ensure(undefined, 1);
+    await settle(t, db);
+    expect(t.calls("apps.open")).toHaveLength(1);
+    expect(t.calls("apps.instance.create")).toHaveLength(1);
+    model.dispose();
+  });
   it("reaches apps beyond the first page through Core's cursor", async () => {
     const { t, db, model } = await fixtureModel({ route: "apps" });
     const plain = db.answer;

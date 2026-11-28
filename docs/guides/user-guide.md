@@ -143,7 +143,7 @@ Keep default authentication for normal use. Explicit `--no-auth` is for disposab
 
 ## Apps, guides, and troubleshooting
 
-**Apps** lists the `shellboy-app:` artifacts of the open Thread: web apps a Thread built in a folder and registered with `shellboy artifact add --uri shellboy-app:./FOLDER`. The same app opens from the Thread's Possessions, and an HTML file registered as an artifact opens there as one static page without the app API. Review an app before using it: its Thread may also have started a background service for it, which runs as a program on the owner's machine. `shellboy-studio guide user` and `shellboy-studio guide agent` print the bundled guides without starting the bridge. Startup rewrites `$SHELLBOY_DATA_DIR/studio/agent-guide.md`; the app API guide is served at `/_shellboy/guide.md`.
+**Apps** lists `shellboy-app:` artifacts. With a Thread selected it lists that Thread's apps; with no Thread selected it lists apps across live, non-archived Threads and shows each owning Thread's title. Use **Show more** to continue through Core's newest-first pages. A Thread registers a web app built in a folder with `shellboy artifact add --uri shellboy-app:./FOLDER`. The same app opens from the Thread's Possessions, and an HTML file registered as an artifact opens there as one static page without the app API. Review an app before using it: its Thread may also have started a background service for it, which runs as a program on the owner's machine. `shellboy-studio guide user` and `shellboy-studio guide agent` print the bundled guides without starting the bridge. Startup rewrites `$SHELLBOY_DATA_DIR/studio/agent-guide.md`; the app API guide is served at `/_shellboy/guide.md`.
 
 **How an app fits together.** An app is one picture with four parts, and the Thread owns all of it:
 
@@ -301,7 +301,7 @@ Studio はループバックのまま、別の端末から届くプライベー�
 
 ### アプリ、ガイド、トラブル対応
 
-**アプリ** は開いているスレッドの `shellboy-app:` 成果物の一覧です。スレッドがフォルダに作り、`shellboy artifact add --uri shellboy-app:./FOLDER` で登録した Web アプリです。同じアプリはスレッドの所有物からも開けます。HTML ファイルを成果物として登録した場合は、アプリ API なしの単一ページとして開きます。スレッドがアプリ用のバックグラウンドサービスを起動している場合があり、それはオーナーの端末上のプログラムとして動くので、使う前にアプリを確認してください。`shellboy-studio guide user` と `shellboy-studio guide agent` で Studio を起動せずに同梱ガイドを読めます。起動時には `$SHELLBOY_DATA_DIR/studio/agent-guide.md` が上書きされます。アプリ API のガイドは `/_shellboy/guide.md` で配信されます。
+**アプリ** は `shellboy-app:` 成果物の一覧です。スレッドを選択中はそのスレッドのアプリを表示し、スレッドを選択していない場合は、稼働中でアーカイブされていない全スレッドのアプリを所有スレッド名とともに表示します。**さらに表示** で Core の新しい順のページを続けて読み込めます。スレッドがフォルダに作り、`shellboy artifact add --uri shellboy-app:./FOLDER` で登録した Web アプリです。同じアプリはスレッドの所有物からも開けます。HTML ファイルを成果物として登録した場合は、アプリ API なしの単一ページとして開きます。スレッドがアプリ用のバックグラウンドサービスを起動している場合があり、それはオーナーの端末上のプログラムとして動くので、使う前にアプリを確認してください。`shellboy-studio guide user` と `shellboy-studio guide agent` で Studio を起動せずに同梱ガイドを読めます。起動時には `$SHELLBOY_DATA_DIR/studio/agent-guide.md` が上書きされます。アプリ API のガイドは `/_shellboy/guide.md` で配信されます。
 
 **アプリの仕組み。** アプリは次の1枚の図で表せます。全体はスレッドが所有します。
 

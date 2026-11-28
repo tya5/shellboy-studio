@@ -637,7 +637,15 @@ export class AppModel {
         if (route.view !== "apps" || this.connection.value !== "connected") return;
         const thread = this.lastThread.value;
         this.apps.ensure(thread, thread === undefined ? this.data.listHint.value : undefined);
-        if (route.appName !== undefined) void this.apps.open(route.appName, route.appInstance);
+      }),
+    );
+    // Navigation owns opening; catalog hints must never retry app or instance creation.
+    this.disposers.push(
+      effect(() => {
+        const route = this.route.value;
+        if (route.view === "apps" && route.appName !== undefined && this.connection.value === "connected") {
+          void this.apps.open(route.appName, route.appInstance);
+        }
       }),
     );
     // Both views follow the list: a list hint re-reads it, and each change here re-reads once.

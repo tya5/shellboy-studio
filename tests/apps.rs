@@ -76,6 +76,8 @@ struct Registered {
     uri: String,
     mime: Option<String>,
     version: i64,
+    updated: u64,
+    archived: bool,
 }
 
 type Registry = Arc<Mutex<BTreeMap<String, Registered>>>;
@@ -112,6 +114,8 @@ impl Fixture {
                 uri,
                 mime: mime.map(str::to_owned),
                 version,
+                updated: APP_UPDATED.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                archived: thread == "archived-owner",
             },
         );
     }
@@ -135,14 +139,16 @@ fn write_app(f: &Fixture, name: &str, thread: &str, files: &[(&str, &str)]) {
     );
 }
 
+static APP_UPDATED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 const PAGE: (&str, &str) = (
     "index.html",
     "<!doctype html><html><head><title>t</title></head><body>hello</body></html>",
 );
 
 fn summary(id: &str, known: &Registered) -> Value {
-    json!({"artifact_id": id, "thread_id": known.thread, "created_at": "now", "updated_at": "now",
-        "latest": {"version": known.version, "uri": known.uri, "title": known.title, "mime": known.mime, "created_at": "now"}})
+    json!({"artifact_id": id, "thread_id": known.thread, "created_at": "now", "updated_at": known.updated,
+        "owner_title": format!("Thread {}", known.thread), "latest": {"version": known.version, "uri": known.uri, "title": known.title, "mime": known.mime, "created_at": "now"}})
 }
 
 fn refused(code: ErrorCode, message: &str) -> Option<common::Reply> {
@@ -198,26 +204,44 @@ async fn fixture() -> Fixture {
             None => refused(ErrorCode::TargetUnavailable, "no such artifact"),
         },
         Command::ArtifactList(args) => {
-            assert_eq!(
-                args.scheme.as_deref(),
-                args.thread_id.is_none().then_some("shellboy-app")
-            );
-            let all: Vec<Value> = known
-                .lock()
-                .unwrap()
+            if args.thread_id.is_none() {
+                assert_eq!(args.scheme.as_deref(), Some("shellboy-app"));
+            } else {
+                assert!(
+                    args.scheme
+                        .as_deref()
+                        .is_none_or(|scheme| scheme == "shellboy-app")
+                );
+            }
+            let registry = known.lock().unwrap();
+            let mut ordered: Vec<_> = registry
                 .iter()
                 .filter(|(_, found)| {
-                    args.thread_id
-                        .as_ref()
-                        .is_none_or(|thread| found.thread == *thread)
+                    !found.archived
+                        && args
+                            .thread_id
+                            .as_ref()
+                            .is_none_or(|thread| found.thread == *thread)
                         && args
                             .scheme
                             .as_ref()
                             .is_none_or(|scheme| found.uri.starts_with(&format!("{scheme}:")))
                 })
-                .map(|(id, found)| summary(id, found))
                 .collect();
-            let from: usize = args.cursor.as_deref().map_or(0, |c| c.parse().unwrap());
+            ordered.sort_by_key(|(_, found)| std::cmp::Reverse(found.updated));
+            let all: Vec<Value> = ordered
+                .iter()
+                .map(|(id, found)| {
+                    let mut row = summary(id, found);
+                    if args.thread_id.is_some() {
+                        row.as_object_mut().unwrap().remove("owner_title");
+                    }
+                    row
+                })
+                .collect();
+            let from: usize = args.cursor.as_deref().map_or(0, |c| {
+                c.strip_prefix("owner-page-").unwrap().parse().unwrap()
+            });
             let page: Vec<Value> = all
                 .iter()
                 .skip(from)
@@ -227,7 +251,7 @@ async fn fixture() -> Fixture {
             let end = from + page.len();
             let mut reply = json!({"items": page, "limit": args.limit});
             if end < all.len() {
-                reply["next_cursor"] = json!(end.to_string());
+                reply["next_cursor"] = json!(format!("owner-page-{end}"));
             }
             common::ok_reply(reply)
         }
@@ -827,8 +851,44 @@ async fn the_api_runs_over_the_web_uis_socket() {
     write_app(&f, "two", "other", &[PAGE]);
     ws.send(send(20, "apps.list", json!({}))).await.unwrap();
     let page = result(&mut ws, 20).await;
-    assert_eq!(page["apps"][0]["thread_title"], "Thread bound");
-    assert_eq!(page["apps"][1]["thread_title"], "Thread other");
+    assert_eq!(page["apps"][0]["thread_title"], "Thread other");
+    assert_eq!(page["apps"][1]["thread_title"], "Thread bound");
+
+    for i in 0..34 {
+        write_app(
+            &f,
+            &format!("page-{i:02}"),
+            &format!("owner-{i:02}"),
+            &[PAGE],
+        );
+    }
+    write_app(&f, "archived-app", "archived-owner", &[PAGE]);
+    ws.send(send(21, "apps.list", json!({}))).await.unwrap();
+    let first_page = result(&mut ws, 21).await;
+    assert_eq!(first_page["apps"].as_array().unwrap().len(), 32);
+    assert_eq!(first_page["apps"][0]["name"], "page-33");
+    let opaque = first_page["next_cursor"].as_str().unwrap();
+    assert!(opaque.starts_with("owner-page-"));
+    assert!(
+        !first_page["apps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|app| app["name"] == "archived-app")
+    );
+    ws.send(send(22, "apps.list", json!({"cursor":opaque})))
+        .await
+        .unwrap();
+    let second_page = result(&mut ws, 22).await;
+    let later: Vec<_> = second_page["apps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|app| app["name"].as_str().unwrap())
+        .collect();
+    assert!(later.contains(&"one"));
+    assert!(later.contains(&"two"));
+    assert!(!later.contains(&"archived-app"));
 
     ws.send(send(2, "apps.open", json!({"name":"one"})))
         .await
