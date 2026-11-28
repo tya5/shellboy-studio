@@ -11,7 +11,7 @@
 use crate::{
     envelope::{OwnerEvent, OwnerState},
     hub::{EventUpdate, Hub, connected},
-    owner::{Owner, instance_of},
+    owner::Owner,
     seam,
 };
 use shellboy::protocol::{ApiError, Command, ErrorCode, EventsWaitStatus};
@@ -86,14 +86,14 @@ pub async fn run_with_guide<O: Owner>(
                 .clone()
                 .ok_or_else(|| "events.wait reply has no result".to_owned())
                 .and_then(seam::decode_events_result)
-                .map(|(result, text)| (instance_of(&response), result, text)),
+                .map(|(result, text)| (result, text)),
             Ok(response) => Err(response
                 .error
                 .map(|e| format!("{:?}: {}", e.code, e.message))
                 .unwrap_or_else(|| "owner refused events.wait".into())),
             Err(error) => Err(format!("{:?}: {}", error.code, error.message)),
         };
-        let (instance, result, text) = match decoded {
+        let (result, text) = match decoded {
             Ok(ok) => ok,
             Err(reason) => {
                 if !announced_unreachable {
@@ -130,6 +130,7 @@ pub async fn run_with_guide<O: Owner>(
             .send_if_modified(|stage| stage.take().is_some());
         backoff = config.backoff_min;
         announced_unreachable = false;
+        let instance = owner.instance_id().await;
         let restarted = last_instance.is_some() && instance != last_instance;
         let owner_transition = if !connected_now || restarted {
             #[cfg(feature = "next-shellboy")]

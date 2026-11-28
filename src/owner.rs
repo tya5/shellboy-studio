@@ -12,6 +12,28 @@ pub trait Owner: Send + Sync + 'static {
         false
     }
 
+    /// Read stable owner identity from Core's public status result.
+    fn instance_id(&self) -> impl Future<Output = Option<String>> + Send {
+        async {
+            let response = self
+                .call(
+                    Command::Status(shellboy::protocol::StatusArgs {
+                        limit: 1,
+                        ..Default::default()
+                    }),
+                    None,
+                    None,
+                )
+                .await
+                .ok()?;
+            response
+                .result?
+                .get("instance_id")?
+                .as_str()
+                .map(str::to_owned)
+        }
+    }
+
     /// One request on one owner connection. Dropping the future closes the connection,
     /// which cancels a read on the owner side.
     fn call(
@@ -46,17 +68,6 @@ impl Owner for IpcOwner {
     ) -> Result<Response<Value>, ApiError> {
         ipc::call(&self.data_dir, command, operation_id, origin).await
     }
-}
-
-/// The owner instance that produced a response. Shellboy builds generated operation IDs as
-/// `<instance_id>:<uuid>` (the same fact `shellboy chat` uses); `None` if the ID has no
-/// instance prefix.
-pub fn instance_of(response: &Response<Value>) -> Option<String> {
-    response
-        .operation_id
-        .split_once(':')
-        .map(|(id, _)| id.to_owned())
-        .filter(|id| !id.is_empty())
 }
 
 /// Explicit startup discovery, shared by CLI, bundle startup and manual Restart.
