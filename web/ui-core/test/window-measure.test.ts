@@ -2,18 +2,19 @@
 import { describe, expect, it } from "vitest";
 import { flush } from "../../data/test/harness";
 import type { HistoryWindowArgs } from "../../data/src";
-import { WINDOW_NODES, WINDOWS_HELD } from "../src/window";
+import { WINDOW_NODES } from "../src/window";
 import { rig } from "./window-owner";
 
 describe("100,000-node sustained reading", () => {
   it("reads and builds only bounded windows while scrolling and cancels the pending read on close", async () => {
     const started = performance.now();
     const total = 100_000;
-    const olderEdges = WINDOWS_HELD + 1; // Request enough older windows to exercise eviction.
+    const olderEdges = 17;
     let itemsMaterialized = 0;
     let peakRowsBuilt = 0;
     const r = await rig(total, { decorate: (_ordinal, item) => { itemsMaterialized++; return item; } });
     try {
+      r.data.retainedBudget.setLimit(310_000);
       const readAndMeasure = async () => {
         const before = itemsMaterialized;
         await r.settle();
@@ -23,11 +24,10 @@ describe("100,000-node sustained reading", () => {
         const accepted = r.w.acceptedView.current;
         expect(accepted.total).toBe(total);
         expect(accepted.rows.length).toBeGreaterThan(0);
-        expect(accepted.rows.length).toBeLessThanOrEqual(WINDOWS_HELD * WINDOW_NODES);
+        expect(r.data.retainedBudget.usage.peek().used).toBeLessThanOrEqual(310_000);
         peakRowsBuilt = Math.max(peakRowsBuilt, accepted.rows.length);
         r.w.measure(accepted.rows.map(row => [row.selection!.ordinal!, 120] as const));
-        expect(r.w.windowsHeld).toBeLessThanOrEqual(WINDOWS_HELD);
-        expect(r.w.measurementsHeld).toBeLessThanOrEqual(WINDOWS_HELD * WINDOW_NODES);
+        expect(r.w.measurementsHeld).toBeLessThanOrEqual(accepted.rows.length);
       };
       await readAndMeasure();
       expect(r.calls()).toHaveLength(1);

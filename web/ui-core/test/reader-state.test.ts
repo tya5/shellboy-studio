@@ -20,6 +20,7 @@ async function open(thread: string) {
     r.model.openThread(thread);
     await settle(r.t, r.db).catch(() => undefined);
   }
+  r.model.data.retainedBudget.setLimit(400_000);
   const w = r.model.longReader.value!;
   const goTo = async (ordinal: number) => {
     while (ordinal < (w.renderRange()?.first ?? 0)) {

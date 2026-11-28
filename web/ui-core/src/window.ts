@@ -1,4 +1,4 @@
-import { RetainedBudget } from "../../data/src/retained-budget";
+import { RetainedBudget, retainedStringBytes, type RetainedReservation } from "../../data/src/retained-budget";
 import { HistoryBodies, RetainedBodies } from "./history-bodies";
 import type { HistoryWindowInput } from '../../data/src/history-input';
 import { captureConversationInput, conversationIdentityEqual, savedAttemptIds, captureCurrentWork, type ConversationIdentity, type ConversationSemanticInput } from "./conversation-input";
@@ -15,8 +15,6 @@ import { Cancel, type HistoryItem, type HistoryWindowArgs, type HistoryWindowRes
 
 /** Positions in one window of the path. */
 export const WINDOW_NODES = 100;
-/** Windows held per open Thread (1,600 nodes), evicting the opposite edge. */
-export const WINDOWS_HELD = 16;
 /** Window reads running at once (a tail or verify read is one more). */
 export const READS_IN_FLIGHT = 2;
 /** Fast scrolling must pause this long before a window is requested. */
@@ -28,6 +26,7 @@ export interface WindowReader {
 }
 export interface WindowOptions {
   bodyStore?: RetainedBodies;
+  budget?: RetainedBudget;
   /** Defaults to `setTimeout`; returns the canceller. */
   setTimer?: (fn: () => void, ms: number) => () => void;
 }
@@ -67,6 +66,10 @@ const mergeHistoryItem = (previous: HistoryItem | undefined, incoming: HistoryIt
 };
 
 class Bucket {
+  reservation?: RetainedReservation;
+  unpin?: () => void;
+  bytes = 1024;
+  rowBytes = new Map<number, number>();
   items: (HistoryItem | undefined)[] = new Array(WINDOW_NODES).fill(undefined);
   filled = 0;
 }
@@ -104,6 +107,7 @@ export class ConversationWindow {
   readonly bodies: HistoryBodies;
   private reader: WindowReader;
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
+  private readonly budget: RetainedBudget;
   private buckets = new Map<number, Bucket>();
   private heights = new Heights();
   private revision: number | undefined;
@@ -148,7 +152,8 @@ export class ConversationWindow {
   total = 0;
 
   constructor(reader: WindowReader, options: WindowOptions = {}) {
-    this.bodies = new HistoryBodies(options.bodyStore ?? new RetainedBodies(new RetainedBudget()));
+    this.budget = options.budget ?? new RetainedBudget();
+    this.bodies = new HistoryBodies(options.bodyStore ?? new RetainedBodies(this.budget));
     this.reader={read:async(args,cancel)=>{
       const out=await reader.read(args,cancel);
       if(!this.disposed&&!out.ok&&out.error.kind==='invalid_response'){
@@ -300,6 +305,7 @@ export class ConversationWindow {
       this.following.value = follow;
       if (follow && this.newer.peek()) void this.readTail();
     }
+    this.updateBucketPins();
     const r = now;
     const wanted = new Set<number>();
     for (let b = Math.floor(r.first / WINDOW_NODES); b <= Math.floor(r.last / WINDOW_NODES); b++) wanted.add(b);
@@ -311,13 +317,6 @@ export class ConversationWindow {
     const sameWanted = wanted.size === this.wanted.size && [...wanted].every((b) => this.wanted.has(b));
     for (const b of this.failed) if (!wanted.has(b)) this.failed.delete(b);
     this.wanted = wanted;
-    for (const b of wanted) {
-      const held = this.buckets.get(b);
-      if (held) {
-        this.buckets.delete(b);
-        this.buckets.set(b, held); // most recently shown last
-      }
-    }
     for (const [b, read] of this.inflight)
       if (!wanted.has(b)) {
         read.cancel.cancel();
@@ -391,6 +390,7 @@ export class ConversationWindow {
       this.currentThread = undefined;
       this.acceptedInput = undefined;
       this.reader = { read: async () => ({ ok: false, error: { kind: "cancelled", message: "Reader disposed" } }) };
+      for (const bucket of this.buckets.values()) bucket.reservation?.release();
       this.buckets.clear();
       this.heights = new Heights();
       this.wanted.clear();
@@ -519,6 +519,7 @@ export class ConversationWindow {
     if (this.disposed || capability !== this.acceptedView.currentCapability || !this.acceptedView.isCurrent(expected)) return false;
     return this.commitAccepted(candidate, () => {
       this.bodies.reconcile(position => positions.get(position.nodeId));
+      for (const bucket of this.buckets.values()) bucket.reservation?.release();
       this.buckets = buckets;
       this.total = candidate.publication.snapshot.total;
       this.revision = candidate.publication.snapshot.revision;
@@ -609,7 +610,7 @@ export class ConversationWindow {
         ({ revision, total } = out.value);
         rows.push(...out.value.items);
       } else {
-        if(!follow&&(!range||range.last-range.first+1>WINDOW_NODES*WINDOWS_HELD))return;
+        if(!follow&&!range)return;
         const first=follow?0:range!.first,last=follow?0:range!.last;
         for(let ordinal=first;ordinal<=last;ordinal+=2*WINDOW_NODES){
           const args:WindowReadArgs=follow?{before:WINDOW_NODES-1,after:0,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true}:
@@ -667,7 +668,18 @@ export class ConversationWindow {
         let bucket=replacement.get(index);if(!bucket){bucket=new Bucket();replacement.set(index,bucket);}
         bucket.items[ordinal%WINDOW_NODES]=row;bucket.filled++;
       }
-      if(replacement.size>WINDOWS_HELD)return;
+      for (const [index, bucket] of replacement) {
+        for (let slot = 0; slot < bucket.items.length; slot++) {
+          const row = bucket.items[slot];
+          if (row) this.chargeRow(bucket, slot, row);
+        }
+        if (!this.reserveBucket(index, bucket, replacement)) {
+          for (const staged of replacement.values()) staged.reservation?.release();
+          this.fail("Retained data budget is full");
+          return;
+        }
+        bucket.unpin = bucket.reservation!.pin();
+      }
       const old={buckets:this.buckets,total:this.total,revision:this.revision,tailKnown:this.tailKnown,lastAnchor:this.lastAnchor,heights:this.heights,scroll:this.scrollRequest,
         inflight:new Map(this.inflight),wanted:this.wanted};
       const nextHeights = new Heights();
@@ -686,13 +698,17 @@ export class ConversationWindow {
       const nextLastAnchor = follow ? undefined : !rewrite ? old.lastAnchor : recovered
         ? { ordinal: ordinalOf(recovered)!, nodeId: recovered.node_id, offset: anchor && "offset" in anchor ? anchor.offset : 0 }
         : nearest === undefined ? undefined : { ordinal: nearest, nodeId: selected[nearest - firstOrdinal]?.node_id, offset: 0 };
-      if(!readOwnerCurrent()||this.acceptedView.peek()!==commitExpected||this.acceptedGeneration!==generation||capability!==this.acceptedView.currentCapability)return;
+      if(!readOwnerCurrent()||this.acceptedView.peek()!==commitExpected||this.acceptedGeneration!==generation||capability!==this.acceptedView.currentCapability) {
+        for (const bucket of replacement.values()) bucket.reservation?.release();
+        return;
+      }
       if(!this.commitSelectedPublication(staged,replacement,positions,commitExpected,capability,()=>{
         this.heights=nextHeights; this.tailKnown=nextTailKnown; this.lastAnchor=nextLastAnchor;
         this.scrollRequest = follow ? Number.MAX_SAFE_INTEGER : rewrite && nextLastAnchor ? this.scrollFor(nextLastAnchor) : old.scroll;
         if (rewrite && !follow && this.scrollRequest !== undefined) this.viewTop = this.scrollRequest;
         if (follow && !this.tailAgain) this.newer.value = false;
-      })){ return; }
+      })){ for (const bucket of replacement.values()) bucket.reservation?.release(); return; }
+      this.updateBucketPins();
       if(this.buckets!==replacement||this.disposed||capability!==this.acceptedView.currentCapability)return;
         for(const [index,read] of old.inflight)if(this.inflight.get(index)===read){read.cancel.cancel();this.inflight.delete(index);}
       if((rewrite || follow&&this.following.peek())&&this.wanted===old.wanted)this.wanted.clear();this.failed.clear();
@@ -844,7 +860,11 @@ export class ConversationWindow {
     }
     const last = out.value.items.at(-1);
     const adoptedAtTail = out.value.total === 0 || (last && ordinalOf(last) === out.value.total - 1) ? adopted : undefined;
-    this.install(out.value, capability, adoptedAtTail);
+    if (!this.install(out.value, capability, adoptedAtTail)) {
+      this.tailFailed = true;
+      this.jumping = false;
+      return;
+    }
     if (capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.disposed) return;
     if (this.following.peek()) {
       this.lastAnchor = undefined;
@@ -888,9 +908,14 @@ export class ConversationWindow {
       const limit = Math.max(0, total - first);
       for (let slot = limit; slot < held.items.length; slot++) {
         const row = held.items[slot];
-        if (row !== undefined) held.filled--;
+        if (row !== undefined) {
+          held.filled--;
+          held.bytes -= held.rowBytes.get(slot) ?? 0;
+          held.rowBytes.delete(slot);
+        }
         held.items[slot] = undefined;
       }
+      held.reservation?.resize(held.bytes);
     }
     for (const i of this.heights.h.keys()) if (i >= total) this.heights.clear(i);
     this.reconcileBodyPositions();
@@ -900,8 +925,45 @@ export class ConversationWindow {
     this.bodies.reconcile(({ nodeId, ordinal }) => ordinal !== undefined && this.itemAt(ordinal)?.node_id === nodeId ? ordinal : undefined);
   }
 
+  private chargeRow(bucket: Bucket, slot: number, row: HistoryItem): boolean {
+    // Include room for the positional index, height, and derived display references.
+    const bytes = 384 + retainedStringBytes(JSON.stringify(row));
+    const total = bucket.bytes - (bucket.rowBytes.get(slot) ?? 0) + bytes;
+    if (bucket.reservation && !bucket.reservation.resize(total)) return false;
+    bucket.rowBytes.set(slot, bytes);
+    bucket.bytes = total;
+    return true;
+  }
+
+  private reserveBucket(index: number, bucket: Bucket, owner = this.buckets): boolean {
+    bucket.reservation = this.budget.reserve(bucket.bytes, () => {
+      if (this.buckets !== owner || owner.get(index) !== bucket || this.disposed) return;
+      this.applyHeights(() => { this.dropBucket(index); return true; }, false);
+      this.reconcileBodyPositions();
+      this.bump();
+    });
+    return bucket.reservation !== undefined;
+  }
+
+  private updateBucketPins(): void {
+    const first = this.following.peek() ? Math.max(0, this.total - 1) : (this.lastAnchor?.ordinal ?? this.locate(this.viewTop));
+    const last = this.following.peek() ? first : Math.max(first, this.locate(this.viewTop + this.viewHeight));
+    const from = Math.max(0, Math.floor(first / WINDOW_NODES) - 1);
+    const to = Math.floor(last / WINDOW_NODES) + 1;
+    for (const [index, bucket] of this.buckets) {
+      if (index >= from && index <= to && !bucket.unpin) bucket.unpin = bucket.reservation?.pin();
+    }
+    for (const [index, bucket] of this.buckets) {
+      if (index >= from && index <= to) continue;
+      const release = bucket.unpin;
+      bucket.unpin = undefined;
+      release?.();
+    }
+  }
+
   /** Eviction discards both content and its measurements. */
   private dropBucket(b: number): void {
+    this.buckets.get(b)?.reservation?.release();
     this.buckets.delete(b);
     this.wanted.delete(b);
     this.failed.delete(b);
@@ -910,38 +972,60 @@ export class ConversationWindow {
     for (let i = b * WINDOW_NODES; i < (b + 1) * WINDOW_NODES; i++) this.heights.clear(i);
   }
 
-  private install(result: HistoryWindowResult, capability = this.acceptedView.currentCapability, adopted?: AdoptedBeforeRead): void {
-    if (capability !== this.acceptedView.currentCapability || this.disposed) return;
+  private install(result: HistoryWindowResult, capability = this.acceptedView.currentCapability, adopted?: AdoptedBeforeRead): boolean {
+    if (capability !== this.acceptedView.currentCapability || this.disposed) return false;
+    const rejected = new Set<number>();
     this.applyHeights(() => {
+      const staged = new Map<number, Bucket>();
       for (const item of result.items) {
         const o = ordinalOf(item);
         if (o === undefined || o >= this.total) continue;
-        const b = Math.floor(o / WINDOW_NODES);
-        let held = this.buckets.get(b);
-        if (!held) {
-          held = new Bucket();
-          this.buckets.set(b, held);
-          while (this.buckets.size > WINDOWS_HELD) {
-            const keys = [...this.buckets.keys()].sort((a, z) => a - z);
-            const edge = b === keys[0] ? keys[keys.length - 1]! : keys[0]!;
-            this.dropBucket(edge);
+        const b = Math.floor(o / WINDOW_NODES), slot = o % WINDOW_NODES;
+        const prior = this.buckets.get(b);
+        let bucket = staged.get(b);
+        if (!bucket) {
+          bucket = new Bucket();
+          if (prior) {
+            bucket.items = [...prior.items]; bucket.filled = prior.filled;
+            bucket.bytes = prior.bytes; bucket.rowBytes = new Map(prior.rowBytes);
           }
+          staged.set(b, bucket);
         }
-        const slot = o % WINDOW_NODES;
-        const previous = held.items[slot];
-        if (previous === undefined) held.filled++;
+        const previous = bucket.items[slot];
         const merged = mergeHistoryItem(previous, item);
-        held.items[slot] = merged;
-        if (item.node_id !== undefined && (this.tailKnown === undefined || o >= this.tailKnown.ordinal)) this.tailKnown = { ordinal: o, nodeId: item.node_id };
+        this.chargeRow(bucket, slot, merged);
+        bucket.items[slot] = merged;
+        if (previous === undefined) bucket.filled++;
       }
+      for (const [b, bucket] of staged) {
+        const prior = this.buckets.get(b);
+        if (prior ? !prior.reservation?.resize(bucket.bytes) : !this.reserveBucket(b, bucket)) {
+          rejected.add(b);
+          continue;
+        }
+        if (prior) {
+          bucket.reservation = prior.reservation;
+          bucket.unpin = prior.unpin;
+          // Keep the eviction callback's identity stable.
+          Object.assign(prior, bucket);
+        } else this.buckets.set(b, bucket);
+        for (const item of bucket.items) {
+          if (!item?.node_id) continue;
+          const ordinal = ordinalOf(item)!;
+          if (this.tailKnown === undefined || ordinal >= this.tailKnown.ordinal) this.tailKnown = { ordinal, nodeId: item.node_id };
+        }
+      }
+      this.updateBucketPins();
       return true;
     }, false);
     batch(() => {
       this.reconcileBodyPositions();
-      this.status.value = "ready";
-      this.error.value = undefined;
-      this.bump(capability, true, undefined, adopted);
+      for (const b of rejected) this.failed.add(b);
+      if (rejected.size) this.fail("Retained data budget is full");
+      else { this.status.value = "ready"; this.error.value = undefined; }
+      this.bump(capability, true, undefined, rejected.size ? undefined : adopted);
     });
+    return rejected.size === 0;
   }
 
   /** Runs a height change with the anchor row held in place. */

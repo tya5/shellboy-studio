@@ -124,6 +124,7 @@ export async function rig(total: number, options: { capability?: boolean; thread
   const handle = data.openThread(options.threadId ?? "t", nextOrdinal());
   let armed: (() => void) | undefined;
   const opts: WindowOptions = {
+    budget: data.retainedBudget,
     setTimer: (fn) => {
       armed = fn;
       return () => {

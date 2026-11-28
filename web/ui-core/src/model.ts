@@ -833,7 +833,7 @@ export class AppModel {
     if (!this.longReader.peek()) {
       this.readerThread = h.threadId;
       this.readerTick = h.historyTick.peek();
-      const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) }, { bodyStore: this.retainedBodies });
+      const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) }, { bodyStore: this.retainedBodies, budget: this.data.retainedBudget });
       reader.bindCurrentThread(h);
       reader.bindConversationInput((snapshot, replacement, retiring) => this.captureWindowConversation(reader, h, snapshot, replacement, retiring),
         snapshot => this.applyCommittedOwnRegion(reader, h, snapshot));

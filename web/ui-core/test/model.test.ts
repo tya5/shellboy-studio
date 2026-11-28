@@ -111,11 +111,14 @@ describe("AppModel over the fake transport", () => {
       t.ok(complete.id, { node_id: "row-1999", kind: "user_message", text: "expanded body" });
       await first;
       expect(model.bodyState("row-1999")?.text).toBe("expanded body");
+      const release = reader.bodies.pin(HistoryBodies.key("row-1999"));
+      model.data.retainedBudget.setLimit(400_000);
       const pending = model.loadBody("row-1998");
       await flush();
       const held = t.calls("history.read").at(-1)!;
       db.answered.add(held.id);
       for (let page = 0; page < 20 && reader.isLoaded(1999); page++) {
+        reader.view(0, 600, false);
         reader.requestOlder();
         await settle(t, db);
       }
@@ -123,6 +126,7 @@ describe("AppModel over the fake transport", () => {
       expect(model.bodyState("row-1999")?.text).toBe("expanded body");
       expect(t.cancels()).toContain(held.id);
       await pending;
+      release();
     } finally { model.dispose(); }
   });
 

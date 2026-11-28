@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { correctedScrollTop, READS_IN_FLIGHT, WINDOW_NODES, WINDOWS_HELD } from "../src/window";
+import { correctedScrollTop, READS_IN_FLIGHT, WINDOW_NODES } from "../src/window";
 import { rig, type Rig } from "./window-owner";
 import { flush } from "../../data/test/harness";
 
@@ -93,21 +93,25 @@ describe("bounded loaded edges", () => {
     expect(r.w.isLoaded(99_800)).toBe(false);
     close(r);
   });
-  it("evicts opposite edges and their measurements during sustained bidirectional reading", async () => {
+  it("evicts cold rows and their measurements during sustained bidirectional reading", async () => {
     const r = await open(10_000);
-    for (let k = 0; k < 40; k++) {
-      await older(r);
-      expect(r.w.windowsHeld).toBeLessThanOrEqual(WINDOWS_HELD);
-      expect(r.w.measurementsHeld).toBeLessThanOrEqual(WINDOWS_HELD * WINDOW_NODES);
-    }
-    expect(r.w.renderRange()).toEqual({ first: 5900, last: 7499 });
-    expect(r.w.isLoaded(9999)).toBe(false);
+    const budget = r.data.retainedBudget;
+    const limit = 400_000;
+    budget.setLimit(limit);
     for (let k = 0; k < 20; k++) {
-      r.w.view(r.w.totalHeight() - VIEW, VIEW, true); r.pause(); await r.settle(); paint(r);
-      expect(r.w.following.value).toBe(false); // a loaded edge is not the Thread's end
-      expect(r.w.windowsHeld).toBeLessThanOrEqual(WINDOWS_HELD);
+      await older(r);
+      expect(budget.usage.peek().used).toBeLessThanOrEqual(limit);
+      expect(r.w.measurementsHeld).toBeLessThanOrEqual(r.w.windowsHeld * WINDOW_NODES);
     }
-    expect(r.w.renderRange()).toEqual({ first: 7900, last: 9499 });
+    const olderRange = r.w.renderRange()!;
+    expect(olderRange.first).toBeLessThan(9_000);
+    expect(r.w.isLoaded(9_999)).toBe(false);
+    for (let k = 0; k < 5; k++) {
+      r.w.view(r.w.totalHeight() - VIEW, VIEW, true); r.pause(); await r.settle(); paint(r);
+      expect(r.w.following.value).toBe(false);
+      expect(budget.usage.peek().used).toBeLessThanOrEqual(limit);
+    }
+    expect(r.w.renderRange()!.last).toBeGreaterThan(olderRange.last);
     close(r);
   });
   it("never walks older pages automatically when the loaded content fits", async () => {
@@ -127,10 +131,14 @@ describe("bounded loaded edges", () => {
     expect(r.w.version.value).toBe(version);
     close(r);
   });
-  it("notifies and switches the rendered run when jumping to a disjoint held tail", async () => {
+  it("notifies and switches the rendered run when jumping from a detached run to an evicted tail", async () => {
     const r = await open(10_000);
+    const budget = r.data.retainedBudget;
+    budget.setLimit(400_000);
     for (let k = 0; k < 20; k++) await older(r);
     expect(r.w.renderRange()!.last).toBeLessThan(9999);
+    expect(r.w.isLoaded(9999)).toBe(false);
+    budget.setLimit(64 * 1024 * 1024);
     const version = r.w.version.value;
     r.w.view(0, VIEW, false); // an old edge timer must not outlive explicit navigation
     r.w.jumpToEnd(); r.pause(); await r.settle();
@@ -173,7 +181,8 @@ describe("keeping position", () => {
   });
   it("retains the anchor during opposite-edge eviction", async () => {
     const r = await open(5000);
-    for (let k = 0; k < WINDOWS_HELD; k++) await older(r);
+    r.data.retainedBudget.setLimit(400_000);
+    for (let k = 0; k < 16; k++) await older(r);
     r.w.view(200, VIEW, false);
     const anchor = r.w.anchor(200);
     r.pause(); await r.settle(); paint(r);
@@ -271,7 +280,7 @@ describe("following and leaving", () => {
     r.w.changed(); await r.settle();
     expect(r.since(mark)).toHaveLength(2);
     expect(r.w.renderRange()).toEqual({ first: 100_200, last: 100_299 });
-    expect(r.w.windowsHeld).toBeLessThanOrEqual(WINDOWS_HELD);
+    expect(r.w.isLoaded(100_199)).toBe(false);
     close(r);
   });
   it("stays put on detached hints and offers an explicit return to the end", async () => {
