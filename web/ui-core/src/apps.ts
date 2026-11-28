@@ -1,7 +1,8 @@
 // Apps: the list, the open tabs, and what an app's page reports. Tabs live here, so an app keeps
 // running while other views show. Everything an app sends is treated as text from an untrusted page.
-import { signal, type Signal } from "@preact/signals-core";
+import { batch, signal, type Signal } from "@preact/signals-core";
 import { Cancel, type Operations, type OpError } from "../../data/src";
+import { RetainedBudget, retainedStringBytes, type RetainedReservation } from "../../data/src/retained-budget";
 import { validAppInstance } from "./route";
 
 /** An app is an artifact, so `name` is its artifact ID and `thread` its owner Thread. */
@@ -87,6 +88,8 @@ export function errorReportText(app: Pick<OpenApp, "name" | "title">, errors: re
   return text.length > MAX_REPORT_CHARS ? text.slice(0, MAX_REPORT_CHARS) : text;
 }
 
+type CataloguePage = { apps: AppInfo[]; next: string | undefined; reservation: RetainedReservation; unpin?: () => void };
+
 export class AppsModel {
   readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, thread: undefined, apps: [], next: undefined, loadingMore: false, error: undefined });
   readonly tabs: Signal<readonly OpenApp[]> = signal([]);
@@ -110,47 +113,108 @@ export class AppsModel {
   /** Cancels an app's outstanding calls when its tab closes or reloads. */
   private calls = new Map<string, { cancel: Cancel; count: number }>();
 
-  constructor(private readonly ops: Operations) {}
+  private readonly pages = new Map<string, Map<string | undefined, CataloguePage>>();
+  private scope: string | undefined;
+  private readGeneration = 0;
+  private listCancel = new Cancel();
+  constructor(private readonly ops: Operations, private readonly budget = new RetainedBudget()) {}
 
-  /** Reads the Thread's apps once per Thread; `refresh` reads again. */
+  leaveCatalogue(): void {
+    if (this.scope === undefined) return;
+    this.readGeneration++;
+    this.listCancel.cancel();
+    const pages = this.pages.get(this.scope);
+    this.scope = undefined;
+    this.list.value = { loading: false, loaded: false, thread: undefined, apps: [], next: undefined, loadingMore: false, error: undefined };
+    for (const page of pages?.values() ?? []) {
+      const unpin = page.unpin;
+      page.unpin = undefined;
+      unpin?.();
+    }
+  }
+
+  clearCatalogue(): void {
+    this.leaveCatalogue();
+    for (const pages of this.pages.values()) for (const page of pages.values()) page.reservation.release();
+    this.pages.clear();
+  }
+
   ensure(thread: string | undefined): void {
-    const s = this.list.peek();
-    if (thread === undefined) {
-      if (s.thread !== undefined || s.loaded) this.list.value = { loading: false, loaded: false, thread: undefined, apps: [], next: undefined, loadingMore: false, error: undefined };
-      return;
-    }
-    if (s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
+    if (this.scope === thread) return;
+    this.leaveCatalogue();
+    if (thread === undefined) return;
+    this.scope = thread;
+    const first = this.pages.get(thread)?.get(undefined);
+    if (first) this.publishCatalogue(thread);
+    else void this.refresh(thread);
   }
 
-  /** Reads the Thread's `shellboy-app:` artifacts through the gateway, so a new one shows at once. */
+  private publishCatalogue(thread: string): void {
+    const pages = this.pages.get(thread);
+    const seen = new Set<string>();
+    const apps: AppInfo[] = [];
+    let next: string | undefined;
+    const cursors = new Set<string | undefined>();
+    while (!cursors.has(next)) {
+      cursors.add(next);
+      const page = pages?.get(next);
+      if (!page) break;
+      page.reservation.touch();
+      page.unpin ??= page.reservation.pin();
+      for (const app of page.apps) if (!seen.has(app.name)) { seen.add(app.name); apps.push(app); }
+      next = page.next;
+      if (next === undefined) break;
+    }
+    this.list.value = { loading: false, loaded: true, thread, apps, next, loadingMore: false, error: undefined };
+  }
+
   async refresh(thread: string): Promise<void> {
-    // The list belongs to the Thread it was read for: another Thread's cards never wait under this one.
-    const before = this.list.peek();
-    this.list.value = before.thread === thread ? { ...before, loading: true, loadingMore: false } : { loading: true, loaded: false, thread, apps: [], next: undefined, loadingMore: false, error: undefined };
-    const out = await this.ops.appsList(thread);
-    if (this.list.peek().thread !== thread) return;
-    if (!out.ok) {
-      this.list.value = { ...this.list.peek(), loading: false, error: out.error };
-      return;
-    }
-    this.list.value = { loading: false, loaded: true, thread, apps: readApps(out.value), next: str(out.value.next_cursor), loadingMore: false, error: undefined };
+    if (this.scope !== thread) this.leaveCatalogue();
+    this.scope = thread;
+    await this.readCatalogue(thread, undefined);
   }
 
-  /** The next Core page, added after the apps already shown. */
   async more(): Promise<void> {
-    const before = this.list.peek();
-    const { thread, next } = before;
-    if (thread === undefined || next === undefined || before.loading || before.loadingMore) return;
-    this.list.value = { ...before, loadingMore: true, error: undefined };
-    const out = await this.ops.appsList(thread, next);
-    const now = this.list.peek();
-    if (now.thread !== thread || now.next !== next) return;
-    if (!out.ok) {
-      this.list.value = { ...now, loadingMore: false, error: out.error };
+    const { thread, next, loading, loadingMore } = this.list.peek();
+    if (thread === undefined || next === undefined || loading || loadingMore) return;
+    if (this.pages.get(thread)?.has(next)) { this.publishCatalogue(thread); return; }
+    await this.readCatalogue(thread, next);
+  }
+
+  private async readCatalogue(thread: string, cursor: string | undefined): Promise<void> {
+    this.listCancel.cancel();
+    const cancel = this.listCancel = new Cancel();
+    const generation = ++this.readGeneration;
+    const previous = this.list.peek();
+    this.list.value = previous.thread === thread ? { ...previous, loading: cursor === undefined, loadingMore: cursor !== undefined, error: undefined }
+      : { loading: true, loaded: false, thread, apps: [], next: undefined, loadingMore: false, error: undefined };
+    const out = await this.ops.appsList(thread, cursor, { cancel });
+    if (this.scope !== thread || this.readGeneration !== generation) return;
+    const fail = (error: OpError) => { this.list.value = { ...this.list.peek(), loading: false, loadingMore: false, error }; };
+    if (!out.ok) { fail(out.error); return; }
+    const apps = readApps(out.value), next = str(out.value.next_cursor);
+    const existing = this.pages.get(thread);
+    if (next !== undefined && (next === cursor || (cursor !== undefined && existing?.has(next)))) {
+      fail({ kind: "owner", code: "invalid_cursor", message: "Apps continuation did not advance" });
       return;
     }
-    const seen = new Set(now.apps.map((a) => a.name));
-    this.list.value = { ...now, loadingMore: false, apps: [...now.apps, ...readApps(out.value).filter((a) => !seen.has(a.name))], next: str(out.value.next_cursor) };
+    const bytes = 96 + retainedStringBytes(thread) + retainedStringBytes(cursor ?? "") + retainedStringBytes(next ?? "")
+      + apps.reduce((n, app) => n + 96 + retainedStringBytes(app.name) + retainedStringBytes(app.title) + retainedStringBytes(app.thread ?? ""), 0);
+    const pages = cursor === undefined ? new Map<string | undefined, CataloguePage>() : existing ?? new Map();
+    const reservation = this.budget.reserve(bytes, () => {
+      pages.delete(cursor);
+      if (pages.size === 0 && this.pages.get(thread) === pages) this.pages.delete(thread);
+    });
+    if (!reservation) {
+      fail({ kind: "owner", code: "retained_budget", message: "Retained data budget is full" });
+      return;
+    }
+    batch(() => {
+      pages.set(cursor, { apps, next, reservation, unpin: reservation.pin() });
+      if (cursor === undefined) for (const page of existing?.values() ?? []) page.reservation.release();
+      this.pages.set(thread, pages);
+      this.publishCatalogue(thread);
+    });
   }
 
   async loadInstances(name: string): Promise<void> {

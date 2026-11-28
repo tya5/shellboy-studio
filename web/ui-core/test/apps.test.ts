@@ -142,6 +142,39 @@ describe("AppsModel over the fake transport", () => {
     expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["a1", "a2"]);
     expect(model.apps.list.value.next).toBeUndefined();
   });
+  it("keeps visible Apps pages, retries an unadmitted cursor and reuses a resident revisit", async () => {
+    const { t, db, model } = await fixtureModel({ route: "apps" });
+    const base = db.answer.bind(db);
+    try {
+      db.answer = call => call.command !== "apps.list" ? base(call) : (call.args as { cursor?: string }).cursor === undefined
+        ? { ok: true, result: { apps: [{ name: "first" }], next_cursor: "second-page" } }
+        : { ok: true, result: { apps: [{ name: "second", title: "z".repeat(4096) }] } };
+      void model.apps.refresh("lead");
+      await settle(t, db);
+      const budget = model.data.retainedBudget;
+      budget.setLimit(budget.usage.peek().pinned);
+      void model.apps.more();
+      await settle(t, db);
+      expect(model.apps.list.peek()).toMatchObject({ apps: [{ name: "first" }], next: "second-page", error: { code: "retained_budget" } });
+      budget.setLimit(64 * 1024 * 1024);
+      void model.apps.more();
+      await settle(t, db);
+      expect(model.apps.list.peek().apps.map(app => app.name)).toEqual(["first", "second"]);
+      const reads = t.calls("apps.list").length;
+      model.applyRoute({ view: "inbox" });
+      model.applyRoute({ view: "apps" });
+      await settle(t, db);
+      expect(t.calls("apps.list")).toHaveLength(reads);
+      expect(model.apps.list.peek().apps.map(app => app.name)).toEqual(["first", "second"]);
+      model.applyRoute({ view: "inbox" });
+      budget.setLimit(budget.usage.peek().pinned);
+      budget.setLimit(64 * 1024 * 1024);
+      model.applyRoute({ view: "apps" });
+      await settle(t, db);
+      expect(t.calls("apps.list")).toHaveLength(reads + 1);
+      expect(model.apps.list.peek().apps.map(app => app.name)).toEqual(["first"]);
+    } finally { model.dispose(); }
+  });
   it("a refused open reports it and opens no tab", async () => {
     const { t, db, model } = await fixtureModel({ route: "apps" });
     const plain = db.answer;

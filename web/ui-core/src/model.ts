@@ -454,7 +454,7 @@ export class AppModel {
     this.guideRegistration = new GuideRegistration(this.ops);
     this.setup = new ConnectionSetup(this.ops);
     this.embedding = new EmbeddingSetup(this.ops, this.setup);
-    this.apps = new AppsModel(this.ops);
+    this.apps = new AppsModel(this.ops, this.data.retainedBudget);
     this.appFolders = computed(() => recentAppFolders(this.apps.folders.value.names, this.data.threadList.value.items.map((item) => item.cwd)));
 
     const pendingByThread = computed(() => {
@@ -635,8 +635,10 @@ export class AppModel {
     this.disposers.push(
       effect(() => {
         const route = this.route.value;
-        if (route.view !== "apps" || this.connection.value !== "connected") return;
-        this.apps.ensure(this.selectedId.value);
+        if (this.connection.value !== "connected") { this.apps.clearCatalogue(); return; }
+        if (route.view !== "apps" || route.appName !== undefined) this.apps.leaveCatalogue();
+        else this.apps.ensure(this.selectedId.value);
+        if (route.view !== "apps") return;
         if (route.appName !== undefined) void this.apps.open(route.appName, route.appInstance);
       }),
     );
@@ -715,6 +717,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.apps.clearCatalogue();
     this.config.leave();
     this.attachmentSection.close();
     this.artifacts.close();
