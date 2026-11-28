@@ -178,23 +178,31 @@ describe("AppsModel over the fake transport", () => {
     expect(model.apps.list.value.error).toBeDefined();
     model.dispose();
   });
-  it("refuses Show more while a Thread Refresh owns the reader", async () => {
-    const { t, db, model } = await fixtureModel({ route: "apps" });
-    const plain = db.answer;
-    db.answer = (c) => {
-      if (c.command === "apps.list" && (c.args as { thread?: string }).thread === "lead") return { ok: true, result: { apps: [{ name: "fresh-thread" }], next_cursor: "thread-next" } };
-      return plain(c);
-    };
+  it("disables both catalog controls during a Thread Refresh with a continuation", async () => {
+    const { t, db, model } = await fixtureModel({ route: "inbox" });
+    void model.apps.refresh("lead");
+    await flush();
+    const initial = t.calls("apps.list").at(-1)!;
+    t.ok(initial.id, { apps: [{ name: "thread-card" }], next_cursor: "thread-cursor" });
+    await flush();
+    expect(model.apps.list.value.canRefresh).toBe(true);
+    expect(model.apps.list.value.canShowMore).toBe(true);
+
     void model.apps.refresh("lead");
     await flush();
     const refresh = t.calls("apps.list").at(-1)!;
     expect(model.apps.list.value.loading).toBe(true);
+    expect(model.apps.list.value.canRefresh).toBe(false);
+    expect(model.apps.list.value.canShowMore).toBe(false);
     const callCount = t.calls("apps.list").length;
     await model.apps.more();
     expect(t.calls("apps.list")).toHaveLength(callCount);
-    t.ok(refresh.id, { apps: [{ name: "fresh-thread" }], next_cursor: "thread-next" });
+    expect(refresh.args).toEqual({ thread: "lead" });
+    t.ok(refresh.id, { apps: [{ name: "refreshed-card" }], next_cursor: "refreshed-cursor" });
     await flush();
-    expect(model.apps.list.value.next).toBe("thread-next");
+    expect(model.apps.list.value.next).toBe("refreshed-cursor");
+    expect(model.apps.list.value.canRefresh).toBe(true);
+    expect(model.apps.list.value.canShowMore).toBe(true);
     model.dispose();
   });
   it("keeps an admitted Show more page when a hint arrives during reconciliation", async () => {

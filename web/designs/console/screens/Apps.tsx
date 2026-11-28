@@ -70,7 +70,7 @@ function AppList({ context }: { context: DesignContext }) {
     <div class="apps-list">
       <div class="head">
         <h1>{t("view.apps")}</h1>
-        <div class="app-list-actions">{list.thread !== undefined ? <IconButton glyph="action.retry" label={t("common.refresh")} disabled={list.loading} onClick={() => void apps.refresh(list.thread)} /> : null}<Button variant="primary" aria-pressed={creating} onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button></div>
+        <div class="app-list-actions">{list.thread !== undefined ? <IconButton glyph="action.retry" label={t("common.refresh")} disabled={!list.canRefresh} onClick={() => void apps.refresh(list.thread)} /> : null}<Button variant="primary" aria-pressed={creating} onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button></div>
       </div>
       {creating ? <AppRequest key={draft} title={t("apps.createTitle")} requestLabel={t("apps.request")} cwdLabel={t("apps.cwd")} reviewLabel={t("apps.preview")} previewLabel={t("apps.previewLabel")} sendLabel={t("apps.createSend")} prompt={t("apps.prompt")} busy={model.appRequestState.value.kind === "sending"} disabled={model.connection.value !== "connected" || model.appRequestState.value.kind === "unconfirmed"} error={model.appRequestState.value.message ? t("apps.createError", { message: model.appRequestState.value.message }) : undefined} folders={model.appFolders.value} defaultCwd={model.selectedRow.value?.summary.cwd ?? ""} templates={templates} templatesLabel={t("apps.templates")} filterLabel={t("apps.folderFilter")} listLabel={t("apps.folderList")} manualLabel={t("apps.folderManual")} initialDraft={draft} onSend={(text, cwd) => model.createAppRequest(text, cwd)} /> : null}
       {creating && apps.folders.value.truncated ? <Notice>{t("apps.folderTruncated")}</Notice> : null}
@@ -91,7 +91,7 @@ function AppList({ context }: { context: DesignContext }) {
           ))}
         </div>
       ) : null}
-      {list.next !== undefined ? <Button variant="ghost" disabled={list.loading || list.loadingMore} onClick={() => void apps.more()}>{t("apps.more")}</Button> : null}
+      {list.next !== undefined ? <Button variant="ghost" disabled={!list.canShowMore} onClick={() => void apps.more()}>{t("apps.more")}</Button> : null}
       <GuideRegistrationView context={context} collapsed />
     </div>
   );

@@ -24,6 +24,9 @@ export interface AppListState {
   pages: number;
   /** A Show more read is in flight. */
   loadingMore: boolean;
+  /** Reader admission state, consumed directly by the two controls. */
+  canRefresh: boolean;
+  canShowMore: boolean;
   error: OpError | undefined;
 }
 
@@ -34,6 +37,8 @@ interface CatalogReader {
   dirty: boolean;
   pendingMore: boolean;
   retired: boolean;
+  canRefresh: boolean;
+  canShowMore: boolean;
 }
 
 export interface AppErrorReport {
@@ -100,7 +105,7 @@ export function errorReportText(app: Pick<OpenApp, "name" | "title">, errors: re
 }
 
 export class AppsModel {
-  readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, thread: undefined, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined });
+  readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, thread: undefined, apps: [], next: undefined, pages: 0, loadingMore: false, canRefresh: false, canShowMore: false, error: undefined });
   readonly tabs: Signal<readonly OpenApp[]> = signal([]);
   readonly instances: Signal<Readonly<Record<string, readonly string[]>>> = signal({});
   readonly openError: Signal<{ name: string; message: string } | undefined> = signal(undefined);
@@ -130,12 +135,26 @@ export class AppsModel {
   private readerFor(thread: string | undefined): { reader: CatalogReader; changed: boolean } {
     if (this.currentReader && this.currentReader.thread === thread && !this.currentReader.retired) return { reader: this.currentReader, changed: false };
     if (this.currentReader) this.currentReader.retired = true;
-    const reader: CatalogReader = { thread, mode: "idle", dirty: false, pendingMore: false, retired: false };
+    const reader: CatalogReader = { thread, mode: "idle", dirty: false, pendingMore: false, retired: false, canRefresh: false, canShowMore: false };
     this.currentReader = reader;
     return { reader, changed: true };
   }
 
   private isCurrent(reader: CatalogReader): boolean { return this.currentReader === reader && !reader.retired; }
+
+  private publishList(state: Omit<AppListState, "canRefresh" | "canShowMore">): void {
+    const reader = this.currentReader;
+    if (reader) {
+      reader.canRefresh = reader.mode === "idle" && reader.thread !== undefined;
+      reader.canShowMore = reader.mode === "idle" && state.next !== undefined;
+    }
+    this.list.value = { ...state, canRefresh: reader?.canRefresh ?? false, canShowMore: reader?.canShowMore ?? false };
+  }
+
+  private publishReader(reader: CatalogReader, mode: CatalogMode, state: Omit<AppListState, "canRefresh" | "canShowMore">): void {
+    reader.mode = mode;
+    if (this.isCurrent(reader)) this.publishList(state);
+  }
 
   /** Keep all catalog operations under one per-scope reader and its admission state. */
   ensure(thread: string | undefined, hint?: number): void {
@@ -143,7 +162,7 @@ export class AppsModel {
     this.globalHint = hint;
     const { reader, changed } = this.readerFor(thread);
     if (changed) {
-      this.list.value = { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
+      this.publishReader(reader, "idle", { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined });
       if (thread === undefined) void this.rebuild(reader);
       else void this.refresh(thread, reader);
     } else if (changedHint && reader.thread === undefined) {
@@ -166,20 +185,16 @@ export class AppsModel {
     }
     const { reader, changed } = existing ? { reader: existing, changed: false } : this.readerFor(thread);
     if (!this.isCurrent(reader) || reader.mode !== "idle") return;
-    if (changed) this.list.value = { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
-    reader.mode = "refreshing";
+    if (changed) this.publishReader(reader, "idle", { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined });
     const before = this.list.peek();
-    this.list.value = before.thread === thread
+    this.publishReader(reader, "refreshing", before.thread === thread
       ? { ...before, loading: true, loadingMore: false, error: undefined }
-      : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
+      : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined });
     const out = await this.ops.appsList(thread, undefined);
     if (!this.isCurrent(reader)) return;
-    reader.mode = "idle";
-    if (!out.ok) {
-      this.list.value = { ...this.list.peek(), loading: false, error: out.error };
-      return;
-    }
-    this.list.value = { loading: false, loaded: true, thread, apps: readApps(out.value), next: str(out.value.next_cursor), pages: 1, loadingMore: false, error: undefined };
+    this.publishReader(reader, "idle", out.ok
+      ? { loading: false, loaded: true, thread, apps: readApps(out.value), next: str(out.value.next_cursor), pages: 1, loadingMore: false, error: undefined }
+      : { ...this.list.peek(), loading: false, error: out.error });
   }
 
   /** A global invalidation rebuilds only the displayed prefix. */
@@ -205,7 +220,7 @@ export class AppsModel {
       let next: string | undefined;
       let pages = 0;
       let error: OpError | undefined;
-      this.list.value = { ...this.list.peek(), loading: true, loadingMore: reader.pendingMore, error: retainedError };
+      this.publishList({ ...this.list.peek(), loading: true, loadingMore: reader.pendingMore, error: retainedError });
       while (pages < targetPages) {
         const out = await this.ops.appsList(undefined, cursor);
         if (!this.isCurrent(reader)) return;
@@ -220,29 +235,27 @@ export class AppsModel {
       if (error) {
         if (reader.pendingMore) reader.pendingMore = false;
         retainedError = error;
-        this.list.value = { ...this.list.peek(), loading: false, loadingMore: false, error };
+        this.publishList({ ...this.list.peek(), loading: false, loadingMore: false, error });
       } else {
         reader.pendingMore = false;
-        this.list.value = { loading: false, loaded: true, thread: undefined, apps, next, pages, loadingMore: false, error: retainedError };
+        this.publishList({ loading: false, loaded: true, thread: undefined, apps, next, pages, loadingMore: false, error: retainedError });
       }
     } while (reader.dirty && this.isCurrent(reader));
-    if (this.isCurrent(reader)) reader.mode = "idle";
+    if (this.isCurrent(reader)) this.publishReader(reader, "idle", this.list.peek());
   }
 
   /** Append the published cursor; invalidations are coalesced and reconciled after this request settles. */
   async more(): Promise<void> {
     const reader = this.currentReader;
     const before = this.list.peek();
-    if (!reader || !this.isCurrent(reader) || reader.mode !== "idle" || before.next === undefined) return;
-    reader.mode = "paging";
+    if (!reader || !this.isCurrent(reader) || !reader.canShowMore || before.next === undefined) return;
     reader.pendingMore = true;
-    this.list.value = { ...before, loadingMore: true, error: undefined };
+    this.publishReader(reader, "paging", { ...before, loadingMore: true, error: undefined });
     const out = await this.ops.appsList(reader.thread, before.next);
     if (!this.isCurrent(reader)) return;
     if (!out.ok) {
       reader.pendingMore = false;
-      this.list.value = { ...this.list.peek(), loadingMore: false, error: out.error };
-      reader.mode = "idle";
+      this.publishReader(reader, "idle", { ...this.list.peek(), loadingMore: false, error: out.error });
       if (reader.dirty && reader.thread === undefined) await this.rebuild(reader, out.error);
       return;
     }
@@ -250,8 +263,7 @@ export class AppsModel {
     const seen = new Set(current.apps.map((app) => app.name));
     const page = readApps(out.value).filter((app) => !seen.has(app.name));
     reader.pendingMore = false;
-    this.list.value = { ...current, apps: [...current.apps, ...page], next: str(out.value.next_cursor), pages: current.pages + 1, loadingMore: false, error: undefined };
-    reader.mode = "idle";
+    this.publishReader(reader, "idle", { ...current, apps: [...current.apps, ...page], next: str(out.value.next_cursor), pages: current.pages + 1, loadingMore: false, error: undefined });
     if (reader.dirty && reader.thread === undefined) await this.rebuild(reader);
   }
 
