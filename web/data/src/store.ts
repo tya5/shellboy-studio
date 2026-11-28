@@ -8,7 +8,7 @@ import { batch, computed, signal, type ReadonlySignal, type Signal } from "@prea
 import type { OpError, Outcome } from "./errors";
 import { Link, type ConnectionState, type LinkEvent } from "./link";
 import { microtaskSchedule, type Preview, type PreviewDiscardReason, type Schedule } from "./live";
-import { ACTIVE_STATUS_PAGE_LIMIT, Cancel, Operations } from "./operations";
+import { Cancel, Operations } from "./operations";
 import { isActiveThreadActivity } from "./activity";
 
 import type {
@@ -246,6 +246,10 @@ export class ShellboyData {
   private readonly pinnedThreadIdsSig = signal<readonly string[]>([]);
   private readonly pinnedMoreSig = signal(false);
   private readonly pinnedErrorSig = signal<OpError | undefined>(undefined);
+  private activeIdHold?: RetainedReservation;
+  private inboxIdHold?: RetainedReservation;
+  private readonly activePartialSig = signal(false);
+  readonly activePartial: ReadonlySignal<boolean> = this.activePartialSig;
   private readonly activeThreadIdsSig = signal<readonly string[]>([]);
   private readonly inboxThreadIdsSig = signal<readonly string[]>([]);
   private readonly filterSig = signal<ListFilter>({});
@@ -718,6 +722,9 @@ export class ShellboyData {
       this.discardAllPreviews("owner_restarted");
       for (const slot of this.rowAllocations.values()) slot.reservation.release();
       this.rowAllocations.clear();
+      this.activeIdHold?.release(); this.activeIdHold = undefined;
+      this.inboxIdHold?.release(); this.inboxIdHold = undefined;
+      this.activePartialSig.value = false;
       this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.pinnedMoreSig.value = false; this.pinnedErrorSig.value = undefined; this.activeThreadIdsSig.value = []; this.inboxThreadIdsSig.value = [];
     }
     this.ownerSig.value = owner;
@@ -886,47 +893,93 @@ export class ShellboyData {
     entry.historyTick.value++; // notification only; positional reads own history admission
   }
 
+  refreshActiveStatus(): Promise<void> { return this.refresher.requestFresh("active"); }
+
+  private idBytes(ids: Iterable<string>): number {
+    let bytes = 128;
+    for (const id of ids) bytes += 48 + retainedStringBytes(id);
+    return bytes;
+  }
+
+  private publishActiveIds(ids: readonly string[]): boolean {
+    if (sameIds(ids, this.activeThreadIdsSig.peek())) return true;
+    if (this.activeIdHold) {
+      if (!this.activeIdHold.resize(this.idBytes(ids))) return false;
+    } else {
+      this.activeIdHold = this.retainedBudget.reserve(this.idBytes(ids), () => {});
+      if (!this.activeIdHold) return false;
+      this.activeIdHold.pin();
+    }
+    this.activeThreadIdsSig.value = ids;
+    return true;
+  }
+
   private async readActive(onSent: () => void): Promise<void> {
     if (!this.canRead()) return;
     const epoch = this.readQualificationEpoch;
-    const ids = new Set<string>(); let cursor: string | undefined; let pages = 0;
-    do {
-      const out = await this.operations.activeStatus(cursor, { onSent });
-      if (!out.ok || epoch !== this.readQualificationEpoch) return;
-      for (const item of out.value.items) if (item.kind === "run" && ["running", "waiting", "recovery_wait"].includes(item.state)) ids.add(item.thread_id);
-      pages++;
-      cursor = pages * ACTIVE_STATUS_PAGE_LIMIT < MAX_LIST_ROWS ? out.value.next_cursor : undefined;
-      if (epoch !== this.readQualificationEpoch) return;
-    } while (cursor);
-    for (const state of ["failed", "recovery_wait"] as const) {
+    const held = this.retainedBudget.reserve(128, () => {});
+    if (!held) { this.activePartialSig.value = true; return; }
+    held.pin();
+    const ids = new Set<string>();
+    const admit = (page: Iterable<string>, cursor?: string, trail = 0) => {
+      const next = new Set([...ids, ...page]);
+      if (!held.resize(this.idBytes(next) + retainedStringBytes(cursor ?? "") + trail)) return false;
+      for (const id of next) ids.add(id);
+      return true;
+    };
+    let complete = true;
+    const walk = async (state?: "failed" | "recovery_wait") => {
       let cursor: string | undefined;
-      for (let page = 0; page * PAGE_LIMIT < MAX_LIST_ROWS; page++) {
-        if (epoch !== this.readQualificationEpoch) return;
-        const out = await this.operations.threadList({ state, archived: "include", limit: PAGE_LIMIT, ...(cursor ? { cursor } : {}) }, { onSent });
-        if (!out.ok || epoch !== this.readQualificationEpoch) return;
-        for (const row of out.value.items) if (ids.size < MAX_LIST_ROWS) ids.add(row.thread_id);
-        cursor = out.value.next_cursor;
-        if (!cursor || ids.size >= MAX_LIST_ROWS) break;
-      }
-    }
-    if (epoch !== this.readQualificationEpoch) return;
-    for (const id of this.activeThreadIdsSig.peek()) {
-      const row = this.threadRowsSig.peek().get(id);
-      if (ids.size < MAX_LIST_ROWS && row && isActiveSummary(row)) ids.add(id);
-    }
-    const nextIds = [...ids];
-    const previousIds = this.activeThreadIdsSig.peek();
-    if (!sameIds(nextIds, previousIds)) this.activeThreadIdsSig.value = nextIds;
-    await this.refreshActiveRows(nextIds, epoch);
+      const seen = new Set<string>();
+      let trail = 0;
+      do {
+        const out = state === undefined
+          ? await this.operations.activeStatus(cursor, { onSent })
+          : await this.operations.threadList({ state, archived: "include", limit: PAGE_LIMIT, ...(cursor ? { cursor } : {}) }, { onSent });
+        if (!out.ok || epoch !== this.readQualificationEpoch) return false;
+        const next = out.value.next_cursor;
+        const page = out.value.items.flatMap(item => "activity" in item || ("kind" in item && item.kind === "run" && ["running", "waiting", "recovery_wait"].includes(item.state)) ? [item.thread_id] : []);
+        if (next !== undefined && seen.has(next)) return false;
+        if (next !== undefined) trail += 32 + retainedStringBytes(next);
+        if (!admit(page, next, trail)) return false;
+        if (next !== undefined) seen.add(next);
+        cursor = next;
+      } while (cursor !== undefined);
+      return true;
+    };
+    try {
+      complete = await walk() && await walk("failed") && await walk("recovery_wait");
+      if (epoch !== this.readQualificationEpoch) return;
+      if (!admit(this.activeThreadIdsSig.peek().filter(id => {
+        const row = this.threadRowsSig.peek().get(id);
+        return row !== undefined && isActiveSummary(row);
+      }))) complete = false;
+      batch(() => {
+        held.release();
+        if (!complete || !this.publishActiveIds([...ids])) this.activePartialSig.value = true;
+        else this.activePartialSig.value = false;
+        this.pinRows();
+      });
+      if (complete) await this.refreshActiveRows([...ids], epoch);
+    } finally { held.release(); }
   }
 
   /** The Inbox contributes its currently displayed awaiting-human IDs to the same cache. */
   async readActiveRows(ids: readonly string[]): Promise<void> {
-    const epoch = this.readQualificationEpoch;
-    const unique = [...new Set(ids)].slice(0, MAX_LIST_ROWS);
-    this.inboxThreadIdsSig.value = unique;
+    const unique = [...new Set(ids)];
+    if (!sameIds(unique, this.inboxThreadIdsSig.peek())) {
+      if (!unique.length) { this.inboxIdHold?.release(); this.inboxIdHold = undefined; }
+      else if (this.inboxIdHold) {
+        if (!this.inboxIdHold.resize(this.idBytes(unique))) { this.activePartialSig.value = true; return; }
+      } else {
+        this.inboxIdHold = this.retainedBudget.reserve(this.idBytes(unique), () => {});
+        if (!this.inboxIdHold) { this.activePartialSig.value = true; return; }
+        this.inboxIdHold.pin();
+      }
+      this.inboxThreadIdsSig.value = unique;
+      this.pinRows();
+    }
     if (this.canRead()) await this.refresher.requestFresh("inbox-rows");
-    if (epoch !== this.readQualificationEpoch) return;
   }
 
   private async readInboxRows(): Promise<void> {
@@ -936,7 +989,7 @@ export class ShellboyData {
   }
 
   private async refreshActiveRows(ids: readonly string[], epoch: number): Promise<void> {
-    for (let i = 0; i < ids.length && i < MAX_LIST_ROWS; i += PAGE_LIMIT) {
+    for (let i = 0; i < ids.length; i += PAGE_LIMIT) {
       if (epoch !== this.readQualificationEpoch) return;
       await this.refreshThreadRows(ids.slice(i, i + PAGE_LIMIT), false);
       if (epoch !== this.readQualificationEpoch) return;
@@ -1114,7 +1167,7 @@ export class ShellboyData {
         }
         this.threadRowsSig.value = next;
       }
-      if (activeChanged) this.activeThreadIdsSig.value = active;
+      if (activeChanged && !this.publishActiveIds(active)) this.activePartialSig.value = true;
       for (const { state } of [this.listPages, this.archivePages]) {
         const list = state.peek();
         if (!list.loaded) continue;

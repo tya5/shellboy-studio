@@ -7,7 +7,6 @@ import { PanelPage } from "../system/components/PanelTabs/PanelPage";
 import { External, FIRST_SETUP_GUIDE } from "./SetupParts";
 import { tokenTotal } from "./usage-label";
 import { ArtifactDetail, ArtifactList, useArtifactReveal } from "./ArtifactPanel";
-import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
 import { CAPABILITY_ARTIFACTS, CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
 import {messageRelationship} from "../../../ui-core/src/sender-display";
 import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
@@ -660,7 +659,7 @@ function PanelPossessions({ model, platform }: { model: AppModel; platform: Retu
     {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
     {!state.items.length && !(state.loading && !state.loaded) && !state.error ? <EmptyState compact role="empty.panelAttachments" title={t("panel.empty.attachments")} body={t("panel.empty.attachmentsBody")} /> : null}
     {state.cursor !== undefined ? <Button disabled={state.loading} onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
-    {state.capped ? <p class="muted caption">{t("panel.attachmentsCapped", { n: ATTACHMENT_RETENTION })}</p> : null}
+    {state.capped ? <p class="muted caption">{t("panel.attachmentsCapped")}</p> : null}
   </div>;
 }
 

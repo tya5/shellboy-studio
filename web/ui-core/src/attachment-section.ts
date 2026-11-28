@@ -1,7 +1,5 @@
-import { MAX_LIST_ROWS, type AttachmentDetails, type ShellboyData } from "../../data/src";
+import type { AttachmentDetails, ShellboyData } from "../../data/src";
 import { PageRun } from "../../data/src/page-run";
-
-export const ATTACHMENT_RETENTION = MAX_LIST_ROWS;
 
 export class AttachmentSection {
   private readonly pages: PageRun<AttachmentDetails>;

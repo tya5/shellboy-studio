@@ -1,6 +1,7 @@
-import { signal, type ReadonlySignal } from "@preact/signals-core";
+import { batch, signal, type ReadonlySignal } from "@preact/signals-core";
 import { Cancel } from "./operations";
-import { MAX_LIST_ROWS, type ShellboyData, type Handle } from "./store";
+import type { ShellboyData, Handle } from "./store";
+import { retainedStringBytes, type RetainedReservation } from "./retained-budget";
 import type { Page } from "./protocol";
 import type { Outcome, OpError } from "./errors";
 
@@ -15,7 +16,9 @@ export class PageRun<T, H = never> {
   readonly state: ReadonlySignal<Section<T, H>> = this.stateSignal;
   private session?: { load: Load<T, H>; owner: ReturnType<ShellboyData["owner"]["peek"]>; watch: Handle; read?: Cancel; pages: number; rerun: boolean };
 
-  constructor(private readonly data: ShellboyData, private readonly key: (row: T) => string | number, private readonly invalidContinuation: string, private readonly rowLimit = MAX_LIST_ROWS) {}
+  private retained: RetainedReservation[] = [];
+
+  constructor(private readonly data: ShellboyData, private readonly key: (row: T) => string | number, private readonly invalidContinuation: string) {}
 
   observe(hints: HintSource, load: Load<T, H>): () => void {
     this.close();
@@ -36,7 +39,10 @@ export class PageRun<T, H = never> {
     if (!session) return;
     this.session = undefined;
     // Publish the empty scope before cancellation callbacks can observe the old rows.
-    this.stateSignal.value = { items: [], loading: false };
+    batch(() => {
+      this.stateSignal.value = { items: [], loading: false };
+      for (const hold of this.retained.splice(0)) hold.release();
+    });
     session.watch.close();
     session.read?.cancel();
   }
@@ -61,43 +67,64 @@ export class PageRun<T, H = never> {
     const ids = new Set(items.map(this.key));
     const cursors = new Set<string>();
     let cursor = appendCursor;
-    let capped = false;
+    const staged: RetainedReservation[] = [];
+    const release = () => { for (const hold of staged.splice(0)) hold.release(); };
+    const removeCancel = cancel.add(release);
     let header = appendCursor === undefined ? undefined : previous.header;
     let readPages = 0;
     const pages = appendCursor === undefined ? session.pages : 1;
     const fail = (error: OpError, invalidateCursor: boolean) => {
+      release();
       session.read = undefined;
       this.stateSignal.value = { ...previous, cursor: invalidateCursor ? undefined : previous.cursor, complete: false, loading: false, loadingMore: false, error };
       this.rerunIfNeeded(session);
     };
-    for (let i = 0; i < pages; i++) {
-      if (cursor !== undefined) cursors.add(cursor);
-      const result = await session.load(cursor, cancel);
-      if (!current()) return;
-      if (!result.ok) {
-        // A cancelled read is not a failure: keep what was shown, as it was.
-        if (result.error.kind === "cancelled") { session.read = undefined; this.stateSignal.value = { ...previous, loading: false, loadingMore: false }; this.rerunIfNeeded(session); return; }
-        // Only Core can invalidate the continuation of the retained cut.
-        const expired = result.error.kind === "owner" && result.error.code === "cursor_expired";
-        fail(result.error, expired);
-        return;
+    try {
+      for (let i = 0; i < pages; i++) {
+        if (cursor !== undefined) cursors.add(cursor);
+        const result = await session.load(cursor, cancel);
+        if (!current()) return;
+        if (!result.ok) {
+          // A cancelled read is not a failure: keep what was shown, as it was.
+          if (result.error.kind === "cancelled") { session.read = undefined; this.stateSignal.value = { ...previous, loading: false, loadingMore: false }; this.rerunIfNeeded(session); return; }
+          // Only Core can invalidate the continuation of the retained cut.
+          const expired = result.error.kind === "owner" && result.error.code === "cursor_expired";
+          fail(result.error, expired);
+          return;
+        }
+        readPages++;
+        const { page } = result.value;
+        if (i === 0 && appendCursor === undefined) header = result.value.header;
+        cursor = page.next_cursor;
+        if ((cursor !== undefined && cursors.has(cursor)) || page.items.some(row => ids.has(this.key(row)))) {
+          fail({ kind: "invalid_response", message: this.invalidContinuation }, false); return;
+        }
+        const bytes = 128 + retainedStringBytes(cursor ?? "")
+          + (i === 0 && appendCursor === undefined && header !== undefined ? retainedStringBytes(JSON.stringify(header)) : 0)
+          + page.items.reduce((total, row) => total + 96 + retainedStringBytes(JSON.stringify(row)) + retainedStringBytes(String(this.key(row))), 0);
+        const hold = this.data.retainedBudget.reserve(bytes, () => {});
+        if (!hold) {
+          release();
+          session.read = undefined;
+          session.rerun = false;
+          this.stateSignal.value = { ...previous, capped: true, complete: false, loading: false, loadingMore: false,
+            error: { kind: "busy", message: "Retained data budget is full" } };
+          return;
+        }
+        hold.pin();
+        staged.push(hold);
+        for (const row of page.items) { ids.add(this.key(row)); items.push(row); }
+        if (cursor === undefined) break;
       }
-      readPages++;
-      const { page } = result.value;
-      if (i === 0 && appendCursor === undefined) header = result.value.header;
-      cursor = page.next_cursor;
-      if ((cursor !== undefined && cursors.has(cursor)) || page.items.some(row => ids.has(this.key(row)))) {
-        fail({ kind: "invalid_response", message: this.invalidContinuation }, false); return;
-      }
-      const remaining = this.rowLimit - items.length;
-      capped = page.items.length > remaining || (page.items.length === remaining && cursor !== undefined);
-      for (const row of page.items.slice(0, remaining)) { ids.add(this.key(row)); items.push(row); }
-      if (cursor === undefined || capped) break;
-    }
-    session.read = undefined;
-    session.pages = appendCursor === undefined ? readPages : session.pages + readPages;
-    this.stateSignal.value = { items, ...(header === undefined ? {} : { header }), loading: false, loadingMore: false, loaded: true, cursor: capped ? undefined : cursor, capped, complete: cursor === undefined && !capped };
-    this.rerunIfNeeded(session);
+      batch(() => {
+        if (appendCursor === undefined) for (const hold of this.retained.splice(0)) hold.release();
+        this.retained.push(...staged.splice(0));
+        session.read = undefined;
+        session.pages = appendCursor === undefined ? readPages : session.pages + readPages;
+        this.stateSignal.value = { items, ...(header === undefined ? {} : { header }), loading: false, loadingMore: false, loaded: true, cursor, capped: false, complete: cursor === undefined };
+      });
+      this.rerunIfNeeded(session);
+    } finally { removeCancel(); release(); }
   }
 
   private rerunIfNeeded(session: NonNullable<PageRun<T, H>["session"]>): void {

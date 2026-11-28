@@ -128,7 +128,7 @@ describe("history capability is required", () => {
 });
 
 describe("resync, restart and loss", () => {
-  it("bounds active Status pagination even when the owner keeps returning a cursor", async () => {
+  it("reports partial active Status and stops when the owner repeats a cursor", async () => {
     const { t, data, db } = await setup();
     const answer = db.answer.bind(db);
     db.answer = call => {
@@ -139,7 +139,8 @@ describe("resync, restart and loss", () => {
     };
     data.trackThreadList();
     await settle(t, db);
-    expect(t.calls("status").filter(call => (call.args as { limit?: number }).limit === 200)).toHaveLength(Math.ceil(MAX_LIST_ROWS / 200));
+    expect(t.calls("status").filter(call => (call.args as { limit?: number }).limit === 200).map(call => (call.args as { cursor?: string }).cursor)).toEqual([undefined, "again"]);
+    expect(data.activePartial.value).toBe(true);
     data.stop();
   });
   it("resync re-reads everything tracked", async () => {

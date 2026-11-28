@@ -13,7 +13,7 @@ export class ReplyPages {
   readonly asked_by: PageRun<PendingReply>["state"];
 
   constructor(private readonly data: ShellboyData) {
-    const pages = () => new PageRun(data, (row: PendingReply) => row.message_id, "Invalid reply continuation", REPLY_RETENTION);
+    const pages = () => new PageRun(data, (row: PendingReply) => row.message_id, "Invalid reply continuation");
     this.runs = { owed_by: pages(), asked_by: pages() };
     this.owed_by = this.runs.owed_by.state;
     this.asked_by = this.runs.asked_by.state;

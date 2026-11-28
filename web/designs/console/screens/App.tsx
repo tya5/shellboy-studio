@@ -305,6 +305,7 @@ export function App({ context }: { context: DesignContext }) {
             const next = event.relatedTarget;
             if (!(next instanceof Node) || !sidebarListRef.current?.contains(next)) lastSidebarFocus.current = undefined;
           }}>
+            {model.data.activePartial.value ? <div class="side-search"><Notice tone="wait">{t("threads.activePartial")}</Notice><Button variant="ghost" onClick={() => void model.data.refreshActiveStatus()}>{t("action.retry")}</Button></div> : null}
             {!appliedFilter?.awaiting && model.data.pinnedError.value ? <div class="side-search"><Notice tone="bad">{t("common.readError", { message: model.data.pinnedError.value.message })}</Notice></div> : null}
             <div class="tree">
               {groups.map(group => {

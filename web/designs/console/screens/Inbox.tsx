@@ -1,6 +1,6 @@
 import { clockAge } from "./clock-display";
 import { useRef, useState } from "preact/hooks";
-import { errorMessage, formatCount, formatRoute, HUMAN_RETAINED, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
+import { errorMessage, formatCount, formatRoute, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
 import { Button } from "../system/components/Button";
 import { EmptyState } from "../system/components/EmptyState";
 import { Icon } from "../system/components/Icon";
@@ -47,7 +47,7 @@ export function Inbox({ model }: { model: AppModel }) {
         {model.pending.stale?.value ? <p class="muted caption">{t("work.stale")}</p> : null}
         {model.pending.error?.value ? <p role="alert">{errorMessage(model.pending.error.value)}</p> : null}
         {model.pending.hasMore?.value ? <Button variant="ghost" disabled={model.pending.loading?.value} onClick={() => void model.pending.more?.()}>{t("inbox.more")}</Button> : null}
-        {model.pending.capped?.value ? <p class="muted caption">{t("inbox.capped", { n: HUMAN_RETAINED })}</p> : null}
+        {model.pending.capped?.value ? <p class="muted caption">{t("inbox.capped")}</p> : null}
         {others.length > 0 ? (
           <div class="other">
             <h2 class="group-label">{t("inbox.other")}</h2>

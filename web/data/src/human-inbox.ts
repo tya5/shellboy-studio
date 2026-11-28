@@ -61,7 +61,7 @@ export class HumanInbox implements PendingAdapter {
   // across rereads; never replace their receipt with a fresh mutation identity.
   private attempts = new Map<string, { text: string | undefined; owner: string; epoch: number; operationId?: string; result?: Promise<Outcome<unknown>>; settled?: boolean; outcomeShown?: boolean }>();
   constructor(private readonly data: ShellboyData) {
-    this.pages = new PageRun(data, row => row.message_id, "Invalid human inbox continuation", HUMAN_RETAINED);
+    this.pages = new PageRun(data, row => row.message_id, "Invalid human inbox continuation");
     const state = this.pages.state;
     let source: readonly PendingReply[] | undefined; let mapped: PendingItem[] = [];
     // Same rows, same array: a loading flag or a failed reread does not re-render the list.

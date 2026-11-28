@@ -9,7 +9,7 @@ import { afterEach, expect, it } from "vitest";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { pendingReply, settle, summary } from "../../../data/test/harness";
 import type { DesignContext, Prefs, AppModel } from "../../../ui-core/src";
-import { HUMAN_PAGE_LIMIT, HUMAN_RETAINED } from "../../../data/src";
+import { HUMAN_PAGE_LIMIT } from "../../../data/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 
@@ -43,15 +43,22 @@ it("Show more keeps the earlier questions and the badge marks the loaded count a
   } finally { model.dispose(); }
 });
 
-it("stops at the retention bound and says so, with the count still a lower bound", async () => {
-  const { model, t, db } = await fixtureModel({ route: "inbox", realPending: true, configure: db => { db.replies = questions(HUMAN_RETAINED + 12); } });
+it("shows a lower bound on pressure and retries the offered continuation", async () => {
+  const { model, t, db } = await fixtureModel({ route: "inbox", realPending: true, configure: db => { db.replies = questions(20); } });
   try {
     const el = draw(model);
-    for (let page = 1; page < HUMAN_RETAINED / HUMAN_PAGE_LIMIT; page++) await act(async () => { moreButton(el, model)!.click(); await settle(t, db); });
-    expect(rows(el)).toHaveLength(HUMAN_RETAINED);
-    expect(badge(el)).toBe(`${HUMAN_RETAINED}+`);
+    const budget = model.data.retainedBudget;
+    budget.setLimit(budget.usage.peek().used);
+    await act(async () => { moreButton(el, model)!.click(); await settle(t, db); });
+    expect(rows(el)).toHaveLength(HUMAN_PAGE_LIMIT);
+    expect(badge(el)).toBe(`${HUMAN_PAGE_LIMIT}+`);
+    expect(el.textContent).toContain(model.t.value("inbox.capped"));
+    budget.setLimit(64 * 1024 * 1024);
+    await act(async () => { moreButton(el, model)!.click(); await settle(t, db); });
+    expect(humanReads(t.calls()).slice(-2).map(call => (call.args as { cursor?: string }).cursor)).toEqual(["16", "16"]);
+    expect(rows(el)).toHaveLength(20);
+    expect(badge(el)).toBe("20");
     expect(moreButton(el, model)).toBeUndefined();
-    expect(el.textContent).toContain(model.t.value("inbox.capped", { n: HUMAN_RETAINED }));
   } finally { model.dispose(); }
 });
 
