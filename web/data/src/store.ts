@@ -1046,9 +1046,8 @@ function listArgs(filter: ListFilter): ThreadListArgs {
 }
 
 /**
- * The owner accepts a client's operation ID only as `<instance_id>:<id>` (found on the real owner:
- * a bare UUID is refused with "operation ID has no active instance prefix"). Before the instance
- * is known the ID stays bare, and the owner's refusal is reported rather than hidden.
+ * Core 49 requires the active instance prefix for new operation IDs. Once created, IDs
+ * are passed through unchanged and are never used to infer stable owner identity.
  */
 function withInstance(owner: OwnerView, id: string): string {
   const instance = owner.state === "connected" ? owner.info.instance_id : null;

@@ -33,6 +33,7 @@ async fn drain_initial_resync(
 #[tokio::test]
 async fn keeps_the_cursor_drains_more_with_zero_timeout_and_fans_out_hints() {
     let (owner, tx) = mock(|_| None);
+    *owner.status_instance.lock().unwrap() = "inst1".into();
     let hub = Hub::new();
     let (tab, _) = hub.register().unwrap();
     hub.watch(&tab, vec!["t1".into()], true).unwrap();
@@ -163,6 +164,7 @@ async fn a_new_owner_instance_is_reported_as_restarted() {
         matches!(hub.owner_state(), OwnerState::Unreachable)
     })
     .await;
+    *owner.status_instance.lock().unwrap() = "inst2".into();
     tx.send(events("inst2", "baseline", "d1", &[], false))
         .unwrap();
     until("reconnected", || {

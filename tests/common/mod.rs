@@ -69,6 +69,7 @@ pub struct MockOwner {
     pub event_args: Mutex<Vec<EventsWaitArgs>>,
     pub other_calls: Mutex<Vec<Command>>,
     handler: Box<Handler>,
+    pub status_instance: Mutex<String>,
 }
 
 pub fn mock(
@@ -88,6 +89,7 @@ pub fn mock_replies(
             event_args: Mutex::new(Vec::new()),
             other_calls: Mutex::new(Vec::new()),
             handler: Box::new(handler),
+            status_instance: Mutex::new("inst1".into()),
         }),
         tx,
     )
@@ -95,6 +97,10 @@ pub fn mock_replies(
 
 impl Owner for MockOwner {
     async fn call(&self, command: Command, _op: Option<String>, _origin: Option<Origin>) -> Reply {
+        if matches!(command, Command::Status(_)) {
+            let instance = self.status_instance.lock().unwrap().clone();
+            return ok(&instance, json!({"instance_id": instance}));
+        }
         if let Command::EventsWait(args) = &command {
             self.event_args.lock().unwrap().push(args.clone());
             return match self.events_rx.lock().await.recv().await {

@@ -48,15 +48,24 @@ impl Owner for IpcOwner {
     }
 }
 
-/// The owner instance that produced a response. Shellboy builds generated operation IDs as
-/// `<instance_id>:<uuid>` (the same fact `shellboy chat` uses); `None` if the ID has no
-/// instance prefix.
-pub fn instance_of(response: &Response<Value>) -> Option<String> {
+/// Stable owner identity from Core's public status result, never parsed from an operation ID.
+pub async fn instance_id(owner: &impl Owner) -> Option<String> {
+    let response = owner
+        .call(
+            Command::Status(shellboy::protocol::StatusArgs {
+                limit: 1,
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .await
+        .ok()?;
     response
-        .operation_id
-        .split_once(':')
-        .map(|(id, _)| id.to_owned())
-        .filter(|id| !id.is_empty())
+        .result?
+        .get("instance_id")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 /// Explicit startup discovery, shared by CLI, bundle startup and manual Restart.

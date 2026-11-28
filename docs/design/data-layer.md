@@ -54,7 +54,7 @@ The Activity panel observes the open Thread through `store.ts`. One coalesced re
   the window (limit 6400) and walks again. The cost of opening a Thread therefore grows with its
   history; a reverse read is on the list of needs from core.
 - **With `history.window`** (capability, Shellboy #268, `next-shellboy`) the walk above is not used: the store only counts hints (`ThreadHandle.historyTick`) and `readWindow` sends positional reads for the long-thread reader, which owns what is held (`long-threads.md`). `history` stays unloaded on that path.
-- **Mutations** take an `operationId` (default `<instance_id>:<fresh UUID>`, the only form the owner
+- **Mutations** take an `operationId` (default `<instance_id>:<fresh UUID>` on this Core 49 pin; owner identity is read from status and IDs are kept opaque after minting. The only form the owner
   accepts from a client; the instance comes from `hello`). A reply lost on socket close is
   `unconfirmed` and carries the id; the caller retries with the same id (idempotent through
   receipts) or looks it up with `operationGet`. The data layer never retries mutations itself.

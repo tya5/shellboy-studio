@@ -63,9 +63,9 @@ while tabs without list subscription receive only IDs they watch. IDs coalesce u
 `resync_required`: every tab gets `resync`. Any error (owner gone, shutdown, bad cursor,
 undecodable result): tabs get `owner: unreachable` once, the cursor is dropped, the loop
 retries with backoff, and the first success is `owner: connected` (or `restarted` if the
-instance differs, taken from the operation-ID prefix of the reply as `shellboy chat`
-does) followed by `resync`. The loop never reads Thread facts and there is no polling
-fallback.
+instance differs, read from Core `status.instance_id`) followed by `resync`.
+Operation IDs are never used to infer owner identity. The loop never reads Thread
+facts and there is no polling fallback.
 
 ## Live text
 
@@ -127,10 +127,9 @@ A fact of one run, not a bound. `ps -o rss=` sampled every 200 ms; debug build, 
 
 ## Needs from core
 
-See the hand-off report; nothing blocks part 1. Items that would help: a way to obtain
-the owner's `instance_id`, protocol version and capabilities without a request
-(today it is read from the operation-ID prefix), `Welcome.capabilities` (A2), and a
-Shellboy tag that contains `events.wait`.
+Core `status.instance_id` supplies stable owner identity. Operation IDs remain opaque
+once created and are preserved for receipt lookup and replay. `Welcome.capabilities`
+(A2) and a Shellboy tag that contains `events.wait` remain useful.
 
 ## Validation record (2026-11-07)
 
