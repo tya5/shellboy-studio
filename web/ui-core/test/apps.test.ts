@@ -131,18 +131,19 @@ describe("AppsModel over the fake transport", () => {
     expect(model.apps.list.value.apps).toEqual([]);
     expect(model.apps.list.value.error).toBeDefined();
   });
-  it("reconciles the loaded global prefix and supersedes an in-flight Show more", async () => {
+  it("reconciles a hint through the visible boundary and pending Show more page", async () => {
     const { t, db, model } = await fixtureModel({ route: "apps" });
     const plain = db.answer;
-    db.answer = (c) => c.command === "apps.list"
-      ? (c.args as { cursor?: string }).cursor === undefined
-        ? { ok: true, result: { apps: [{ name: "a2" }, { name: "a1" }], next_cursor: "opaque-next" } }
-        : { ok: true, result: { apps: [{ name: "stale-more" }] } }
-      : plain(c);
+    db.answer = (c) => {
+      if (c.command !== "apps.list") return plain(c);
+      const cursor = (c.args as { cursor?: string }).cursor;
+      if (cursor === undefined) return { ok: true, result: { apps: [{ name: "a2" }, { name: "a1" }, { name: "board" }, { name: "second" }], next_cursor: "opaque-next" } };
+      if (cursor === "opaque-next") return { ok: true, result: { apps: [{ name: "stale-more" }] } };
+      return plain(c);
+    };
     void model.apps.refresh(undefined);
     await settle(t, db);
-    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["a2", "a1"]);
-    expect(model.apps.list.value.next).toBe("opaque-next");
+    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["a2", "a1", "board", "second"]);
 
     void model.apps.more();
     await flush();
@@ -150,14 +151,17 @@ describe("AppsModel over the fake transport", () => {
     expect(more.args).toEqual({ cursor: "opaque-next" });
     model.apps.ensure(undefined, 1);
     await flush();
-    const reconcile = t.calls("apps.list").at(-1)!;
-    expect(reconcile.args).toEqual({});
-    t.ok(reconcile.id, { apps: [{ name: "a2" }, { name: "a1" }], next_cursor: "opaque-next" });
+    const first = t.calls("apps.list").at(-1)!;
+    expect(first.args).toEqual({});
+    t.ok(first.id, { apps: [{ name: "new", title: "New" }, { name: "a2" }, { name: "board" }, { name: "second" }], next_cursor: "opaque-next" });
+    await flush();
+    const second = t.calls("apps.list").at(-1)!;
+    expect(second.args).toEqual({ cursor: "opaque-next" });
+    t.ok(second.id, { apps: [{ name: "a1" }, { name: "a0" }] });
     await flush();
     t.ok(more.id, { apps: [{ name: "stale-more" }] });
     await flush();
-    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["a2", "a1"]);
-    expect(model.apps.list.value.next).toBe("opaque-next");
+    expect(model.apps.list.value.apps.map((a) => a.name)).toEqual(["new", "a2", "board", "second", "a1", "a0"]);
     expect(model.apps.list.value.loadingMore).toBe(false);
     model.dispose();
   });
@@ -169,7 +173,7 @@ describe("AppsModel over the fake transport", () => {
     await settle(t, db);
     expect(t.calls("apps.open")).toHaveLength(1);
     expect(t.calls("apps.instance.create")).toHaveLength(1);
-    model.apps.ensure(undefined, 1);
+    t.push({ t: "changed", thread_ids: [], list: true, config_changed: false });
     await settle(t, db);
     expect(t.calls("apps.open")).toHaveLength(1);
     expect(t.calls("apps.instance.create")).toHaveLength(1);

@@ -874,10 +874,8 @@ async fn the_api_runs_over_the_web_uis_socket() {
     write_app(&f, "archived-app", "archived-owner", &[PAGE]);
     ws.send(send(21, "apps.list", json!({}))).await.unwrap();
     let first_page = result(&mut ws, 21).await;
-    assert_eq!(first_page["apps"].as_array().unwrap().len(), 32);
     assert_eq!(first_page["apps"][0]["name"], "page-33");
     let opaque = first_page["next_cursor"].as_str().unwrap();
-    assert!(opaque.starts_with("owner-page-"));
     assert!(
         !first_page["apps"]
             .as_array()

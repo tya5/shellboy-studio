@@ -129,17 +129,21 @@ export class AppsModel {
     const generation = ++this.listGeneration;
     // The list belongs to the Thread it was read for: another Thread's cards never wait under this one.
     const before = this.list.peek();
-    this.list.value = before.thread === thread ? { ...before, loading: true, loadingMore: false } : { loading: true, loaded: false, thread, apps: [], next: undefined, loadingMore: false, error: undefined };
-    const target = thread === undefined && before.thread === undefined ? before.apps.length : 0;
+    const global = thread === undefined && before.thread === undefined;
+    const preserveMore = global && before.loadingMore;
+    const keepNames = global ? new Set(before.apps.map((app) => app.name)) : new Set<string>();
+    this.list.value = before.thread === thread ? { ...before, loading: true } : { loading: true, loaded: false, thread, apps: [], next: undefined, loadingMore: false, error: undefined };
     const apps: AppInfo[] = [];
     const seen = new Set<string>();
     let cursor: string | undefined;
     let next: string | undefined;
-    do {
+    let boundaryReached = keepNames.size === 0;
+    let pendingPageRead = !preserveMore;
+    while (true) {
       const out = await this.ops.appsList(thread, cursor);
       if (this.listGeneration !== generation) return;
       if (!out.ok) {
-        this.list.value = { ...this.list.peek(), loading: false, error: out.error };
+        this.list.value = { ...this.list.peek(), loading: false, loadingMore: false, error: out.error };
         return;
       }
       for (const app of readApps(out.value)) {
@@ -150,7 +154,13 @@ export class AppsModel {
       }
       next = str(out.value.next_cursor);
       cursor = next;
-    } while (thread === undefined && apps.length < target && cursor !== undefined);
+      const visibleBoundaryFound = [...keepNames].every((name) => seen.has(name));
+      if (preserveMore && visibleBoundaryFound) {
+        if (boundaryReached) pendingPageRead = true;
+        boundaryReached = true;
+      }
+      if (!global || ((visibleBoundaryFound && pendingPageRead) || cursor === undefined)) break;
+    }
     this.list.value = { loading: false, loaded: true, thread, apps, next, loadingMore: false, error: undefined };
   }
 

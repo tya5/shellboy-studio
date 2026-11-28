@@ -1987,7 +1987,7 @@ async fn an_app_message_is_recorded_as_from_the_app() {
         .to_owned();
 
     let apps = state.apps.clone();
-    let listed = apps.list(&thread, None).await.unwrap();
+    let listed = apps.list(Some(&thread), None).await.unwrap();
     assert_eq!(listed["apps"][0]["name"], artifact.as_str(), "{listed}");
     let opened = apps.open(&artifact).await.unwrap();
     let page = opened["url"].as_str().unwrap().to_owned();
