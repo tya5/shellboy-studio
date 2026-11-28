@@ -1,8 +1,8 @@
-# Core main preparation (Studio #152 / #151)
+# Core development pin (Studio #176)
 
-Core `71d23106a9bc35a209bebad145e3e09635a5792f`, protocol 48 (`docs/reference/protocol.schema.json` `$id` `protocol-v48`). Cargo.toml and Cargo.lock pin this exact landed Core main commit. It is not a published tag; Studio v0.4.4 remains pinned separately.
+Cargo.toml and Cargo.lock pin Core commit `d52b2305f4567d2eb7fce692fbe8f012f62f13d6`, protocol 50, which carries the Core #471 owner-title projection on scheme pages. This is a development pin, not a release or tag; Studio v0.4.4 remains pinned separately. Before landing, repin to the release containing #461 and #471.
 
-**Studio #176:** The gateway reads one `artifact.list` scheme page and resolves the owning Thread titles for that page only, using landed Core #461.
+**Studio #176:** Global Apps reads `owner_title` directly from each `artifact.list` scheme row, projected with live-owner membership and ordering in Core's same read. Studio does not issue a second Thread title read.
 
 | Core change | Studio adoption |
 | --- | --- |

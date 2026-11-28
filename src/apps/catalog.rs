@@ -2,7 +2,7 @@
 //! whose latest version URI uses the `shellboy-app:` scheme; nothing is cached or kept here.
 use serde::Serialize;
 use serde_json::Value;
-use shellboy::protocol::{ArtifactGetArgs, ArtifactListArgs, Command, ThreadGetArgs};
+use shellboy::protocol::{ArtifactGetArgs, ArtifactListArgs, Command};
 use std::path::{Component, Path, PathBuf};
 
 pub const MAX_APPS: usize = 64;
@@ -138,41 +138,31 @@ where
         limit: LIST_PAGE,
     }))
     .await?;
-    let mut apps: Vec<AppEntry> = page["items"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(latest_of)
-        .filter(|found| matches!(found.kind(), Some(Kind::App(_))))
-        .map(|found| AppEntry {
+    let mut apps = Vec::new();
+    for item in page["items"].as_array().into_iter().flatten() {
+        let Some(found) =
+            latest_of(item).filter(|found| matches!(found.kind(), Some(Kind::App(_))))
+        else {
+            continue;
+        };
+        let thread_title = if thread.is_none() {
+            Some(
+                item["owner_title"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| {
+                        serde_json::json!({"code":"invalid_reply","message":"The owner's scheme page omitted an app owner title"})
+                    })?,
+            )
+        } else {
+            None
+        };
+        apps.push(AppEntry {
             name: found.artifact,
             title: found.title,
             thread: found.thread,
-            thread_title: None,
-        })
-        .collect();
-    if thread.is_none() {
-        // Resolve only distinct owners of this Core page; never enumerate the Thread list.
-        let mut titles = std::collections::BTreeMap::new();
-        for entry in &mut apps {
-            if !titles.contains_key(&entry.thread) {
-                let row = call(Command::ThreadGet(ThreadGetArgs {
-                    thread_id: Some(entry.thread.clone()),
-                    display: true,
-                }))
-                .await?;
-                if row["thread_id"].as_str() != Some(entry.thread.as_str()) {
-                    return Err(
-                        serde_json::json!({"code":"owner_call_failed","message":"Thread title read returned a different Thread"}),
-                    );
-                }
-                titles.insert(
-                    entry.thread.clone(),
-                    row["title"].as_str().map(str::to_owned),
-                );
-            }
-            entry.thread_title = titles[&entry.thread].clone();
-        }
+            thread_title,
+        });
     }
     Ok((apps, page["next_cursor"].as_str().map(str::to_owned)))
 }

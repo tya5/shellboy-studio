@@ -851,6 +851,15 @@ async fn the_api_runs_over_the_web_uis_socket() {
     write_app(&f, "two", "other", &[PAGE]);
     ws.send(send(20, "apps.list", json!({}))).await.unwrap();
     let page = result(&mut ws, 20).await;
+    assert!(
+        !f.owner
+            .other_calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|command| matches!(command, Command::ThreadGet(_))),
+        "scheme page titles must not trigger separate Thread reads"
+    );
     assert_eq!(page["apps"][0]["thread_title"], "Thread other");
     assert_eq!(page["apps"][1]["thread_title"], "Thread bound");
 
