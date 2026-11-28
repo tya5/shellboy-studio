@@ -131,6 +131,72 @@ describe("AppsModel over the fake transport", () => {
     expect(model.apps.list.value.apps).toEqual([]);
     expect(model.apps.list.value.error).toBeDefined();
   });
+  it("drops a global rebuild response after the catalog scope is replaced", async () => {
+    const { t, db, model } = await fixtureModel({ route: "apps" });
+    t.push({ t: "changed", thread_ids: [], list: true, config_changed: false });
+    await flush();
+    const globalRebuild = t.calls("apps.list").at(-1)!;
+    void model.apps.refresh("lead");
+    await flush();
+    const threadRead = t.calls("apps.list").at(-1)!;
+    expect(threadRead.args).toEqual({ thread: "lead" });
+    t.ok(globalRebuild.id, { apps: [{ name: "obsolete-global" }] });
+    await flush();
+    expect(model.apps.list.value).toMatchObject({ thread: "lead", apps: [], loading: true });
+    t.ok(threadRead.id, { apps: [{ name: "thread-app" }] });
+    await flush();
+    expect(model.apps.list.value.apps.map((app) => app.name)).toEqual(["thread-app"]);
+    model.dispose();
+  });
+  it("keeps an invalidation through a failed Show more and removes the archived card", async () => {
+    const { t, db, model } = await fixtureModel({ route: "inbox" });
+    const plain = db.answer;
+    db.answer = (c) => {
+      if (c.command !== "apps.list") return plain(c);
+      const cursor = (c.args as { cursor?: string }).cursor;
+      if (cursor === undefined) return { ok: true, result: { apps: [{ name: "archived" }], next_cursor: "opaque-page" } };
+      return { ok: false, code: "owner_failed" };
+    };
+    model.applyRoute({ view: "apps" });
+    await flush();
+    const initial = t.calls("apps.list").at(-1)!;
+    t.ok(initial.id, { apps: [{ name: "archived" }], next_cursor: "opaque-page" });
+    await flush();
+    void model.apps.more();
+    await flush();
+    model.apps.ensure(undefined, 1);
+    await flush();
+    expect(t.calls("apps.list")).toHaveLength(2);
+    const pending = t.calls("apps.list").at(-1)!;
+    t.ownerError(pending.id, "owner_failed");
+    await flush();
+    const followup = t.calls("apps.list").at(-1)!;
+    expect(followup.args).toEqual({});
+    t.ok(followup.id, { apps: [{ name: "surviving-later" }] });
+    await flush();
+    expect(model.apps.list.value.apps.map((app) => app.name)).toEqual(["surviving-later"]);
+    expect(model.apps.list.value.error).toBeDefined();
+    model.dispose();
+  });
+  it("refuses Show more while a Thread Refresh owns the reader", async () => {
+    const { t, db, model } = await fixtureModel({ route: "apps" });
+    const plain = db.answer;
+    db.answer = (c) => {
+      if (c.command === "apps.list" && (c.args as { thread?: string }).thread === "lead") return { ok: true, result: { apps: [{ name: "fresh-thread" }], next_cursor: "thread-next" } };
+      return plain(c);
+    };
+    void model.apps.refresh("lead");
+    await flush();
+    const refresh = t.calls("apps.list").at(-1)!;
+    expect(model.apps.list.value.loading).toBe(true);
+    const callCount = t.calls("apps.list").length;
+    await model.apps.more();
+    expect(t.calls("apps.list")).toHaveLength(callCount);
+    t.ok(refresh.id, { apps: [{ name: "fresh-thread" }], next_cursor: "thread-next" });
+    await flush();
+    expect(model.apps.list.value.next).toBe("thread-next");
+    model.dispose();
+  });
   it("keeps an admitted Show more page when a hint arrives during reconciliation", async () => {
     const { t, db, model } = await fixtureModel({ route: "inbox" });
     model.applyRoute({ view: "apps" });

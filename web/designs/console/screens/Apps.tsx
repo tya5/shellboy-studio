@@ -91,7 +91,7 @@ function AppList({ context }: { context: DesignContext }) {
           ))}
         </div>
       ) : null}
-      {list.next !== undefined ? <Button variant="ghost" disabled={list.loadingMore} onClick={() => void apps.more()}>{t("apps.more")}</Button> : null}
+      {list.next !== undefined ? <Button variant="ghost" disabled={list.loading || list.loadingMore} onClick={() => void apps.more()}>{t("apps.more")}</Button> : null}
       <GuideRegistrationView context={context} collapsed />
     </div>
   );

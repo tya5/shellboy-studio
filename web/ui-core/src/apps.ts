@@ -27,6 +27,15 @@ export interface AppListState {
   error: OpError | undefined;
 }
 
+type CatalogMode = "idle" | "refreshing" | "paging" | "rebuilding";
+interface CatalogReader {
+  thread: string | undefined;
+  mode: CatalogMode;
+  dirty: boolean;
+  pendingMore: boolean;
+  retired: boolean;
+}
+
 export interface AppErrorReport {
   kind: string;
   message: string;
@@ -115,29 +124,57 @@ export class AppsModel {
 
   constructor(private readonly ops: Operations) {}
 
-  private reconciliations = new Map<string, { dirty: boolean; more: boolean; promise: Promise<void> }>();
-  private listGeneration = 0;
+  private currentReader: CatalogReader | undefined;
   private globalHint: number | undefined;
 
-  /** Read the active scope on entry and reread the global page on an owner list hint. */
-  ensure(thread: string | undefined, hint?: number): void {
-    const s = this.list.peek();
-    const changed = thread === undefined && this.globalHint !== hint;
-    this.globalHint = hint;
-    if (changed) void this.reconcileGlobal();
-    else if (s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
+  private readerFor(thread: string | undefined): { reader: CatalogReader; changed: boolean } {
+    if (this.currentReader && this.currentReader.thread === thread && !this.currentReader.retired) return { reader: this.currentReader, changed: false };
+    if (this.currentReader) this.currentReader.retired = true;
+    const reader: CatalogReader = { thread, mode: "idle", dirty: false, pendingMore: false, retired: false };
+    this.currentReader = reader;
+    return { reader, changed: true };
   }
 
-  /** Thread Refresh keeps its original one-page behavior. */
-  async refresh(thread: string | undefined): Promise<void> {
-    const generation = ++this.listGeneration;
+  private isCurrent(reader: CatalogReader): boolean { return this.currentReader === reader && !reader.retired; }
+
+  /** Keep all catalog operations under one per-scope reader and its admission state. */
+  ensure(thread: string | undefined, hint?: number): void {
+    const changedHint = thread === undefined && this.globalHint !== hint;
+    this.globalHint = hint;
+    const { reader, changed } = this.readerFor(thread);
+    if (changed) {
+      this.list.value = { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
+      if (thread === undefined) void this.rebuild(reader);
+      else void this.refresh(thread, reader);
+    } else if (changedHint && reader.thread === undefined) {
+      this.invalidate(reader);
+    } else {
+      const state = this.list.peek();
+      if (!state.loaded && reader.mode === "idle" && (state.error === undefined || state.error.kind === "not_connected" || state.error.kind === "connection_lost")) {
+        if (thread === undefined) void this.rebuild(reader);
+        else void this.refresh(thread, reader);
+      }
+    }
+  }
+
+  /** Thread Refresh is admitted only while its scope reader is idle. */
+  async refresh(thread: string | undefined, existing?: CatalogReader): Promise<void> {
+    if (thread === undefined) {
+      const reader = existing ?? this.readerFor(undefined).reader;
+      if (this.isCurrent(reader) && reader.mode === "idle") await this.rebuild(reader);
+      return;
+    }
+    const { reader, changed } = existing ? { reader: existing, changed: false } : this.readerFor(thread);
+    if (!this.isCurrent(reader) || reader.mode !== "idle") return;
+    if (changed) this.list.value = { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
+    reader.mode = "refreshing";
     const before = this.list.peek();
-    const sameScope = before.thread === thread;
-    this.list.value = sameScope
+    this.list.value = before.thread === thread
       ? { ...before, loading: true, loadingMore: false, error: undefined }
       : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
     const out = await this.ops.appsList(thread, undefined);
-    if (generation !== this.listGeneration) return;
+    if (!this.isCurrent(reader)) return;
+    reader.mode = "idle";
     if (!out.ok) {
       this.list.value = { ...this.list.peek(), loading: false, error: out.error };
       return;
@@ -145,103 +182,77 @@ export class AppsModel {
     this.list.value = { loading: false, loaded: true, thread, apps: readApps(out.value), next: str(out.value.next_cursor), pages: 1, loadingMore: false, error: undefined };
   }
 
-  /** A global hint rebuilds only the number of pages currently displayed. */
-  private reconcileGlobal(): Promise<void> {
-    const key = "";
-    const active = this.reconciliations.get(key);
-    if (active) {
-      active.dirty = true;
-      return active.promise;
+  /** A global invalidation rebuilds only the displayed prefix. */
+  private invalidate(reader: CatalogReader): void {
+    if (!this.isCurrent(reader) || reader.thread !== undefined) return;
+    if (reader.mode === "paging" || reader.mode === "rebuilding" || reader.mode === "refreshing") {
+      reader.dirty = true;
+      return;
     }
-    const state = { dirty: false, more: false, promise: Promise.resolve() };
-    this.reconciliations.set(key, state);
-    const before = this.list.peek();
-    this.list.value = before.thread === undefined
-      ? { ...before, loading: true }
-      : { loading: true, loaded: false, thread: undefined, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined };
-    state.promise = this.runGlobalReconciliation(state);
-    return state.promise;
+    void this.rebuild(reader);
   }
 
-  private async runGlobalReconciliation(state: { dirty: boolean; more: boolean; promise: Promise<void> }): Promise<void> {
-    try {
-      do {
-        state.dirty = false;
-        const before = this.list.peek();
-        const basePages = before.thread === undefined ? before.pages : 0;
-        const targetPages = Math.max(1, basePages);
-        const apps: AppInfo[] = [];
-        const seen = new Set<string>();
-        let cursor: string | undefined;
-        let next: string | undefined;
-        let pages = 0;
-        let error: OpError | undefined;
-        this.list.value = { ...this.list.peek(), loading: true, loadingMore: state.more };
-        while (pages < targetPages + (state.more ? 1 : 0)) {
-          const out = await this.ops.appsList(undefined, cursor);
-          if (!out.ok) { error = out.error; break; }
-          pages++;
-          for (const app of readApps(out.value)) {
-            if (!seen.has(app.name)) { seen.add(app.name); apps.push(app); }
-          }
-          next = str(out.value.next_cursor);
-          cursor = next;
-          if (cursor === undefined) break;
-        }
-        const current = this.list.peek();
-        if (error) {
-          const failedMore = state.more;
-          state.more = false;
-          this.list.value = { ...current, loading: false, loadingMore: false, error };
-          if (failedMore) state.dirty = false;
-          continue;
-        }
-        state.more = false;
-        this.list.value = { loading: false, loaded: true, thread: undefined, apps, next, pages, loadingMore: false, error: undefined };
-      } while (state.dirty);
-    } finally {
-      if (this.reconciliations.get("") === state) this.reconciliations.delete("");
-    }
-  }
-
-  /** Fetch exactly the published cursor and append it; never replay visible pages. */
-  async more(): Promise<void> {
-    const before = this.list.peek();
-    if (before.next === undefined || before.loadingMore) return;
-    const key = before.thread ?? "";
-    const active = this.reconciliations.get(key);
-    if (active) {
-      active.more = true;
-      this.list.value = { ...before, loadingMore: true, error: undefined };
-      return active.promise;
-    }
-    const generation = this.listGeneration;
-    const state = { dirty: false, more: true, promise: Promise.resolve() };
-    this.reconciliations.set(key, state);
-    this.list.value = { ...before, loadingMore: true, error: undefined };
-    state.promise = (async () => {
-      try {
-        const out = await this.ops.appsList(before.thread, before.next);
-        const current = this.list.peek();
-        if (generation !== this.listGeneration || current.thread !== before.thread) return;
-        if (!out.ok) {
-          this.list.value = { ...current, loadingMore: false, error: out.error };
-          state.more = false;
-          return;
-        }
-        if (state.dirty && before.thread === undefined) {
-          await this.runGlobalReconciliation(state);
-          return;
-        }
-        const seen = new Set(current.apps.map((app) => app.name));
-        const page = readApps(out.value).filter((app) => !seen.has(app.name));
-        this.list.value = { ...current, apps: [...current.apps, ...page], next: str(out.value.next_cursor), pages: current.pages + 1, loadingMore: false, error: undefined };
-        state.more = false;
-      } finally {
-        if (this.reconciliations.get(key) === state) this.reconciliations.delete(key);
+  private async rebuild(reader: CatalogReader, retainedError?: OpError): Promise<void> {
+    if (!this.isCurrent(reader) || reader.thread !== undefined || reader.mode !== "idle") return;
+    reader.mode = "rebuilding";
+    do {
+      reader.dirty = false;
+      const before = this.list.peek();
+      const targetPages = Math.max(1, before.thread === undefined ? before.pages : 0) + (reader.pendingMore ? 1 : 0);
+      const apps: AppInfo[] = [];
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      let next: string | undefined;
+      let pages = 0;
+      let error: OpError | undefined;
+      this.list.value = { ...this.list.peek(), loading: true, loadingMore: reader.pendingMore, error: retainedError };
+      while (pages < targetPages) {
+        const out = await this.ops.appsList(undefined, cursor);
+        if (!this.isCurrent(reader)) return;
+        if (!out.ok) { error = out.error; break; }
+        pages++;
+        for (const app of readApps(out.value)) if (!seen.has(app.name)) { seen.add(app.name); apps.push(app); }
+        next = str(out.value.next_cursor);
+        cursor = next;
+        if (cursor === undefined) break;
       }
-    })();
-    return state.promise;
+      if (!this.isCurrent(reader)) return;
+      if (error) {
+        if (reader.pendingMore) reader.pendingMore = false;
+        retainedError = error;
+        this.list.value = { ...this.list.peek(), loading: false, loadingMore: false, error };
+      } else {
+        reader.pendingMore = false;
+        this.list.value = { loading: false, loaded: true, thread: undefined, apps, next, pages, loadingMore: false, error: retainedError };
+      }
+    } while (reader.dirty && this.isCurrent(reader));
+    if (this.isCurrent(reader)) reader.mode = "idle";
+  }
+
+  /** Append the published cursor; invalidations are coalesced and reconciled after this request settles. */
+  async more(): Promise<void> {
+    const reader = this.currentReader;
+    const before = this.list.peek();
+    if (!reader || !this.isCurrent(reader) || reader.mode !== "idle" || before.next === undefined) return;
+    reader.mode = "paging";
+    reader.pendingMore = true;
+    this.list.value = { ...before, loadingMore: true, error: undefined };
+    const out = await this.ops.appsList(reader.thread, before.next);
+    if (!this.isCurrent(reader)) return;
+    if (!out.ok) {
+      reader.pendingMore = false;
+      this.list.value = { ...this.list.peek(), loadingMore: false, error: out.error };
+      reader.mode = "idle";
+      if (reader.dirty && reader.thread === undefined) await this.rebuild(reader, out.error);
+      return;
+    }
+    const current = this.list.peek();
+    const seen = new Set(current.apps.map((app) => app.name));
+    const page = readApps(out.value).filter((app) => !seen.has(app.name));
+    reader.pendingMore = false;
+    this.list.value = { ...current, apps: [...current.apps, ...page], next: str(out.value.next_cursor), pages: current.pages + 1, loadingMore: false, error: undefined };
+    reader.mode = "idle";
+    if (reader.dirty && reader.thread === undefined) await this.rebuild(reader);
   }
 
   async loadInstances(name: string): Promise<void> {
