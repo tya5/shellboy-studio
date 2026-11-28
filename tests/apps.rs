@@ -257,10 +257,6 @@ async fn fixture() -> Fixture {
                     args.thread_id
                         .as_ref()
                         .is_none_or(|thread| found.thread == *thread)
-                        && args
-                            .scheme
-                            .as_ref()
-                            .is_none_or(|scheme| found.uri.starts_with(&format!("{scheme}:")))
                 })
                 .map(|(id, found)| summary(id, found))
                 .collect();

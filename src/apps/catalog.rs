@@ -131,7 +131,7 @@ where
 {
     let page = call(Command::ArtifactList(ArtifactListArgs {
         thread_id: Some(thread.to_owned()),
-        scheme: Some(SCHEME.to_owned()),
+        scheme: None,
         cursor,
         limit: LIST_PAGE,
     }))

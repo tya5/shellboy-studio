@@ -4,7 +4,7 @@ Core `f9cd46e722`, protocol 49 (`docs/reference/protocol.schema.json` `$id` `pro
 
 | Core change | Studio adoption |
 | --- | --- |
-| #462, protocol 49 | The local `service.endpoint` operation can address any service in the owner, so Studio scopes access in the bridge: the named-service app route calls it with the app's owner Thread and exact service name, rejects a result not owned by that Thread, and keeps the private loopback endpoint/token on the bridge side. The browser cannot call this internal operation or receive the endpoint credential. Endpoint publication retirement/reaping follows the Core lifecycle result; Studio treats the endpoint as transient and does not persist its token. |
+| #462, protocol 49 | The local `service.endpoint` operation can address any service in the owner, so Studio scopes access in the bridge: the named-service app route scopes the request to the app's owner Thread and exact service name. Core resolves the service; the endpoint result contains only port and token, which remain on the bridge side. The browser cannot call this internal operation or receive the endpoint credential. Endpoint publication retirement/reaping follows the Core lifecycle result; Studio treats the endpoint as transient and does not persist its token. |
 
 | #445, protocol 47 (Studio #169) | `artifact.read` returns one regular file of an exact artifact version as base64. Studio reads app files and the Possessions preview through it and no longer opens artifact files itself (apps: `docs/design/apps.md`). The browser allowlist denies it: only the gateway reads. |
 | #449, protocol 46 | `schedule.add` / `schedule.set` take `notify`; `schedule.list` items carry it. No Studio surface in this change. |
