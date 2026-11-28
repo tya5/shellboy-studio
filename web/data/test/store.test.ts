@@ -83,6 +83,29 @@ describe("shared subscription", () => {
     expect(t.watches().at(-1)!.thread_ids).toEqual(["a"]);
   });
 
+  it("keeps a cold detail without a watch and invalidates it on an owner hint", async () => {
+    const { t, data, db } = await setup();
+    db.details.a = details("a", { title: "cold detail" });
+    try {
+      const first = data.openThread("a", nextOrdinal());
+      await settle(t, db);
+      expect(first.detail.peek().value?.title).toBe("cold detail");
+      first.close();
+      await flush();
+      expect(t.watches().at(-1)?.thread_ids).toEqual([]);
+      const second = data.openThread("a", nextOrdinal());
+      expect(second.detail.peek()).toMatchObject({ value: { title: "cold detail" }, stale: true });
+      await settle(t, db);
+      second.close();
+      t.push({ t: "changed", thread_ids: ["a"], list: false, config_changed: false });
+      const third = data.openThread("a", nextOrdinal());
+      expect(third.detail.peek().value).toBeUndefined();
+      await settle(t, db);
+      expect(third.detail.peek().value?.title).toBe("cold detail");
+      third.close();
+    } finally { data.stop(); }
+  });
+
   it("bounds open Threads", async () => {
     const { data } = await setup();
     for (let i = 0; i < MAX_WATCHED_THREADS; i++) data.openThread(`t${i}`, nextOrdinal());
@@ -315,7 +338,7 @@ describe("the sidebar Archive band (#126)", () => {
     expect(t.calls("thread.list").slice(reads).map(call => call.args)).not.toContainEqual(expect.objectContaining({ archived: "only" }));
   });
 
-  it("keeps every All row in the one row cache when All is at the bound and Archive adds a page", async () => {
+  it("keeps every All row in the one row cache past the former cap and Archive adds a page", async () => {
     const { t, data, db } = await setup();
     const listed: ThreadSummary[] = Array.from({ length: MAX_LIST_ROWS + PAGE_LIMIT }, (_, i) => summary(`t${i}`));
     const archived: ThreadSummary[] = Array.from({ length: PAGE_LIMIT * 2 }, (_, i) => summary(`z${i}`, archivedAt));
@@ -334,16 +357,16 @@ describe("the sidebar Archive band (#126)", () => {
       await settle(t, db);
       await more;
     }
-    expect(data.listThreadIds.value).toHaveLength(MAX_LIST_ROWS);
+    expect(data.listThreadIds.value).toHaveLength(listed.length);
     expect(data.archivedList.value.items).toHaveLength(PAGE_LIMIT);
-    expect(data.threadList.value.items).toHaveLength(MAX_LIST_ROWS);
-    // Archive's next page arrives last in the cache, past the 1000-row bound: no listed row may give way.
+    expect(data.threadList.value.items).toHaveLength(listed.length);
+    // Archive's next page arrives last in the cache, after the full All list: no listed row may give way.
     const more = data.loadMoreArchived();
     await settle(t, db);
     await more;
     expect(data.archivedList.value.items).toHaveLength(PAGE_LIMIT * 2);
     expect(data.threadList.value.items.map(row => row.thread_id)).toEqual(data.listThreadIds.value);
-    expect(data.threadList.value.items).toHaveLength(MAX_LIST_ROWS);
+    expect(data.threadList.value.items).toHaveLength(listed.length);
   });
 
   it("pages archived Threads like the list and re-reads the loaded pages when one is archived", async () => {
@@ -645,14 +668,22 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     await settle(x.t, x.db);
     expect(x.data.threadList.value.items).toHaveLength(PAGE_LIMIT);
   });
-  it("stops holding rows at the bound, and says it can't load more", async () => {
-    const x = await listed(30);
-    for (let i = 0; i < 25; i++) await more(x);
-    expect(x.data.threadList.value.items).toHaveLength(MAX_LIST_ROWS);
-    expect(x.data.canLoadMoreThreads()).toBe(false);
+  it("keeps the visible prefix and owner cursor until an explicit retry has budget", async () => {
+    const x = await listed(3);
+    const current = x.data.threadList.value;
+    const budget = x.data.retainedBudget;
+    budget.setLimit(budget.usage.peek().used);
     const before = x.t.calls("thread.list").length;
     await more(x);
-    expect(x.t.calls("thread.list").length).toBe(before);
+    expect(x.data.threadList.value.items).toEqual(current.items);
+    expect(x.data.threadList.value.nextCursor).toBe(current.nextCursor);
+    expect(x.data.threadList.value.error?.kind).toBe("busy");
+    expect(x.data.canLoadMoreThreads()).toBe(true);
+    expect(x.t.calls("thread.list")).toHaveLength(before + 1);
+    budget.setLimit(64 * 1024 * 1024);
+    await more(x);
+    expect(x.t.calls("thread.list").slice(before).map(call => (call.args as { cursor?: string }).cursor)).toEqual([current.nextCursor, current.nextCursor]);
+    expect(x.data.threadList.value.items).toEqual(x.all.slice(0, PAGE_LIMIT * 2));
   });
   it("a hint that changed nothing keeps the rows, the active list and the list as they were (#171)", async () => {
     const x = await listed(1);
@@ -684,12 +715,12 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     await settle(x.t, x.db);
     expect(x.data.threadRows.value.get("old")?.activity).toBe("recovery");
     for (let i = 0; i < 25; i++) await more(x);
-    // A list hint re-reads the 1000 loaded rows, which are then newer than the open Thread's row.
+    // A list hint re-reads the loaded rows, which are then newer than the open Thread's row.
     x.t.push({ t: "resync" });
     await settle(x.t, x.db);
     // Every listed row is held, and so is the open Thread's: nothing listed gives way to it.
-    expect(x.data.threadRows.value.size).toBe(MAX_LIST_ROWS + 1);
-    expect(x.data.threadList.value.items).toHaveLength(MAX_LIST_ROWS);
+    expect(x.data.threadRows.value.size).toBe(26 * PAGE_LIMIT + 1);
+    expect(x.data.threadList.value.items).toHaveLength(26 * PAGE_LIMIT);
     expect(x.data.threadRows.value.get("old")?.activity).toBe("recovery");
     x.all[x.all.length - 1] = summary("old", { activity: "tools" });
     x.t.push({ t: "changed", config_changed: false, thread_ids: ["old"], list: false });
@@ -747,16 +778,16 @@ describe("reads nobody needs are cancelled", () => {
 });
 
 describe("pinned set", () => {
-  it("walks the pin tag pages up to MAX_LIST_ROWS and says when more pins remain", async () => {
+  it("walks the pin tag past the old count cap without falsely reporting a partial set", async () => {
     const { t, data, db } = await setup({ capabilities: ["history.window", "thread.tags"] });
     for (let n = 0; n < MAX_LIST_ROWS + 1; n++) db.threads[`p${n}`] = summary(`p${n}`, { tags: ["pin"] });
     data.trackThreadList();
     for (let round = 0; round < 4; round++) await settle(t, db).catch(() => undefined);
     const pinReads = t.calls("thread.list").filter(call => (call.args as { tags?: string[] }).tags?.includes("pin"));
-    expect(pinReads).toHaveLength(MAX_LIST_ROWS / PAGE_LIMIT);
+    expect(pinReads).toHaveLength(Math.ceil((MAX_LIST_ROWS + 1) / PAGE_LIMIT));
     expect(pinReads.every(call => !(call.args as { order?: string }).order)).toBe(true);
-    expect(data.pinnedThreadIds.value).toHaveLength(MAX_LIST_ROWS);
-    expect(data.pinnedMore.value).toBe(true);
+    expect(data.pinnedThreadIds.value).toHaveLength(MAX_LIST_ROWS + 1);
+    expect(data.pinnedMore.value).toBe(false);
     delete db.threads.p0;
     t.push({ t: "changed", config_changed: false, thread_ids: [], list: true });
     for (let round = 0; round < 4; round++) await settle(t, db).catch(() => undefined);

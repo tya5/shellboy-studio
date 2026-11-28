@@ -1,4 +1,4 @@
-import { RetainedBudget } from "./retained-budget";
+import { RetainedBudget, retainedStringBytes, type RetainedReservation } from "./retained-budget";
 import type { DefinitionKind, ShellDefinition } from "./schedules";
 import type { HistoryWindowInput } from './history-input';
 import { Handoff, type HandoffRecord } from "./handoff";
@@ -27,7 +27,7 @@ import type {
 import { Refresher } from "./refresher";
 import type { Transport } from "./transport";
 
-/** Threads watched at once. Equals the bridge's per-tab bound; beyond it `openThread` throws. */
+/** Bridge wire bound for simultaneously watched IDs; not a retained snapshot limit. */
 export const MAX_WATCHED_THREADS = 64;
 /** Default page size for list reads (the owner's own maximum applies). */
 export const PAGE_LIMIT = 50;
@@ -144,6 +144,7 @@ const emptyPaged = <T>(): PagedState<T> => ({
 });
 
 class ThreadEntry {
+  readonly reservations = new Map<string, { reservation: RetainedReservation; unpin?: () => void }>();
   refs = 0;
   closed = false;
   detailOwnerEpoch = -1;
@@ -167,6 +168,14 @@ class ThreadEntry {
   constructor(readonly id: string, schedule: Schedule, nextOrdinal: () => number, budget: RetainedBudget) {
     this.live = new Handoff(schedule, nextOrdinal, budget);
   }
+  admit(slot: string, budget: RetainedBudget, bytes: number, evict: () => void = () => {}): boolean {
+    const existing = this.reservations.get(slot);
+    if (existing) return existing.reservation.resize(bytes);
+    const reservation = budget.reserve(bytes, evict);
+    if (!reservation) return false;
+    this.reservations.set(slot, { reservation, unpin: reservation.pin() });
+    return true;
+  }
   get preview(): ReadonlySignal<Preview> {
     return this.live.preview;
   }
@@ -179,7 +188,7 @@ function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary
   const seen = new Set<string>();
   const out: ThreadSummary[] = [];
   for (const row of [...first, ...then]) {
-    if (seen.has(row.thread_id) || out.length >= MAX_LIST_ROWS) continue;
+    if (seen.has(row.thread_id)) continue;
     seen.add(row.thread_id);
     out.push(row);
   }
@@ -194,27 +203,12 @@ const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
 const sameRow = (a: ThreadSummary | undefined, b: ThreadSummary): boolean =>
   a === b || (a !== undefined && JSON.stringify(a) === JSON.stringify(b));
 
+const rowBytes = (row: ThreadSummary) => 192 + retainedStringBytes(row.thread_id) + retainedStringBytes(JSON.stringify(row));
+
+const budgetBusy = (): OpError => ({ kind: "busy", message: "Retained data budget is full" });
+
 const isActiveSummary = (row: ThreadSummary): boolean =>
   (row.awaiting_named_count ?? 0) > 0 || isActiveThreadActivity(row.activity);
-
-/**
- * Bounded at MAX_LIST_ROWS; the oldest rows go first, but never one in `held`: an open Thread's
- * (at most MAX_WATCHED_THREADS) or one the list, Archive or pinned state still lists (each at most MAX_LIST_ROWS).
- */
-function trimRows(rows: Map<string, ThreadSummary>, held: ReadonlySet<string>): Map<string, ThreadSummary> {
-  for (const id of rows.keys()) {
-    if (rows.size <= MAX_LIST_ROWS) break;
-    if (!held.has(id)) rows.delete(id);
-  }
-  return rows;
-}
-
-function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[], held: ReadonlySet<string>): ReadonlyMap<string, ThreadSummary> {
-  if (rows.every(row => sameRow(previous.get(row.thread_id), row))) return previous;
-  const next = new Map(previous);
-  for (const row of rows) { next.delete(row.thread_id); next.set(row.thread_id, row); }
-  return trimRows(next, held);
-}
 
 export class ShellboyData {
   readonly link: Link;
@@ -247,6 +241,7 @@ export class ShellboyData {
   private readonly listPages: ListPages = { state: this.listSig, gen: 0, cancel: undefined, args: listArgs };
   /** The Archive band: the same filter with `archived: "only"`, in pages like the list. */
   private readonly archivePages: ListPages = { state: signal<ThreadListState>(emptyPaged()), gen: 0, cancel: undefined, args: filter => listArgs({ ...filter, archived: "only" }) };
+  private readonly rowAllocations = new Map<string, { reservation: RetainedReservation; unpin?: () => void }>();
   private readonly threadRowsSig = signal<ReadonlyMap<string, ThreadSummary>>(new Map());
   private readonly pinnedThreadIdsSig = signal<readonly string[]>([]);
   private readonly pinnedMoreSig = signal(false);
@@ -256,6 +251,7 @@ export class ShellboyData {
   private readonly filterSig = signal<ListFilter>({});
   private listRefs = 0;
   private entries = new Map<string, ThreadEntry>();
+  private readonly coldDetails = new Map<string, { value: ThreadDetails; reservation: RetainedReservation }>();
   private watchQueued = false;
   private readonly deletionHint = signal<{ ids?: readonly string[] }>({});
   /** A hint without IDs invalidates every open deletion preview. */
@@ -285,7 +281,7 @@ export class ShellboyData {
   readonly listThreadIds: ReadonlySignal<readonly string[]>;
   readonly threadListMeta: ReadonlySignal<Omit<ThreadListState, "items">>;
   readonly pinnedThreadIds: ReadonlySignal<readonly string[]>;
-  /** The pinned read stopped at MAX_LIST_ROWS with a continuation left: the pinned set is a lower bound. */
+  /** A continuation was left: the pinned set is a lower bound. */
   readonly pinnedMore: ReadonlySignal<boolean>;
   readonly pinnedError: ReadonlySignal<OpError | undefined>;
   /** Archived Threads for the sidebar's Archive band (`thread.list` with `archived: "only"`); not read while Needs-you is on. */
@@ -382,7 +378,12 @@ export class ShellboyData {
       close: () => {
         if (closed) return;
         closed = true;
-        if (--this.listRefs === 0) this.scheduleWatch();
+        if (--this.listRefs === 0) {
+          this.listPages.cancel?.cancel(); this.archivePages.cancel?.cancel();
+          for (const { state } of [this.listPages, this.archivePages]) state.value = { ...emptyPaged<string>() };
+          this.pinnedThreadIdsSig.value = [];
+          this.pinRows(); this.scheduleWatch();
+        }
       },
     };
   }
@@ -421,18 +422,25 @@ export class ShellboyData {
   private async loadMore(pages: ListPages): Promise<void> {
     const cur = pages.state.value;
     const filter = cur.filter;
-    if (!filter || !cur.nextCursor || cur.loadingMore || cur.loading || cur.items.length >= MAX_LIST_ROWS) return;
+    if (!filter || !cur.nextCursor || cur.loadingMore || cur.loading) return;
     const gen = pages.gen;
+    const epoch = this.readQualificationEpoch;
+    const cancel = pages.cancel = new Cancel();
     pages.state.value = { ...cur, loadingMore: true };
-    const out = await this.operations.threadList({ ...pages.args(filter), cursor: cur.nextCursor });
-    if (gen !== pages.gen) return; // a refresh replaced the pages meanwhile
-    const now = pages.state.value;
-    pages.state.value = out.ok
-      ? { ...now, items: [...new Set([...now.items, ...out.value.items.map(row => row.thread_id)])].slice(0, MAX_LIST_ROWS), nextCursor: out.value.next_cursor, loadingMore: false, error: undefined }
-      : { ...now, loadingMore: false, error: out.error };
-    if (out.ok) {
-      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), out.value.items, this.heldRows());
+    const out = await this.operations.threadList({ ...pages.args(filter), cursor: cur.nextCursor }, { cancel });
+    if (gen !== pages.gen || cancel.cancelled || epoch !== this.readQualificationEpoch) return;
+    const now = pages.state.peek();
+    if (!out.ok) { pages.state.value = { ...now, loadingMore: false, error: out.error }; return; }
+    if (out.value.next_cursor === cur.nextCursor) {
+      pages.state.value = { ...now, loadingMore: false, error: { kind: "owner", code: "invalid_cursor", message: "Thread continuation did not advance" } };
+      return;
     }
+    batch(() => {
+      const admit = this.admitRows(out.value.items, true);
+      if (!admit) { pages.state.value = { ...now, loadingMore: false, error: budgetBusy() }; return; }
+      pages.state.value = { ...now, items: [...new Set([...now.items, ...out.value.items.map(row => row.thread_id)])], nextCursor: out.value.next_cursor, loadingMore: false, error: undefined };
+      this.pinRows();
+    });
   }
 
   /** Track one Thread (detail, history, live preview). Throws past MAX_WATCHED_THREADS. */
@@ -440,8 +448,18 @@ export class ShellboyData {
     let entry = this.entries.get(threadId);
     if (!entry) {
       if (!this.hintWatchers.has(threadId) && new Set([...this.entries.keys(), ...this.hintWatchers.keys()]).size >= MAX_WATCHED_THREADS)
-        throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be open at once`);
+        throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be watched at once`);
       entry = new ThreadEntry(threadId, this.schedule, nextOrdinal, this.retainedBudget);
+      const cached = this.coldDetails.get(threadId);
+      if (cached) {
+        this.coldDetails.delete(threadId);
+        entry.reservations.set("detail", { reservation: cached.reservation, unpin: cached.reservation.pin() });
+        entry.detail.value = { value: cached.value, loading: false, stale: true, error: undefined };
+      }
+      if (!entry.admit("handle", this.retainedBudget, 768 + retainedStringBytes(threadId))) {
+        for (const { reservation } of entry.reservations.values()) reservation.release();
+        throw new RangeError("Retained data budget is full");
+      }
       this.entries.set(threadId, entry);
       this.scheduleWatch();
       if (this.canRead()) { this.requestThread(threadId); void this.refreshThreadRows([threadId], false); }
@@ -524,6 +542,19 @@ export class ShellboyData {
           e.live.discard("connection_closed");
           e.cancel.cancel();
           this.entries.delete(threadId);
+          this.pinRows();
+          const detail = e.detail.peek();
+          for (const [slot, allocation] of e.reservations) {
+            if (slot === "detail" && detail.value && this.canRead() && e.detailOwnerEpoch === this.readQualificationEpoch) {
+              this.coldDetails.set(threadId, { value: detail.value, reservation: allocation.reservation });
+              allocation.unpin?.();
+            } else allocation.reservation.release();
+          }
+          e.reservations.clear();
+          e.detail.value = { value: undefined, loading: false, stale: true, error: undefined };
+          e.work.value = { value: undefined, loading: false, stale: true, error: undefined };
+          e.workBodies.clear();
+          for (const resource of Object.values(e.definitions)) resource.value = { value: undefined, loading: false, stale: true, error: undefined };
           this.scheduleWatch();
         }
       },
@@ -654,6 +685,7 @@ export class ShellboyData {
         { const rows = f.list ? f.thread_ids : f.thread_ids.filter(id => this.entries.has(id));
           if (rows.length) void this.refreshThreadRows(rows, f.list); }
         for (const id of f.thread_ids) {
+          this.releaseColdDetail(id);
           for (const notify of this.hintWatchers.get(id) ?? []) notify();
           if (this.entries.has(id)) void this.requestThread(id);
         }
@@ -684,6 +716,8 @@ export class ShellboyData {
     const previous = this.ownerSig.peek();
     if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) {
       this.discardAllPreviews("owner_restarted");
+      for (const slot of this.rowAllocations.values()) slot.reservation.release();
+      this.rowAllocations.clear();
       this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.pinnedMoreSig.value = false; this.pinnedErrorSig.value = undefined; this.activeThreadIdsSig.value = []; this.inboxThreadIdsSig.value = [];
     }
     this.ownerSig.value = owner;
@@ -693,13 +727,64 @@ export class ShellboyData {
     }
   }
 
-  /** Rows the cache must keep: open Threads and every ID a list, Archive or pinned state holds (each already bounded). */
-  private heldRows(): Set<string> {
-    return new Set([...this.entries.keys(), ...this.listSig.peek().items, ...this.archivePages.state.peek().items, ...this.pinnedThreadIdsSig.peek()]);
+  private admitRows(rows: readonly ThreadSummary[], pin: boolean): boolean {
+    const pending: [ThreadSummary, RetainedReservation, () => void][] = [];
+    for (const row of rows) {
+      const id = row.thread_id;
+      const prior = this.rowAllocations.get(id);
+      if (prior && sameRow(this.threadRowsSig.peek().get(id), row)) {
+        prior.reservation.touch();
+        if (pin) prior.unpin ??= prior.reservation.pin();
+        continue;
+      }
+      const reservation = this.retainedBudget.reserve(rowBytes(row), () => {
+        if (this.rowAllocations.get(id)?.reservation !== reservation) return;
+        this.rowAllocations.delete(id);
+        const next = new Map(this.threadRowsSig.peek());
+        next.delete(id);
+        this.threadRowsSig.value = next;
+      });
+      if (!reservation) {
+        for (const [, staged] of pending) staged.release();
+        this.pinRows();
+        return false;
+      }
+      pending.push([row, reservation, reservation.pin()]);
+    }
+    if (!pending.length) return true;
+    const next = new Map(this.threadRowsSig.peek());
+    for (const [row, reservation, unpin] of pending) {
+      const id = row.thread_id;
+      const stable = this.rowAllocations.get(id);
+      stable?.reservation.release();
+      // Temporary admission pins become the publication's pins.
+      this.rowAllocations.set(id, { reservation, unpin });
+      next.set(id, row);
+    }
+    this.threadRowsSig.value = next;
+    return true;
+  }
+
+  private pinRows(): void {
+    const held = new Set([...this.entries.keys(), ...this.activeThreadIdsSig.peek(), ...this.inboxThreadIdsSig.peek()]);
+    if (this.listRefs > 0) for (const id of [...this.listSig.peek().items, ...this.archivePages.state.peek().items, ...this.pinnedThreadIdsSig.peek()]) held.add(id);
+    for (const [id, slot] of this.rowAllocations) if (held.has(id)) slot.unpin ??= slot.reservation.pin();
+    for (const [id, slot] of this.rowAllocations) {
+      if (held.has(id)) continue;
+      const release = slot.unpin;
+      slot.unpin = undefined;
+      release?.();
+    }
   }
 
   private markListsStale(): void {
     for (const { state } of [this.listPages, this.archivePages]) if (state.value.loaded) state.value = { ...state.value, stale: true };
+  }
+
+  private releaseColdDetail(id: string): void {
+    const cold = this.coldDetails.get(id);
+    this.coldDetails.delete(id);
+    cold?.reservation.release();
   }
 
   private markAllStale(): void {
@@ -717,6 +802,7 @@ export class ShellboyData {
     // Revoke every old read before any synchronous clear/discard observer can run.
     batch(() => {
       ++this.readQualificationEpoch;
+      for (const id of this.coldDetails.keys()) this.releaseColdDetail(id);
       for (const e of this.entries.values()) {
         if (reason !== "resync") e.live.advanceEpoch();
         e.live.discard(reason);
@@ -785,7 +871,12 @@ export class ShellboyData {
       const rows = entry.definitions[kind];
       rows.value = { ...rows.peek(), loading: true };
       const out = await this.operations.definitions(kind, entry.id, { onSent, cancel });
-      if (valid()) rows.value = out.ok
+      if (!valid()) return;
+      if (out.ok && !entry.admit(kind, this.retainedBudget, 128 + retainedStringBytes(JSON.stringify([...out.value])))) {
+        rows.value = { ...rows.peek(), loading: false, stale: true, error: budgetBusy() };
+        return;
+      }
+      rows.value = out.ok
         ? { value: out.value, loading: false, stale: false, error: undefined }
         : { ...rows.peek(), loading: false, stale: true, error: out.error };
       return;
@@ -852,7 +943,15 @@ export class ShellboyData {
     }
   }
 
-  /** Every pinned Thread, whatever its age: the `pin` tag filter walked page by page up to MAX_LIST_ROWS. */
+  /** Walk the pin filter until the owner is exhausted or staging reaches the byte budget. */
+  private stageSummaryPage(staged: RetainedReservation[], rows: readonly ThreadSummary[], cursor: string | undefined): boolean {
+    const hold = this.retainedBudget.reserve(rows.reduce((total, row) => total + rowBytes(row), retainedStringBytes(cursor ?? "")), () => {});
+    if (!hold) return false;
+    hold.pin();
+    staged.push(hold);
+    return true;
+  }
+
   private async readPinned(onSent: () => void): Promise<void> {
     if (this.listRefs === 0 || !this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) return;
     const epoch = this.readQualificationEpoch;
@@ -863,25 +962,39 @@ export class ShellboyData {
     }
     let rows: ThreadSummary[] = [];
     let cursor: string | undefined;
-    do {
-      // The pinned read keeps archived Threads only to feed the Archive band; the sidebar row filter hides them everywhere else.
-      const out = await this.operations.threadList({ ...listArgs({ ...filter, archived: "include", tags: [...(filter.tags ?? []), "pin"] }), ...(cursor ? { cursor } : {}) }, { onSent });
-      // A changed filter has already asked for a fresh read; keep the previous set until it lands.
-      if (!out.ok) {
-        if (epoch === this.readQualificationEpoch && this.listRefs > 0 && filter === this.filterSig.value) this.pinnedErrorSig.value = out.error;
-        return;
-      }
-      if (epoch !== this.readQualificationEpoch || this.listRefs === 0 || filter !== this.filterSig.value) return;
-      rows = mergeRows(rows, out.value.items);
-      cursor = out.value.next_cursor;
-    } while (cursor && rows.length < MAX_LIST_ROWS);
-    batch(() => {
-      const ids = rows.map(row => row.thread_id);
-      if (!sameIds(ids, this.pinnedThreadIdsSig.peek())) this.pinnedThreadIdsSig.value = ids;
-      this.pinnedErrorSig.value = undefined;
-      this.pinnedMoreSig.value = cursor !== undefined;
-      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), rows, this.heldRows());
-    });
+    const staged: RetainedReservation[] = [];
+    try {
+      do {
+        // The pinned read keeps archived Threads only to feed the Archive band; the sidebar row filter hides them everywhere else.
+        const out = await this.operations.threadList({ ...listArgs({ ...filter, archived: "include", tags: [...(filter.tags ?? []), "pin"] }), ...(cursor ? { cursor } : {}) }, { onSent });
+        // A changed filter has already asked for a fresh read; keep the previous set until it lands.
+        if (!out.ok) {
+          if (epoch === this.readQualificationEpoch && this.listRefs > 0 && filter === this.filterSig.value) this.pinnedErrorSig.value = out.error;
+          return;
+        }
+        if (epoch !== this.readQualificationEpoch || this.listRefs === 0 || filter !== this.filterSig.value) return;
+        if (cursor && cursor === out.value.next_cursor) {
+          this.pinnedErrorSig.value = { kind: "owner", code: "invalid_cursor", message: "Thread continuation did not advance" };
+          return;
+        }
+        if (!this.stageSummaryPage(staged, out.value.items, out.value.next_cursor)) {
+          this.pinnedMoreSig.value = true;
+          this.pinnedErrorSig.value = budgetBusy();
+          return;
+        }
+        rows = mergeRows(rows, out.value.items);
+        cursor = out.value.next_cursor;
+      } while (cursor);
+      batch(() => {
+        for (const reservation of staged) reservation.release();
+        if (!this.admitRows(rows, true)) { this.pinnedMoreSig.value = true; this.pinnedErrorSig.value = budgetBusy(); return; }
+        const ids = rows.map(row => row.thread_id);
+        if (!sameIds(ids, this.pinnedThreadIdsSig.peek())) this.pinnedThreadIdsSig.value = ids;
+        this.pinnedErrorSig.value = undefined;
+        this.pinnedMoreSig.value = cursor !== undefined;
+        this.pinRows();
+      });
+    } finally { for (const reservation of staged) reservation.release(); }
   }
 
   private async readList(target: ListPages, onSent: () => void, shapeOnly = false): Promise<void> {
@@ -895,25 +1008,40 @@ export class ShellboyData {
     const cancel = target.cancel = new Cancel();
     let items: ThreadSummary[] = [];
     let cursor: string | undefined;
-    // Rebuild the already loaded prefix from fresh cursors; do not publish an old tail as current.
-    for (let page = 0; page < pages; page++) {
-      const out = await this.operations.threadList({ ...target.args(filter), ...(cursor ? { cursor } : {}) }, { onSent, cancel });
-      if (gen !== target.gen || filter !== this.filterSig.value || cancel.cancelled) return;
-      if (epoch !== this.readQualificationEpoch) {
-        target.state.value = { ...target.state.value, loading: false, stale: previous.loaded };
-        return;
+    const staged: RetainedReservation[] = [];
+    try {
+      // Rebuild the already loaded prefix from fresh cursors; do not publish an old tail as current.
+      for (let page = 0; page < pages; page++) {
+        const out = await this.operations.threadList({ ...target.args(filter), ...(cursor ? { cursor } : {}) }, { onSent, cancel });
+        if (gen !== target.gen || filter !== this.filterSig.value || cancel.cancelled) return;
+        if (epoch !== this.readQualificationEpoch) {
+          target.state.value = { ...target.state.value, loading: false, stale: previous.loaded };
+          return;
+        }
+        if (!out.ok) {
+          target.state.value = { ...previous, loading: false, loadingMore: false, stale: previous.loaded, error: out.error };
+          return;
+        }
+        const repeated = cursor && out.value.next_cursor === cursor;
+        if (repeated || !this.stageSummaryPage(staged, out.value.items, out.value.next_cursor)) {
+          target.state.value = { ...previous, loading: false, loadingMore: false, stale: previous.loaded, error: repeated ? { kind: "owner", code: "invalid_cursor", message: "Thread continuation did not advance" } : budgetBusy() };
+          return;
+        }
+        items = mergeRows(items, out.value.items);
+        cursor = out.value.next_cursor;
+        if (!cursor) break;
       }
-      if (!out.ok) {
-        target.state.value = { ...previous, loading: false, loadingMore: false, stale: previous.loaded, error: out.error };
-        return;
-      }
-      items = mergeRows(items, out.value.items);
-      cursor = out.value.next_cursor;
-      if (!cursor || items.length >= MAX_LIST_ROWS) break;
-    }
-    const published = shapeOnly && previous.filter === filter ? mergeRows(items, previous.items.flatMap(id => { const row = this.threadRowsSig.peek().get(id); return row ? [row] : []; })) : items;
-    target.state.value = { filter, items: published.map(row => row.thread_id), nextCursor: shapeOnly ? previous.nextCursor : cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
-    this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), items, this.heldRows());
+      const published = shapeOnly && previous.filter === filter ? mergeRows(items, previous.items.flatMap(id => { const row = this.threadRowsSig.peek().get(id); return row ? [row] : []; })) : items;
+      batch(() => {
+        for (const reservation of staged) reservation.release();
+        if (!this.admitRows(items, true)) {
+          target.state.value = { ...previous, loading: false, loadingMore: false, stale: previous.loaded, error: budgetBusy() };
+          return;
+        }
+        target.state.value = { filter, items: published.map(row => row.thread_id), nextCursor: shapeOnly ? previous.nextCursor : cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
+        this.pinRows();
+      });
+    } finally { for (const reservation of staged) reservation.release(); }
   }
 
   private async readDetail(entry: ThreadEntry, onSent: () => void): Promise<void> {
@@ -925,6 +1053,12 @@ export class ShellboyData {
     const cur = entry.detail.value;
     if (!out.ok && out.error.kind === "cancelled") {
       entry.detail.value = { ...cur, loading: false };
+      return;
+    }
+    const bytes = out.ok ? 128 + retainedStringBytes(entry.id) + retainedStringBytes(JSON.stringify(out.value)) : 0;
+    const id = entry.id;
+    if (out.ok && !entry.admit("detail", this.retainedBudget, bytes, () => this.coldDetails.delete(id))) {
+      entry.detail.value = { ...cur, loading: false, stale: true, error: { kind: "busy", message: "Retained data budget is full" } };
       return;
     }
     if (out.ok) entry.detailOwnerEpoch = epoch;
@@ -971,10 +1105,14 @@ export class ShellboyData {
     const activeChanged = !sameIds(active, this.activeThreadIdsSig.peek());
     batch(() => {
       if (rowsChanged) {
-        const next = new Map(current);
-        for (const row of out.value.items) { next.delete(row.thread_id); next.set(row.thread_id, row); }
-        for (const id of ids) if (!returned.has(id)) next.delete(id);
-        this.threadRowsSig.value = trimRows(next, this.heldRows());
+        if (!this.admitRows(out.value.items, false)) return;
+        const next = new Map(this.threadRowsSig.peek());
+        for (const id of ids) if (!returned.has(id)) {
+          next.delete(id);
+          this.rowAllocations.get(id)?.reservation.release();
+          this.rowAllocations.delete(id);
+        }
+        this.threadRowsSig.value = next;
       }
       if (activeChanged) this.activeThreadIdsSig.value = active;
       for (const { state } of [this.listPages, this.archivePages]) {
@@ -983,6 +1121,7 @@ export class ShellboyData {
         const items = list.items.filter(id => !ids.includes(id) || returned.has(id));
         if (items.length !== list.items.length) state.value = { ...list, items };
       }
+      this.pinRows();
     });
     if (listChanged && (shapeChanged || filterMembershipMayChange) && this.listRefs > 0) void this.refresher.requestFresh(shapeChanged ? "list-shape" : "list");
     if (listChanged && archiveMayChange && this.listRefs > 0) void this.refresher.requestFresh("archive");
@@ -999,6 +1138,7 @@ export class ShellboyData {
     const out = await this.operations.threadWork(entry.id, { onSent, cancel });
     if (!valid()) return;
     let value = out.ok ? out.value : undefined;
+    let workBodies = entry.workBodies;
     if (value && entry.workRefs > 0 && !entry.paused) {
       // Only the first eight pending originals are read. The cache belongs to this open
       // Thread and is replaced on every observation, so neither memory nor reads grow.
@@ -1011,9 +1151,9 @@ export class ShellboyData {
         return [id, body.ok && body.value.kind === "user" ? body.value.text : undefined] as const;
       }));
       if (!valid()) return;
-      entry.workBodies = new Map(bodies.filter((pair): pair is readonly [string, string] => pair[1] !== undefined));
+      workBodies = new Map(bodies.filter((pair): pair is readonly [string, string] => pair[1] !== undefined));
       value = { ...value, items: value.items.map((item) => {
-        const text = item.message_id ? entry.workBodies.get(item.message_id) : undefined;
+        const text = item.message_id ? workBodies.get(item.message_id) : undefined;
         return text !== undefined ? { ...item, excerpt: text } : item;
       }) };
     }
@@ -1023,6 +1163,11 @@ export class ShellboyData {
       entry.work.value = { ...cur, loading: false };
       return;
     }
+    if (out.ok && !entry.admit("work", this.retainedBudget, 128 + retainedStringBytes(JSON.stringify(value)) + retainedStringBytes(JSON.stringify([...workBodies])))) {
+      entry.work.value = { ...cur, loading: false, stale: true, error: budgetBusy() };
+      return;
+    }
+    if (out.ok) entry.workBodies = workBodies;
     entry.work.value = out.ok
       ? { value: value!, loading: false, stale: false, error: undefined }
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
@@ -1033,7 +1178,7 @@ export class ShellboyData {
 
 function canLoadMore(pages: ListPages): boolean {
   const cur = pages.state.value;
-  return cur.nextCursor !== undefined && cur.items.length < MAX_LIST_ROWS;
+  return cur.nextCursor !== undefined;
 }
 
 function listArgs(filter: ListFilter): ThreadListArgs {

@@ -66,10 +66,10 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 
 | Item | Bound | Released |
 |---|---|---|
-| Thread list rows (`threadList`, sidebar) | 1000 (`MAX_LIST_ROWS`), 50 per press of Show more; past it, search | Replaced by a changed search; a hint re-reads one page and keeps rows further down, which can stay stale until the next full read |
-| Sidebar pinned set (`pinnedThreadIds`) | 1000 (`MAX_LIST_ROWS`), pages of 50 of `thread.list` with the `pin` tag and `archived: "include"` (archived pins are kept only to feed the Archive band; the sidebar row filter hides them everywhere else), walked on list hints and resync; `pinnedMore` says a continuation was left | Replaced by the next complete walk; cleared on owner change |
+| Thread list rows (`threadList`, sidebar) | Shared retained byte budget, 50 per owner page | A refused append keeps the displayed prefix and cursor for retry; refresh stages a fresh cut before publishing |
+| Sidebar pinned set (`pinnedThreadIds`) | Shared retained byte budget; 50 per `pin` page, with `archived: "include"` for the Archive band | A refused refresh keeps the previous set and exposes a lower-bound/error state; cleared on owner change |
 | Sidebar Archive band (`archivedList`, `archivedThreadIds`) | Like the list: `thread.list` with `archived: "only"` and the list's filter, pages of 50 up to 1000 IDs (`loadMoreArchived`), rows in the one row cache; re-read (loaded page count) on resync, filter change and list hints that change archive state, parent or a filtered field; not read while Needs-you is on (#126) | Replaced by a changed filter; rows with the cache |
-| Row cache (`threadRows`, one per owner, #96) | 1000 rows (`MAX_LIST_ROWS`), oldest first out, except rows still held: open Threads (64) and every ID the list, Archive and pinned states hold (1000 each), so it can reach 3064 | A row leaves once nothing holds it and the cache is past 1000; cleared on owner change |
+| Row cache (`threadRows`, one per owner, #96) | Shared retained byte budget, pins for held rows | Cold rows are eligible for shared LRU eviction; cleared on owner change |
 | `rows`, `rowById` | Derived once per list change, from those rows | With the list |
 | An open Thread's row | Read by ID (`thread.list.thread_ids`, archived included) when it opens, on each `hello`/`resync`/restart (one coalesced `open-rows` read) and on its own hints; never dropped at the 1000-row bound while open (at most 64). The conversation status line, recovery, Retry and header take it from here, not from a list page (#103) | Like any row, once closed |
 | Branches view | One family, at most 256 Threads (owner's bound); 4 pages, 3 restarts | Thread change |
