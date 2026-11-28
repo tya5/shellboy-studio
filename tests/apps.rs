@@ -200,7 +200,7 @@ async fn fixture() -> Fixture {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|(_, found)| found.thread == args.thread_id)
+                .filter(|(_, found)| args.thread_id.as_deref() == Some(found.thread.as_str()))
                 .map(|(id, found)| summary(id, found))
                 .collect();
             let from: usize = args.cursor.as_deref().map_or(0, |c| c.parse().unwrap());
@@ -241,6 +241,7 @@ async fn fixture() -> Fixture {
             extra_hosts: vec![],
             data_dir: "/temp/data".into(),
             config_dir: "/temp/config".into(),
+            core_config_path: "/temp/config/config.toml".into(),
             debug: false,
         },
         cancel.clone(),

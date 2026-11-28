@@ -32,6 +32,8 @@ pub struct ServerConfig {
     /// Which owner this bridge talks to. Shown so two tabs on two bridges can be told apart.
     pub data_dir: PathBuf,
     pub config_dir: PathBuf,
+    /// Core config file used by the owner; docs sources are stored here.
+    pub core_config_path: PathBuf,
 }
 
 pub struct Shared<O> {
@@ -481,6 +483,7 @@ pub async fn serve<O: Owner>(
         Some((
             state.config.config_dir.clone(),
             state.config.data_dir.clone(),
+            state.config.core_config_path.clone(),
         )),
     ));
     let shutdown = cancel.clone();

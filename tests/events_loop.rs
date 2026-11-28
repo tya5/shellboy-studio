@@ -526,6 +526,7 @@ mod guide_startup {
             Some((
                 state.config.config_dir.clone(),
                 state.config.data_dir.clone(),
+                state.config.core_config_path.clone(),
             )),
         ));
         tx.send(events("instance", "baseline", "c1", &[], false))

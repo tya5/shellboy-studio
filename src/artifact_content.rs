@@ -599,6 +599,7 @@ mod reveal_tests {
                     debug: false,
                     data_dir: PathBuf::new(),
                     config_dir: PathBuf::new(),
+                    core_config_path: PathBuf::new(),
                 },
             );
             let mut req = Request::post("/artifact-reveal")

@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use shellboy::config::{PathEnvironment, resolve_cli_data_dir};
+use shellboy::config::{PathEnvironment, resolve_cli_data_dir, resolve_config_path};
 use shellboy_studio::{
     auth::{Auth, default_config_dir},
     events::PollConfig,
@@ -58,10 +58,13 @@ fn install_agent_guide(data_dir: &std::path::Path) -> std::io::Result<()> {
     let dir = data_dir.join("studio");
     std::fs::create_dir_all(&dir)?;
     std::fs::write(dir.join("agent-guide.md"), AGENT_GUIDE)?;
+    #[cfg(feature = "next-shellboy")]
+    shellboy_studio::docs_source::install(data_dir, USER_GUIDE)?;
     std::fs::write(
         dir.join("agent-pointer.md"),
         "When asked to make an app or web tool, first read $SHELLBOY_DATA_DIR/studio/agent-guide.md.\n",
-    )
+    )?;
+    Ok(())
 }
 
 /// What to tell someone whose first probe of the owner failed: the fact, then the next step.
@@ -173,6 +176,7 @@ async fn run_bundle_server(
     shellboy_studio::launcher::desktop::studio_log(&config_dir)?;
     let paths = CorePaths::resolved(paths)?;
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let core_config_path = paths.config.clone();
     let mut launch = Launch::prepare(&config_dir, &cwd, paths).await?;
     // The launcher opens the token URL separately; this child's diagnostics are in studio.log.
     let listener = launch.listener.take().expect("prepared listener");
@@ -181,6 +185,7 @@ async fn run_bundle_server(
         extra_hosts: Vec::new(),
         data_dir: launch.data_dir.clone(),
         config_dir,
+        core_config_path,
         debug: false,
     };
     let cancel = CancellationToken::new();
@@ -270,6 +275,8 @@ async fn run(args: Args) -> Result<(), String> {
             data_dir.display()
         );
     }
+    let core_config_path = resolve_config_path(None, &cwd, &PathEnvironment::current())
+        .map_err(|error| format!("cannot resolve Core config path: {error}"))?;
     let config_dir = match args.config_dir {
         Some(dir) => dir,
         None => default_config_dir()?,
@@ -303,6 +310,7 @@ async fn run(args: Args) -> Result<(), String> {
         extra_hosts: args.allow_host,
         data_dir,
         config_dir,
+        core_config_path,
         debug: args.debug,
     };
     let state = bridge_state(config, auth, cancel.clone(), None);

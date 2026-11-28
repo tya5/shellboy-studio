@@ -151,6 +151,7 @@ pub fn app_state<O: Owner>(
             extra_hosts: vec![],
             data_dir: fixture.join("data"),
             config_dir: fixture.join("config"),
+            core_config_path: fixture.join("config/config.toml"),
             debug,
         },
     )

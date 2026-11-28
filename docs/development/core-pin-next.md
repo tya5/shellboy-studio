@@ -1,10 +1,10 @@
 # Core main preparation (Studio #152 / #151)
 
-Core `60ea26e89c4064860a6f53180e58975cdfc3b02d`, protocol 47 (`docs/reference/protocol.schema.json` `$id` `protocol-v47`). This is a Core main snapshot, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
+Core `16252a62f424de939277109bb7489bb902080b1c`, protocol 51 (`docs/reference/protocol.schema.json` `$id` `protocol-v51`). This is a Core main snapshot, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
 
 | Core change | Studio adoption |
 | --- | --- |
-| #445, protocol 47 (Studio #169) | `artifact.read` returns one regular file of an exact artifact version as base64. Studio reads app files and the Possessions preview through it and no longer opens artifact files itself (apps: `docs/design/apps.md`). The browser allowlist denies it: only the gateway reads. |
+| #445, protocol 51 (Studio #169) | `artifact.read` returns one regular file of an exact artifact version as base64. Studio reads app files and the Possessions preview through it and no longer opens artifact files itself (apps: `docs/design/apps.md`). The browser allowlist denies it: only the gateway reads. |
 | #449, protocol 46 | `schedule.add` / `schedule.set` take `notify`; `schedule.list` items carry it. No Studio surface in this change. |
 | #452, protocol 45 | `shell.list` rows may omit `command_characters` and carry a nullable `run_id`. Typed by the pinned crate. Studio's web decoder accepts both shapes (examined in #169 review); `ShellEntry.run_id` is typed nullable. |
 | #444, protocol 44 (Studio #170) | A `status` Run item carries the same typed `stop_settlement_failure` (`storage` or `invariant`) that `run.get` returns, only while that Run is `stopping`. The Thread work decoder accepts it omitted, null or one of the two values and rejects the page otherwise, as it does for the other work-row fields. The #431 line now reads the value from the Run row of the existing work page; the extra `run.get` per work refresh is gone. |

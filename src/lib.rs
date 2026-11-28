@@ -13,6 +13,8 @@ mod artifact_content;
 pub mod assets;
 pub mod auth;
 pub mod diagnostics;
+#[cfg(feature = "next-shellboy")]
+pub mod docs_source;
 pub mod envelope;
 pub mod events;
 pub mod hub;

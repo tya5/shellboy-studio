@@ -50,7 +50,7 @@ pub async fn run_with_guide<O: Owner>(
     hub: Arc<Hub>,
     config: PollConfig,
     cancel: CancellationToken,
-    guide: Option<(std::path::PathBuf, std::path::PathBuf)>,
+    guide: Option<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf)>,
 ) {
     let mut cursor: Option<String> = None;
     let mut more = false;
@@ -103,7 +103,7 @@ pub async fn run_with_guide<O: Owner>(
                     hub.set_owner(OwnerState::Unreachable, OwnerEvent::Unreachable);
                     announced_unreachable = true;
                 }
-                if let Some((_, data_dir)) = &guide {
+                if let Some((_, data_dir, _)) = &guide {
                     let stage = shellboy::app::startup_stage::read(data_dir).await;
                     hub.startup_stage.send_if_modified(|current| {
                         if *current == stage {
@@ -133,7 +133,27 @@ pub async fn run_with_guide<O: Owner>(
         let restarted = last_instance.is_some() && instance != last_instance;
         let owner_transition = if !connected_now || restarted {
             #[cfg(feature = "next-shellboy")]
-            if let (Some((config_dir, data_dir)), Some(instance_id)) = (&guide, &instance) {
+            if let (Some((config_dir, data_dir, core_config)), Some(instance_id)) =
+                (&guide, &instance)
+            {
+                let data = data_dir.clone();
+                let settings = config_dir.clone();
+                let config = core_config.clone();
+                let registration = tokio::task::spawn_blocking(move || {
+                    let source = data.join("studio").join("docs");
+                    crate::docs_source::register_once(&settings, &config, &source)
+                });
+                tokio::select! {
+                    _ = cancel.cancelled() => return,
+                    result = tokio::time::timeout(Duration::from_secs(10), registration) => {
+                        match result {
+                            Ok(Ok(Ok(()))) => {},
+                            Ok(Ok(Err(error))) => crate::diagnostics::line(&format!("shellboy-studio: docs source registration: {error}")),
+                            Ok(Err(_)) => crate::diagnostics::line("shellboy-studio: docs source registration task failed"),
+                            Err(_) => crate::diagnostics::line("shellboy-studio: docs source registration timed out"),
+                        }
+                    }
+                }
                 let registration = crate::guide_preference::register(
                     owner.as_ref(),
                     config_dir,

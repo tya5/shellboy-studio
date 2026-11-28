@@ -666,6 +666,7 @@ async fn pairing_link_exchanges_once_for_session_cookie() {
             debug: false,
             data_dir: "/tmp/test".into(),
             config_dir: "/tmp/test-config".into(),
+            core_config_path: "/tmp/test-config/config.toml".into(),
         },
     );
     let app = router(state);
@@ -747,6 +748,7 @@ async fn no_auth_http_keeps_host_origin_and_disables_pairing_credentials() {
                 debug: true,
                 data_dir: dir.path().into(),
                 config_dir: dir.path().into(),
+                core_config_path: dir.path().join("config.toml"),
             },
         ));
         for host in ["127.0.0.1:8751", "studio.example.ts.net"] {
@@ -856,6 +858,7 @@ async fn no_auth_ws_accepts_loopback_and_proxy_but_never_bad_host_or_origin() {
                 debug: false,
                 data_dir: dir.path().into(),
                 config_dir: dir.path().into(),
+                core_config_path: dir.path().join("config.toml"),
             },
         );
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -1072,6 +1075,7 @@ async fn login_startup_is_unavailable_to_an_authenticated_remote_browser() {
                 debug: false,
                 data_dir: dir.path().into(),
                 config_dir: dir.path().into(),
+                core_config_path: dir.path().join("config.toml"),
             },
         ));
         let request = |method, body| {

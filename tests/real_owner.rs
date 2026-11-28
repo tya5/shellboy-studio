@@ -1940,6 +1940,7 @@ async fn an_app_message_is_recorded_as_from_the_app() {
             extra_hosts: vec![],
             data_dir: "/temp/data".into(),
             config_dir: "/temp/config".into(),
+            core_config_path: "/temp/config/config.toml".into(),
             debug: false,
         },
         cancel.clone(),
