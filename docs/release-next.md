@@ -1,6 +1,6 @@
 # Studio release notes draft
 
-The changes below are already on Studio main. This is not a release candidate; items still pending for the Core v0.18.0 pairing are listed separately.
+This draft describes changes already on Studio main. It is not a release candidate and does not specify a release pairing.
 
 ## Changes since v0.4.4
 
@@ -13,11 +13,6 @@ The changes below are already on Studio main. This is not a release candidate; i
 - **Activity shows which running shells are in the foreground (#167).** **Foreground** and **Background** follow Core's reported state. Use the foreground row's **Move to background** button to let the Turn continue while the shell keeps running. If a focused row action disappears as its state changes, focus returns to the row.
 - **Reply and sender details are clearer (#168, #163).** **Asked back** identifies an open reply duty where the Thread is waiting for an answer to its follow-up question. Named Asks from a Thread show the sender recorded by Core instead of **Unknown sender** when that sender is available.
 - **An unconfirmed stop explains what to check (Core #431, Studio #170).** The conversation identifies the affected Run and distinguishes a save failure from an inconsistent state. The notice does not retry the stop for you.
-
-## Pending the Core v0.18.0 pairing
-
-- **#176:** Placeholder for Apps across Threads.
-- **#177:** Placeholder for app calls to named Thread services.
 
 ## Upgrade
 
