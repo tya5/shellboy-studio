@@ -9,7 +9,7 @@
 use crate::{
     allowlist::{Access, access},
     envelope::{BridgeError, ClientFrame, OwnerState, ServerFrame},
-    hub::SessionGuard,
+    hub::{SessionGuard, connected},
     owner::Owner,
     server::AppState,
 };
@@ -410,11 +410,12 @@ fn handle_frame<O: Owner>(
             }
             outstanding.fetch_add(1, Ordering::SeqCst);
             let slot = Outstanding(outstanding.clone());
-            let (owner, global, in_flight, tx) = (
+            let (owner, global, in_flight, tx, hub) = (
                 state.owner.clone(),
                 state.global.clone(),
                 in_flight.clone(),
                 results_tx.clone(),
+                state.hub.clone(),
             );
             let handle = tasks.spawn(async move {
                 let _slot = slot;
@@ -424,11 +425,32 @@ fn handle_frame<O: Owner>(
                     return;
                 };
                 let frame = match owner.call(command, operation_id, None).await {
-                    Ok(response) => ServerFrame::Result {
-                        id,
-                        response: serde_json::to_value(&response).ok(),
-                        error: None,
-                    },
+                    Ok(response) => {
+                        let rolled = response.error.as_ref().is_some_and(|error| {
+                            error.details.as_ref().is_some_and(|details| {
+                                details.get("reason").and_then(Value::as_str)
+                                    == Some("operation_epoch_rolled")
+                                    && details
+                                        .get("request_may_have_been_applied")
+                                        .and_then(Value::as_bool)
+                                        == Some(false)
+                            })
+                        });
+                        if rolled {
+                            if let Some((instance_id, operation_epoch)) = owner.owner_facts().await
+                            {
+                                hub.set_owner(
+                                    connected(Some(instance_id), Some(operation_epoch)),
+                                    crate::envelope::OwnerEvent::Connected,
+                                );
+                            }
+                        }
+                        ServerFrame::Result {
+                            id,
+                            response: serde_json::to_value(&response).ok(),
+                            error: None,
+                        }
+                    }
                     Err(api) => result_error(
                         id,
                         BridgeError {

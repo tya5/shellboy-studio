@@ -479,6 +479,10 @@ mod guide_startup {
         fail: bool,
     }
     impl Owner for ConfigGate {
+        async fn owner_facts(&self) -> Option<(String, String)> {
+            self.inner.owner_facts().await
+        }
+
         async fn call(
             &self,
             command: Command,

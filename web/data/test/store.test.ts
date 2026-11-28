@@ -14,7 +14,7 @@ async function setup(opts: { owner?: boolean; capabilities?: string[] } = {}) {
   data.start();
   t.open();
   if (opts.owner !== false) {
-    t.push({ t: "hello", bridge_version: "0.1.0", owner: opts.capabilities ? { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: opts.capabilities } } : connected });
+    t.push({ t: "hello", bridge_version: "0.1.0", owner: opts.capabilities ? { state: "connected", info: { protocol_version: 5, instance_id: "i1", operation_epoch: "i1.0", capabilities: opts.capabilities } } : connected });
     await flush();
   }
   return { t, data, db };
@@ -233,11 +233,20 @@ describe("resync, restart and loss", () => {
 });
 
 describe("operation ids", () => {
-  it("are prefixed with the connected owner's instance", async () => {
+  it("are minted in the connected owner's rolling operation epoch", async () => {
     const { t, data } = await setup();
     void data.operations.messageSend({ thread_id: "a", text: "x" });
     await flush();
-    expect(t.calls("message.send")[0]!.operation_id).toBe("i1:id");
+    expect(t.calls("message.send")[0]!.operation_id).toBe("i1.0:id");
+  });
+  it("uses a refreshed rolling epoch without changing stable owner identity", async () => {
+    const { t, data } = await setup();
+    if (connected.state !== "connected") throw new Error("fixture owner must be connected");
+    t.push({ t: "owner", event: "connected", owner: { state: "connected", info: { ...connected.info, operation_epoch: "i1.1" } } });
+    void data.operations.messageSend({ thread_id: "a", text: "x" });
+    await flush();
+    expect(t.calls("message.send")[0]!.operation_id).toBe("i1.1:id");
+    expect(data.owner.peek()).toEqual(expect.objectContaining({ state: "connected", info: expect.objectContaining({ instance_id: "i1", operation_epoch: "i1.1" }) }));
   });
   it("an explicit id is reused unchanged, so a retry stays the same operation", async () => {
     const { t, data } = await setup();
@@ -561,7 +570,7 @@ describe("diagnostics", () => {
     t.push({
       t: "owner",
       event: "connected",
-      owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["live_text"] } },
+      owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", operation_epoch: "i2.0", capabilities: ["live_text"] } },
     });
     expect(data.capabilities.value).toEqual(["live_text"]);
     expect(data.bridgeVersion.value).toBe("0.1.0");

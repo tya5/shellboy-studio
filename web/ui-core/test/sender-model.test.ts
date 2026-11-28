@@ -44,7 +44,7 @@ it('does not resolve sender IDs from old-owner history while new-owner reads are
   const r=await fixtureModel({configure(db){db.history.lead=[senderNode({kind:'model',thread_id:'old-sender'})];}});
   await settle(r.t,r.db);
   const before=r.t.calls('thread.get').filter(c=>(c.args as {thread_id:string}).thread_id==='old-sender').length;
-  r.t.push({t:'owner',event:'restarted',owner:{state:'connected',info:{protocol_version:5,instance_id:'new-owner',capabilities:[]}}});
+  r.t.push({t:'owner',event:'restarted',owner:{state:'connected',info:{protocol_version:5,instance_id:'new-owner',operation_epoch:'new-owner.0',capabilities:[]}}});
   for(let n=0;n<12;n++)await Promise.resolve();
   expect(r.model.senderTitles.values.value.size).toBe(0);
   expect(r.t.calls('thread.get').filter(c=>(c.args as {thread_id:string}).thread_id==='old-sender')).toHaveLength(before);

@@ -395,11 +395,12 @@ impl Hub {
     }
 }
 
-pub fn connected(instance_id: Option<String>) -> OwnerState {
+pub fn connected(instance_id: Option<String>, operation_epoch: Option<String>) -> OwnerState {
     OwnerState::Connected {
         info: OwnerInfo {
             protocol_version: shellboy::protocol::PROTOCOL_VERSION,
             instance_id,
+            operation_epoch,
             capabilities: crate::seam::owner_capabilities(),
         },
     }
@@ -476,7 +477,10 @@ mod tests {
         assert_eq!(start, OwnerState::Unreachable);
         hub.watch(&a, vec!["t1".into()], true).unwrap();
         hub.hint(["t1"]);
-        hub.set_owner(connected(Some("i".into())), OwnerEvent::Connected);
+        hub.set_owner(
+            connected(Some("i".into()), Some("i.0".into())),
+            OwnerEvent::Connected,
+        );
         hub.set_owner(OwnerState::Unreachable, OwnerEvent::Unreachable);
         hub.apply_events(
             None,

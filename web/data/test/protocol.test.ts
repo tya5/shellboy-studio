@@ -5,7 +5,7 @@ const j = (v: unknown) => JSON.stringify(v);
 
 describe("parseServerFrame", () => {
   it("accepts every frame the bridge defines", () => {
-    const owner = { state: "connected", info: { protocol_version: 5, instance_id: null, capabilities: [] } };
+    const owner = { state: "connected", info: { protocol_version: 5, instance_id: null, operation_epoch: null, capabilities: [] } };
     for (const f of [
       { t: "hello", bridge_version: "0.1.0", owner },
       { t: "hello", bridge_version: "0.1.0", owner: { state: "unreachable" } },

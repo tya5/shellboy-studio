@@ -57,6 +57,7 @@ pub async fn run_with_guide<O: Owner>(
     let mut connected_now = false;
     let mut announced_unreachable = false;
     let mut last_instance: Option<String> = None;
+    let mut last_epoch: Option<String> = None;
     let mut backoff = config.backoff_min;
     loop {
         let args = seam::events_args(cursor.clone(), if more { 0 } else { config.long_poll_ms });
@@ -130,11 +131,18 @@ pub async fn run_with_guide<O: Owner>(
             .send_if_modified(|stage| stage.take().is_some());
         backoff = config.backoff_min;
         announced_unreachable = false;
-        let instance = owner.instance_id().await;
+        let (instance, operation_epoch) = if connected_now {
+            (last_instance.clone(), last_epoch.clone())
+        } else {
+            owner.owner_facts().await.unzip()
+        };
         let restarted = last_instance.is_some() && instance != last_instance;
-        let owner_transition = if !connected_now || restarted {
+        let epoch_changed = last_epoch.is_some() && operation_epoch != last_epoch;
+        let owner_transition = if !connected_now || restarted || epoch_changed {
             #[cfg(feature = "next-shellboy")]
-            if let (Some((config_dir, data_dir)), Some(instance_id)) = (&guide, &instance) {
+            if (!connected_now || restarted)
+                && let (Some((config_dir, data_dir)), Some(instance_id)) = (&guide, &instance)
+            {
                 let registration = crate::guide_preference::register(
                     owner.as_ref(),
                     config_dir,
@@ -159,12 +167,13 @@ pub async fn run_with_guide<O: Owner>(
             } else {
                 OwnerEvent::Connected
             };
-            Some((connected(instance.clone()), event))
+            Some((connected(instance.clone(), operation_epoch.clone()), event))
         } else {
             None
         };
         connected_now = true;
         last_instance = instance;
+        last_epoch = operation_epoch;
         cursor = Some(result.cursor);
         more = result.more;
         let reset = matches!(

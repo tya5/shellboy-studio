@@ -35,6 +35,7 @@ pub enum ClientFrame {
 pub struct OwnerInfo {
     pub protocol_version: u32,
     pub instance_id: Option<String>,
+    pub operation_epoch: Option<String>,
     pub capabilities: Vec<String>,
 }
 

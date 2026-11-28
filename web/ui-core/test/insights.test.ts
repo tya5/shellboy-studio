@@ -445,7 +445,7 @@ describe("Insights over the fake transport", () => {
     t.drop();
     const before = t.calls("usage.get").length;
     t.open();
-    t.push({ t: "hello", bridge_version: "0.0.1", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: [] } } });
+    t.push({ t: "hello", bridge_version: "0.0.1", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", operation_epoch: "i1.0", capabilities: [] } } });
     await settle(t, db);
     // Nothing to redo: the values read are still the saved facts.
     expect(t.calls("usage.get").length).toBe(before);

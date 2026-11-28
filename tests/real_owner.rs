@@ -25,6 +25,7 @@ use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
 struct Serve {
     child: Child,
     instance: String,
+    operation_epoch: String,
 }
 
 impl Drop for Serve {
@@ -111,6 +112,7 @@ fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Ser
     let mut serve = Serve {
         child,
         instance: String::new(),
+        operation_epoch: String::new(),
     };
     // Guard from the moment of spawn: any panic below still kills the child.
     let mut lines = BufReader::new(serve.child.stdout.take().unwrap()).lines();
@@ -130,6 +132,23 @@ fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Ser
         data.canonicalize().unwrap()
     );
     serve.instance = ready["instance_id"].as_str().unwrap().to_owned();
+    let status = isolated_command(bin, &home)
+        .args(["status", "--limit", "1", "--data-dir"])
+        .arg(data)
+        .arg("--config")
+        .arg(&config)
+        .output()
+        .expect("read Core status");
+    assert!(
+        status.status.success(),
+        "status: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+    let status: Value = serde_json::from_slice(&status.stdout).expect("status JSON");
+    serve.operation_epoch = status["result"]["operation_epoch"]
+        .as_str()
+        .expect("status operation epoch")
+        .to_owned();
     serve
 }
 
@@ -847,7 +866,7 @@ async fn hints_and_restart_against_a_real_owner() {
     // A mutation through the proxy produces a hint for the list tab.
     let started = std::time::Instant::now();
     ws.send(Message::Text(
-        json!({"t":"call","id":1,"command":"thread.create","args":{"cwd": root.to_str().unwrap()},"operation_id": format!("{first_instance}.0:web-it-1")})
+        json!({"t":"call","id":1,"command":"thread.create","args":{"cwd": root.to_str().unwrap()},"operation_id": shellboy::control::mint_operation_id(&serve.operation_epoch)})
             .to_string().into(),
     ))
     .await
@@ -973,7 +992,7 @@ async fn hints_and_restart_against_a_real_owner() {
     }
     // Collection has no preview at this version, so the bridge refuses it.
     ws.send(Message::Text(
-        json!({"t":"call","id":200,"command":"storage.collect","args":{"category":"raw"},"operation_id": format!("{first_instance}.0:web-it-2")})
+        json!({"t":"call","id":200,"command":"storage.collect","args":{"category":"raw"},"operation_id": shellboy::control::mint_operation_id(&serve.operation_epoch)})
             .to_string()
             .into(),
     ))
@@ -1267,7 +1286,7 @@ async fn schedule_and_service_activity_against_the_pinned_owner() {
     let root = temp_root();
     let data = root.join("data");
     let serve = start_owner(&bin, &root, &data);
-    let op = |name: &str| format!("{}.0:web-schedule-{name}", serve.instance);
+    let op = |name: &str| shellboy::control::mint_operation_id(&serve.operation_epoch);
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
@@ -1482,7 +1501,7 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     let url = mock_provider().await;
     let serve = start_owner_with(&bin, &root, &data, &url);
     let instance = serve.instance.clone();
-    let op = |n: &str| Some(format!("{instance}.0:web-it-{n}"));
+    let op = |n: &str| Some(shellboy::control::mint_operation_id(&serve.operation_epoch));
 
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner.clone(), true).await;
@@ -2070,7 +2089,7 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
     let data = root.join("data");
     let serve = start_owner(&bin, &root, &data);
     let instance = serve.instance.clone();
-    let op = |n: &str| Some(format!("{instance}.0:web-it-{n}"));
+    let op = |n: &str| Some(shellboy::control::mint_operation_id(&serve.operation_epoch));
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
@@ -2184,7 +2203,7 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
     text.push_str(&format!("\n[shell.env]\nMY_VAR = \"{hidden}\"\n"));
     std::fs::write(&path, &text).unwrap();
     let instance = serve.instance.clone();
-    let op = |n: &str| Some(format!("{instance}.0:web-config-{n}"));
+    let op = |n: &str| Some(shellboy::control::mint_operation_id(&serve.operation_epoch));
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner.clone(), true).await;
     let cookie = login(addr, &state).await;
@@ -2423,7 +2442,7 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
     let url = streaming_provider(gate.clone()).await;
     let serve = start_owner_with(&bin, &root, &data, &url);
     let instance = serve.instance.clone();
-    let op = |n: &str| Some(format!("{instance}.0:web-live-{n}"));
+    let op = |n: &str| Some(shellboy::control::mint_operation_id(&serve.operation_epoch));
 
     let owner = Arc::new(IpcOwner::new(data.clone()));
     let (addr, state, cancel) = start(owner.clone(), true).await;
@@ -2636,7 +2655,7 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
             Command::OwnerShutdown(OwnerShutdownArgs {
                 instance_id: "wrong".into(),
             }),
-            Some(format!("{}.0:wrong-shutdown", serve.instance)),
+            Some(shellboy::control::mint_operation_id(&serve.operation_epoch)),
             None,
         )
         .await;
@@ -2650,7 +2669,7 @@ async fn core_management_status_and_shutdown_are_instance_bound() {
             Command::OwnerShutdown(OwnerShutdownArgs {
                 instance_id: serve.instance.clone().into(),
             }),
-            Some(format!("{}.0:correct-shutdown", serve.instance)),
+            Some(shellboy::control::mint_operation_id(&serve.operation_epoch)),
             None,
         )
         .await
@@ -2711,7 +2730,7 @@ async fn message_delivered_wait_and_operation_receipt_match_the_exact_pinned_own
         .as_str()
         .unwrap()
         .to_owned();
-    let operation_id = format!("{}.0:message-delivery-evidence", serve.instance);
+    let operation_id = shellboy::control::mint_operation_id(&serve.operation_epoch);
     let accepted = owner
         .call(
             CoreCommand::MessageSend(MessageSendArgs {
@@ -2907,7 +2926,7 @@ async fn intervention_commands_reach_the_pinned_owner() {
         .ok(
             "thread.create",
             json!({"cwd":root.to_str().unwrap()}),
-            Some(format!("{}.0:intervene-thread", serve.instance)),
+            Some(shellboy::control::mint_operation_id(&serve.operation_epoch)),
         )
         .await["thread_id"]
         .as_str()
@@ -2917,7 +2936,7 @@ async fn intervention_commands_reach_the_pinned_owner() {
         .ok(
             "message.send",
             json!({"thread_id":thread,"text":"start shell"}),
-            Some(format!("{}.0:intervene-send", serve.instance)),
+            Some(shellboy::control::mint_operation_id(&serve.operation_epoch)),
         )
         .await;
     let started = client.wait_running_shell(owner.as_ref(), &thread).await;
@@ -2946,7 +2965,7 @@ async fn intervention_commands_reach_the_pinned_owner() {
         .as_str()
         .expect("foreground live turn")
         .to_owned();
-    let queued_operation = format!("{}.0:held-message-evidence", serve.instance);
+    let queued_operation = shellboy::control::mint_operation_id(&serve.operation_epoch);
     let queued = client
         .call(
             "message.send",
@@ -3144,7 +3163,7 @@ async fn named_ask_history_window_carries_the_saved_model_sender() {
         .ok(
             "thread.create",
             json!({"cwd":root.to_str().unwrap()}),
-            Some(format!("{}.0:named-ask-thread", serve.instance)),
+            Some(shellboy::control::mint_operation_id(&serve.operation_epoch)),
         )
         .await["thread_id"]
         .as_str()
@@ -3154,7 +3173,7 @@ async fn named_ask_history_window_carries_the_saved_model_sender() {
         .ok(
             "message.send",
             json!({"thread_id":thread,"text":"ask the person"}),
-            Some(format!("{}.0:named-ask-send", serve.instance)),
+            Some(shellboy::control::mint_operation_id(&serve.operation_epoch)),
         )
         .await;
     client.settled(&thread).await;

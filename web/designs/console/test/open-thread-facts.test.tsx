@@ -213,7 +213,7 @@ describe("Open Thread facts (#103)", () => {
       const el = draw(model);
       await act(async () => { await settle(t, db); });
       await act(async () => {
-        t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["history.window"] } } });
+        t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", operation_epoch: "fixture.0", capabilities: ["history.window"] } } });
         await settle(t, db);
       });
       expect(model.data.threadRows.value.has("broken")).toBe(true);
