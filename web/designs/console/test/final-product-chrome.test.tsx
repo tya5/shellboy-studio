@@ -29,7 +29,9 @@ it('omits retired retry chrome while retaining failed live text and overflow',as
  try{
   await act(async()=>render(<CurrentSavedView fixture={f}/>,host));
   await act(async()=>{f.t.push({t:'live',thread_id:'lead',attempt_id:'actual-record',gap:false,deltas:[{offset:0,reasoning:false,text:''}]});await flush();
-   for(let index=1;index<=8;index++)f.t.push({t:'live',thread_id:'lead',attempt_id:`overflow-${index}`,gap:false,deltas:[{offset:0,reasoning:false,text:''}]});
+   const budget=f.data.retainedBudget;budget.setLimit(budget.usage.peek().pinned);
+   f.t.push({t:'live',thread_id:'lead',attempt_id:'overflow',gap:false,deltas:[{offset:0,reasoning:false,text:'overflow'}]});
+   budget.setLimit(64*1024*1024);
    f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);});
   expect(host.querySelector('[data-live-record-chrome="handoff:actual-record"]')?.closest('[data-work-group]')).not.toBeNull();
   expect(host.querySelector('[data-live-overflow]')).not.toBeNull();expect(host.querySelector('[role="status"]')).toBeNull();

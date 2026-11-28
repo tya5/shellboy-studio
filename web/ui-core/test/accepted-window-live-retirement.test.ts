@@ -527,11 +527,14 @@ it("handles a detached burst beyond handoff capacity and retires only from the a
       f.owner.append(2);
       if (index > 0) f.producer.advance(attempt);
       f.t.push({ t: "attempt_end", thread_id: "t", attempt_id: attempt, outcome: "adopted", seq: index + 1 });
-      expect(f.handle.handoff.peek()).toHaveLength(Math.min(index + 1, 8));
+      expect(f.handle.handoff.peek()).toHaveLength(index + 1);
     }
     f.owner.append(220);
+    const budget = f.data.retainedBudget;
+    budget.setLimit(budget.usage.peek().pinned);
     f.producer.advance(active);
-    const admitted = burst.slice(0, 8);
+    budget.setLimit(64 * 1024 * 1024);
+    const admitted = burst;
     expect(f.handle.handoffOverflow.peek()).toBe(true);
     expect(f.handle.handoff.peek().map(row => row.attemptId)).toEqual(admitted);
     f.w.jumpToEnd();

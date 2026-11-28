@@ -164,8 +164,8 @@ class ThreadEntry {
   cancel = new Cancel();
   /** Nobody is looking: no reads, and no hints from the bridge. */
   paused = false;
-  constructor(readonly id: string, schedule: Schedule, nextOrdinal: () => number) {
-    this.live = new Handoff(schedule, nextOrdinal);
+  constructor(readonly id: string, schedule: Schedule, nextOrdinal: () => number, budget: RetainedBudget) {
+    this.live = new Handoff(schedule, nextOrdinal, budget);
   }
   get preview(): ReadonlySignal<Preview> {
     return this.live.preview;
@@ -441,7 +441,7 @@ export class ShellboyData {
     if (!entry) {
       if (!this.hintWatchers.has(threadId) && new Set([...this.entries.keys(), ...this.hintWatchers.keys()]).size >= MAX_WATCHED_THREADS)
         throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be open at once`);
-      entry = new ThreadEntry(threadId, this.schedule, nextOrdinal);
+      entry = new ThreadEntry(threadId, this.schedule, nextOrdinal, this.retainedBudget);
       this.entries.set(threadId, entry);
       this.scheduleWatch();
       if (this.canRead()) { this.requestThread(threadId); void this.refreshThreadRows([threadId], false); }
@@ -669,6 +669,7 @@ export class ShellboyData {
         const entry = this.entries.get(f.thread_id);
         if (!entry) break;
         entry.live.finish();
+        if (entry.live.overflow.peek()) entry.historyTick.value++;
         void this.requestThread(f.thread_id, false); // history ownership is reconciled separately
         break;
       }

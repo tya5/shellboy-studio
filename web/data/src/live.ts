@@ -48,9 +48,6 @@ export interface LiveFrame {
   deltas: LiveDelta[];
 }
 
-/** Longest preview kept, in UTF-16 code units. Past it the oldest text goes and the preview is incomplete. */
-export const MAX_PREVIEW_CHARS = 262144;
-
 export const NO_PREVIEW: Preview = { kind: "none" };
 
 export type Schedule = (callback: () => void) => void;
@@ -82,7 +79,7 @@ export class LiveText {
   constructor(private readonly schedule: Schedule) {}
 
   /** A `live` frame. */
-  apply(frame: LiveFrame): void {
+  apply(frame: LiveFrame, admit: (before: string, additional: string) => boolean): void {
     if (frame.attempt_id !== this.attempt || frame.gap) {
       this.attempt = frame.attempt_id;
       this.text = "";
@@ -104,14 +101,10 @@ export class LiveText {
       }
       this.started = true;
       this.end = d.offset + length;
-      if (!d.reasoning) this.text += text;
-    }
-    if (this.text.length > MAX_PREVIEW_CHARS) {
-      let cut = this.text.slice(this.text.length - MAX_PREVIEW_CHARS);
-      const first = cut.charCodeAt(0);
-      if (first >= 0xdc00 && first <= 0xdfff) cut = cut.slice(1); // never start inside a pair
-      this.text = cut;
-      this.incomplete = true;
+      if (!d.reasoning && text) {
+        if (admit(this.text, text)) this.text += text;
+        else this.incomplete = true;
+      }
     }
     this.ending = false;
     this.publishLater();

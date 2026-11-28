@@ -1,6 +1,6 @@
 const nextOrdinal = () => { let ordinal = 0; return () => ++ordinal; };
 import { describe, expect, it } from "vitest";
-import { MAX_PREVIEW_CHARS, type Preview } from "../src/live";
+import { type Preview } from "../src/live";
 import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, ShellboyData, type ListFilter } from "../src/store";
 import { Cancel } from "../src/operations";
 import type { ThreadSummary } from "../src/protocol";
@@ -543,15 +543,15 @@ describe("live text preview", () => {
     expect(h.preview.value).toMatchObject({ text: "abcdef", incomplete: false });
   });
 
-  it("keeps the newest text past the bound and says it is incomplete", async () => {
-    const { t, h, f } = await open();
-    t.push(live([d(0, "x".repeat(MAX_PREVIEW_CHARS))]));
-    t.push(live([d(MAX_PREVIEW_CHARS, "yz")]));
+  it("keeps the admitted preview under byte pressure and reports the gap", async () => {
+    const { t, h, f, data } = await open();
+    data.retainedBudget.setLimit(4096);
+    t.push(live([d(0, "prefix")]));
     f.frame();
-    const p = h.preview.value;
-    expect(p.kind === "live" && p.text.length).toBe(MAX_PREVIEW_CHARS);
-    expect(p.kind === "live" && p.text.endsWith("xyz")).toBe(true);
-    expect(p.kind === "live" && p.incomplete).toBe(true);
+    t.push(live([d(6, "界".repeat(4096))]));
+    f.frame();
+    expect(h.preview.value).toMatchObject({ kind: "live", text: "prefix", incomplete: true });
+    expect(h.handoffOverflow.value).toBe(true);
   });
 });
 
