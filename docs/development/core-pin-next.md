@@ -1,6 +1,6 @@
 # Core main preparation (Studio #152 / #151)
 
-Core `16252a62f424de939277109bb7489bb902080b1c`, protocol 51 (`docs/reference/protocol.schema.json` `$id` `protocol-v51`). This is a Core main snapshot, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
+Core `2e99cbe276863d6623729ff5c51c89008ad79899`, protocol 51 (`docs/reference/protocol.schema.json` `$id` `protocol-v51`). This is a Core main snapshot, not a published tag. Cargo.toml and Cargo.lock pin this exact commit. Studio v0.4.4 remains pinned separately; this stacked branch prepares the next pin and is not a release.
 
 | Core change | Studio adoption |
 | --- | --- |
