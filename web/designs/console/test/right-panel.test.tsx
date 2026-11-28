@@ -2,7 +2,7 @@ import { pendingReply } from "../../../data/test/harness";
 // @vitest-environment happy-dom
 import '@preact/signals';
 import { signal } from '@preact/signals-core';
-import { options, render } from 'preact';
+import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 // @ts-ignore -- node built-in, no Node types in the browser build
@@ -13,7 +13,6 @@ import type { DesignContext, Prefs } from '../../../ui-core/src';
 import { DESIGNS } from '../../registry';
 import { loadPrefs, savePrefs, type PrefStore } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
-import { ClockElapsed } from '../screens/clock-display';
 
 const layoutCss=readFileSync('designs/console/system/layout.css','utf8').replace(/\/\*[\s\S]*?\*\//g,'');
 /** layout.css as a browser applies it in a container of `width`; happy-dom does not evaluate container queries. */
@@ -88,30 +87,29 @@ describe('right panel purpose',()=>{
   const work = f.host.querySelector('[data-panel-list="work"]')!;
   const at = Date.parse('2026-11-21T00:00:00Z');
   const row = work.querySelector('[data-panel-row-id="shell-running"]')!;
-  let renders = 0;
-  const previous = options.diffed;
-  options.diffed = vnode => {
-   previous?.(vnode);
-   const props = vnode.props as Partial<Parameters<typeof ClockElapsed>[0]>;
-   // Conversation status also shows this shell, but it does not use the keyed panel subtitle.
-   if (vnode.type === ClockElapsed && vnode.key === "elapsed" && props.started === at && props.clock === f.model.now) renders++;
-  };
+  const root = work.closest('[data-panel-root]')!;
+  const delivered: MutationRecord[] = [];
+  const observer = new MutationObserver(records => delivered.push(...records));
+  observer.observe(root, { childList: true, characterData: true, attributes: true, subtree: true });
+  const mutations = () => [...delivered.splice(0), ...observer.takeRecords()];
   try {
    await act(() => { f.model.now.value = at + 5_000; });
    const before = row.textContent;
-   renders = 0;
+   mutations();
    await act(() => { f.model.now.value = at + 15_000; });
-   expect(renders).toBeGreaterThan(0);
+   expect(mutations().length).toBeGreaterThan(0);
    expect(row.textContent).not.toBe(before);
    const visible = row.textContent;
    await act(() => { f.context.setPrefs({ panelCollapsed: true }); });
-   renders = 0;
+   expect(f.host.querySelector('[data-panel-root]')).toBe(root);
+   mutations();
    await act(() => { f.model.now.value = at + 65_000; });
-   expect(renders).toBe(0);
+   expect(mutations()).toHaveLength(0);
    await act(() => { f.context.setPrefs({ panelCollapsed: false }); });
-   expect(renders).toBeGreaterThan(0);
-   expect(row.textContent).not.toBe(visible);
-  } finally { options.diffed = previous; f.model.dispose(); }
+   const reopened = root.querySelector('[data-panel-list="work"] [data-panel-row-id="shell-running"]');
+   expect(reopened?.textContent).toBeTruthy();
+   expect(reopened?.textContent).not.toBe(visible);
+  } finally { observer.disconnect(); f.model.dispose(); }
  });
 
  it.each([1280,390])('reads definitions on hints and uses exact Activity commands at %i', async width => {
