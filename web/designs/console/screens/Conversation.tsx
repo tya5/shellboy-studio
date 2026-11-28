@@ -615,7 +615,7 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
         {senderDisplay.claim ? <div>{senderDisplay.claim}</div> : null}
       </div> : senderDisplay.claim ? <div class="caption">{senderDisplay.claim}</div> : null}
-      {(row.truncated || bodyPartial) && body?.text === undefined ? (
+      {((row.truncated || bodyPartial) && body?.text === undefined || body?.budgetLimited) ? (
         <span class="more">
           {bodyUnavailable ? <span class="muted caption" data-body-unavailable="">{t("work.textUnavailable")}</span> : <Button variant="ghost" onClick={() => void model.loadBody(row.id, nodeAuthoritative ? { kind: "typed", identity: undefined } : row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
             {body?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}
@@ -859,11 +859,12 @@ function PanelDetail({ model, tabLabel, onBack, artifactPlatform, visible }: { v
   const bodyEpoch = bodyHandle?.liveEpochSignal.value;
   const bodyReader = model.longReader.value;
   const bodyRoute = model.route.value;
-  const detailBodies = useMemo(() => new HistoryBodies(1), [model, bodyId, bodyHandle, bodyEpoch, bodyReader, bodyRoute]);
+  const detailBodies = useMemo(() => new HistoryBodies(model.retainedBodies), [model, bodyId, bodyHandle, bodyEpoch, bodyReader, bodyRoute]);
   useEffect(() => {
     if (!bodyId) return;
+    const unpin = detailBodies.pin(HistoryBodies.key(bodyId));
     void model.loadBody(bodyId, undefined, detailBodies);
-    return () => detailBodies.dispose();
+    return () => { detailBodies.dispose(); unpin(); };
   }, [model, bodyId, detailBodies]);
   const detailBody = bodyId === undefined ? undefined : detailBodies.get(bodyId);
   const elapsed = useStepDuration(model, step, visible && detail?.kind === "step");

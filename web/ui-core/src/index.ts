@@ -35,3 +35,5 @@ export * from "./guide-registration";
 
 export * from "./branch-compare";
 export * from "./branch-lanes";
+
+export { DEFAULT_RETAINED_BYTES } from "../../data/src";

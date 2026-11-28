@@ -1,4 +1,4 @@
-import { HistoryBodies, type BodyState } from "./history-bodies";
+import { HistoryBodies, RetainedBodies, type BodyState } from "./history-bodies";
 export type { BodyState } from "./history-bodies";
 import { readThreadSettings } from "./resources";
 import { readCompactionEvent, type CompactionEvent } from "./analytics";
@@ -233,6 +233,7 @@ export class AppModel {
   readonly coreActivityThread = signal<string>();
   readonly coreShutdownRefusal = signal<{ instance: string; message: string }>();
   readonly data: ShellboyData;
+  readonly retainedBodies: RetainedBodies;
   readonly ops: Operations;
   readonly pending: PendingAdapter;
   readonly replyPages: ReplyPages;
@@ -394,6 +395,14 @@ export class AppModel {
   constructor(options: AppModelOptions) {
     this.unreadPreferences = options.unreadPreferences;
     this.data = options.data;
+    this.retainedBodies = new RetainedBodies(this.data.retainedBudget);
+    this.disposers.push(() => this.retainedBodies.clear());
+    let bodyOwner: string | undefined;
+    this.disposers.push(effect(() => {
+      const owner = this.data.owner.value;
+      const instance = owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined;
+      if (instance !== bodyOwner) { bodyOwner = instance; this.retainedBodies.clear(); }
+    }));
     this.attachmentSection = new AttachmentSection(this.data);
     this.artifacts = new ArtifactObservation(this.data);
     this.ops = options.data.operations;
@@ -824,7 +833,7 @@ export class AppModel {
     if (!this.longReader.peek()) {
       this.readerThread = h.threadId;
       this.readerTick = h.historyTick.peek();
-      const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
+      const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) }, { bodyStore: this.retainedBodies });
       reader.bindCurrentThread(h);
       reader.bindConversationInput((snapshot, replacement, retiring) => this.captureWindowConversation(reader, h, snapshot, replacement, retiring),
         snapshot => this.applyCommittedOwnRegion(reader, h, snapshot));
@@ -1107,7 +1116,7 @@ export class AppModel {
     const cacheKey = HistoryBodies.key(nodeId, expected?.identity);
     const position = { nodeId, ordinal: panel ? undefined : reader?.acceptedView.peek().rows.find(row => row.node_id === nodeId)?.selection?.ordinal };
     const tokens = bodies.reads;
-    const set = (body: BodyState | undefined) => bodies.set(cacheKey, position, body);
+    const set = (body: BodyState | undefined) => bodies.set(cacheKey, body);
     const autoQualified = () => {
       if (reader === undefined) return false;
       const snapshot = reader.acceptedView.peek();
@@ -1118,6 +1127,11 @@ export class AppModel {
     if (expected?.kind === "typed" && reader !== undefined) {
       const row = reader.acceptedView.peek().rows.find(row => row.node_id === nodeId);
       if (!row || !row.items || row.items.length === 0 || !row.items.every(item => item.kind === "text") || expected.handle !== undefined && !autoQualified()) return;
+    }
+    const cached = bodies.peek(cacheKey);
+    if (cached?.text !== undefined && !cached.loading && cached.error === undefined && cached.continuation === undefined && !cached.budgetLimited) {
+      bodies.touch(cacheKey);
+      return;
     }
     // One cache-slot owner; a manual click upgrades that token without a second RPC.
     const existing = tokens.get(cacheKey);
@@ -1138,19 +1152,24 @@ export class AppModel {
         : false));
     const current = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
-    set({ text: undefined, loading: true, error: undefined });
-    let text = "";
-    let cursor: string | undefined;
+    const unpin = bodies.pin(cacheKey);
+    let text = cached?.text ?? "";
+    let cursor = cached?.continuation;
+    const stop = token.cancel.add(() => {
+      if (bodies.peek(cacheKey)?.loading) set(cached);
+      unpin();
+    });
     try {
-      for (let page = 0; page < MAX_PAGES; page++) {
-        if (!current() || !qualified() || tokens.get(cacheKey) !== token) {
+      if (!set({ text: cached?.text, loading: true, error: undefined, continuation: cursor })) return;
+      for (;;) {
+        if (token.cancel.cancelled || !current() || !qualified() || tokens.get(cacheKey) !== token) {
           if (tokens.get(cacheKey) === token && bodies.peek(cacheKey)?.loading) {
             set(undefined);
           }
           return;
         }
         const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: token.cancel });
-        if (!current() || !qualified() || tokens.get(cacheKey) !== token) {
+        if (token.cancel.cancelled || !current() || !qualified() || tokens.get(cacheKey) !== token) {
           if (tokens.get(cacheKey) === token && bodies.peek(cacheKey)?.loading) {
             set(undefined);
           }
@@ -1164,12 +1183,23 @@ export class AppModel {
           set({ text: undefined, loading: false, error: "history body node mismatch" });
           return;
         }
-        text += out.value.text;
-        cursor = out.value.next_cursor;
-        if (cursor === undefined) break;
+        const next = text + out.value.text;
+        const continuation = out.value.next_cursor;
+        if (!set({ text: next, loading: continuation !== undefined, error: undefined, continuation })) {
+          set({ text: cursor === undefined ? undefined : text, loading: false, error: undefined, continuation: cursor, budgetLimited: true });
+          return;
+        }
+        text = next;
+        if (continuation === undefined) return;
+        if (continuation === cursor) {
+          set({ text, loading: false, error: "History body continuation did not advance", continuation: cursor });
+          return;
+        }
+        cursor = continuation;
       }
-      if (current() && qualified() && tokens.get(cacheKey) === token) set({ text, loading: false, error: undefined });
     } finally {
+      stop();
+      unpin();
       forget?.();
       if (tokens.get(cacheKey) === token) tokens.delete(cacheKey);
     }

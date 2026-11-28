@@ -2,7 +2,7 @@ import { showAuthMode } from "./auth-mode";
 // Entry point: session exchange, preferences, routing to the fragment, the selected design.
 // The only module that touches browser globals besides the WebSocket transport and the design.
 import { effect, signal } from "@preact/signals-core";
-import { defaultBridgeUrl, ShellboyData, WebSocketTransport } from "../data/src";
+import { DEFAULT_RETAINED_BYTES, defaultBridgeUrl, ShellboyData, WebSocketTransport } from "../data/src";
 import { DESIGNS } from "../designs/registry";
 import { AppModel, loadPrefs, parseRoute, savePrefs, type DesignContext, type Prefs, type PrefStore } from "../ui-core/src";
 
@@ -72,6 +72,7 @@ async function main(): Promise<void> {
     transport: new WebSocketTransport({ url: defaultBridgeUrl }),
     schedule: (callback) => void requestAnimationFrame(() => callback()),
   });
+  effect(() => data.retainedBudget.setLimit(prefs.value.retainedDataBudgetBytes ?? DEFAULT_RETAINED_BYTES));
   effect(() => { if (data.connection.value === "open") void showAuthMode(); });
   const model = new AppModel({
     data,

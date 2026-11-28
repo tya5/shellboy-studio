@@ -1,4 +1,5 @@
-import { HistoryBodies } from "./history-bodies";
+import { RetainedBudget } from "../../data/src/retained-budget";
+import { HistoryBodies, RetainedBodies } from "./history-bodies";
 import type { HistoryWindowInput } from '../../data/src/history-input';
 import { captureConversationInput, conversationIdentityEqual, savedAttemptIds, captureCurrentWork, type ConversationIdentity, type ConversationSemanticInput } from "./conversation-input";
 import type { ThreadHandle } from "../../data/src/store";
@@ -26,6 +27,7 @@ export interface WindowReader {
   read(args: WindowReadArgs, cancel: Cancel): Promise<Outcome<HistoryWindowInput>>;
 }
 export interface WindowOptions {
+  bodyStore?: RetainedBodies;
   /** Defaults to `setTimeout`; returns the canceller. */
   setTimer?: (fn: () => void, ms: number) => () => void;
 }
@@ -99,7 +101,7 @@ type AdoptedBeforeRead = { handle: ThreadHandle; epoch: number; ids: ReadonlySet
 type PreparedConversationPublication = { retiring?: ReadonlySet<string>; replacement: boolean; publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
 
 export class ConversationWindow {
-  readonly bodies = new HistoryBodies(64);
+  readonly bodies: HistoryBodies;
   private reader: WindowReader;
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
   private buckets = new Map<number, Bucket>();
@@ -146,6 +148,7 @@ export class ConversationWindow {
   total = 0;
 
   constructor(reader: WindowReader, options: WindowOptions = {}) {
+    this.bodies = new HistoryBodies(options.bodyStore ?? new RetainedBodies(new RetainedBudget()));
     this.reader={read:async(args,cancel)=>{
       const out=await reader.read(args,cancel);
       if(!this.disposed&&!out.ok&&out.error.kind==='invalid_response'){

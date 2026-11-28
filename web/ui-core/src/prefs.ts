@@ -19,6 +19,7 @@ export interface Prefs {
   sidebarOpenParents?: string[];
   sidebarUnread?: UnreadRecord[];
   guideOptOut?: boolean;
+  retainedDataBudgetBytes?: number;
   /** Opt in to the rolling Analytics previous-period read. */
   analyticsCompare?: boolean;
   /** Effective-token weights. The reader's own; they are not prices. */
@@ -59,6 +60,18 @@ export function readWeights(v: unknown): Weights {
   return { cached: validWeight(o.cached) ? o.cached : DEFAULT_WEIGHTS.cached, output: validWeight(o.output) ? o.output : DEFAULT_WEIGHTS.output };
 }
 
+export const RETAINED_MIB = 1024 * 1024;
+
+export function parseRetainedBudgetMiB(value: string): number | undefined {
+  if (!/^\d+$/.test(value)) return;
+  const bytes = Number(value) * RETAINED_MIB;
+  if (validRetainedBytes(bytes)) return bytes;
+}
+
+function validRetainedBytes(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= RETAINED_MIB && value % RETAINED_MIB === 0;
+}
+
 export function loadPrefs(store: PrefStore, designs: readonly DesignChoice[]): Prefs {
   let saved: Partial<Prefs> = {};
   try {
@@ -72,7 +85,7 @@ export function loadPrefs(store: PrefStore, designs: readonly DesignChoice[]): P
   const theme = design.themes.find((t) => t.name === saved.theme) ?? design.themes[0];
   if (!theme) throw new Error(`design ${design.name} has no theme`);
   const sidebarKeys = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((key): key is string => typeof key === "string" && key.length <= 4096))].slice(0, 1000) : [];
-  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", navCollapsed: saved.navCollapsed === true, panelCollapsed: saved.panelCollapsed === true, ...(typeof saved.sidebarWidth === "number" && Number.isFinite(saved.sidebarWidth) ? { sidebarWidth: readSidebarWidth(saved.sidebarWidth) } : {}), ...(typeof saved.rightPanelWidth === "number" && Number.isFinite(saved.rightPanelWidth) ? { rightPanelWidth: readRightPanelWidth(saved.rightPanelWidth) } : {}), sidebarClosedGroups: sidebarKeys(saved.sidebarClosedGroups), sidebarOpenGroups: sidebarKeys(saved.sidebarOpenGroups), sidebarOpenParents: sidebarKeys(saved.sidebarOpenParents), sidebarUnread: readUnreadRecords(saved.sidebarUnread), guideOptOut: saved.guideOptOut === true, analyticsCompare: saved.analyticsCompare === true, weights: readWeights(saved.weights) };
+  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", navCollapsed: saved.navCollapsed === true, panelCollapsed: saved.panelCollapsed === true, ...(typeof saved.sidebarWidth === "number" && Number.isFinite(saved.sidebarWidth) ? { sidebarWidth: readSidebarWidth(saved.sidebarWidth) } : {}), ...(typeof saved.rightPanelWidth === "number" && Number.isFinite(saved.rightPanelWidth) ? { rightPanelWidth: readRightPanelWidth(saved.rightPanelWidth) } : {}), sidebarClosedGroups: sidebarKeys(saved.sidebarClosedGroups), sidebarOpenGroups: sidebarKeys(saved.sidebarOpenGroups), sidebarOpenParents: sidebarKeys(saved.sidebarOpenParents), sidebarUnread: readUnreadRecords(saved.sidebarUnread), guideOptOut: saved.guideOptOut === true, analyticsCompare: saved.analyticsCompare === true, ...(validRetainedBytes(saved.retainedDataBudgetBytes) ? { retainedDataBudgetBytes: saved.retainedDataBudgetBytes } : {}), weights: readWeights(saved.weights) };
 }
 
 export function savePrefs(store: PrefStore, prefs: Prefs): void {

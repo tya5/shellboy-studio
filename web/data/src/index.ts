@@ -16,3 +16,5 @@ export * from "./human-inbox";
 
 export * from "./artifacts";
 export * from "./activity";
+
+export { DEFAULT_RETAINED_BYTES } from "./retained-budget";

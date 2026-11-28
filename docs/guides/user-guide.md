@@ -324,3 +324,12 @@ Studio はループバックのまま、別の端末から届くプライベー�
 
 
 Core に接続できない場合は、同じ OS アカウントで起動したか、データディレクトリが一致するか、リリースノートどおりの組み合わせかを確認します。古いプロトコルへの切り替えはありません。不一致を解消するためにデータを初期化したり、作業中のオーナーを無断で再起動したりしないでください。配布物があるだけでは実機検証済みとはいえません。検証範囲はリリースノートを参照してください。
+
+### Studio retained data
+
+In Settings > Studio > Application information, **Retained data budget (MiB)**
+sets how much reusable data each Studio tab can keep. The default is 64 MiB.
+The preference is saved in this browser, independently of Core settings.
+Studio keeps data that is in use pinned and evicts the least recently used
+unpinned data first. The displayed accounted and pinned totals estimate retained
+data; they are not measurements of the browser's memory use.

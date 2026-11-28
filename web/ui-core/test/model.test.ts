@@ -1,3 +1,4 @@
+import { HistoryBodies } from "../src/history-bodies";
 import { computed } from "@preact/signals-core";
 import { describe, expect, it, vi } from "vitest";
 import { connected, flush, settle, summary } from "../../data/test/harness";
@@ -97,7 +98,7 @@ describe("AppModel over the fake transport", () => {
     } finally { model.dispose(); }
   });
 
-  it("releases a fetched body and cancels a read when scrolling retires their rows", async () => {
+  it("retains a fetched body but cancels a read when scrolling retires their rows", async () => {
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = Array.from({ length: 2_000 }, (_, ordinal) => ({ node_id: `row-${ordinal}`, kind: "user_message", selection: { ordinal } }));
     }});
@@ -119,42 +120,85 @@ describe("AppModel over the fake transport", () => {
         await settle(t, db);
       }
       expect(reader.isLoaded(1999)).toBe(false);
-      expect(model.bodyState("row-1999")?.text).toBeUndefined();
+      expect(model.bodyState("row-1999")?.text).toBe("expanded body");
       expect(t.cancels()).toContain(held.id);
       await pending;
     } finally { model.dispose(); }
   });
 
-  it("releases a fetched body when its conversation window exits", async () => {
-    const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
+  it("reuses a resident body after leaving and revisiting its conversation", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
     try {
-      const reader = model.longReader.peek()!;
       const pending = model.loadBody("savedassistant");
       await flush();
-      t.ok(t.calls("history.read").at(-1)!.id, { node_id: "savedassistant", kind: "assistant_response", text: "expanded body" });
+      const first = t.calls("history.read").at(-1)!;
+      db.answered.add(first.id);
+      t.ok(first.id, { node_id: "savedassistant", kind: "assistant_response", text: "expanded body" });
       await pending;
       expect(model.bodyState("savedassistant")?.text).toBe("expanded body");
       model.navigate({ view: "analytics" });
-      expect(reader.bodies.get("savedassistant")).toBeUndefined();
+      model.openThread("lead");
+      await settle(t, db);
+      const before = t.calls("history.read").length;
+      await model.loadBody("savedassistant");
+      expect(t.calls("history.read")).toHaveLength(before);
+      expect(model.bodyState("savedassistant")?.text).toBe("expanded body");
+    } finally { model.dispose(); }
+  });
+
+  it("keeps an open detail under byte pressure and refetches only an evicted body", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+      owner.history.lead = ["detail", "cold", "incoming"].map((node_id, ordinal) => ({ node_id, kind: "user_message", selection: { ordinal } }));
+    }});
+    try {
+      const budget = model.data.retainedBudget;
+      const read = async (nodeId: string) => {
+        const before = t.calls("history.read").length;
+        const pending = model.loadBody(nodeId);
+        await flush();
+        expect(t.calls("history.read")).toHaveLength(before + 1);
+        const call = t.calls("history.read").at(-1)!;
+        expect(call.args).toMatchObject({ node_id: nodeId });
+        db.answered.add(call.id);
+        t.ok(call.id, { node_id: nodeId, kind: "user_message", text: "a".repeat(256) });
+        await pending;
+      };
+      await read("detail");
+      const unpin = model.longReader.peek()!.bodies.pin(HistoryBodies.key("detail"));
+      try {
+        await read("cold");
+        budget.setLimit(budget.usage.peek().used + 64);
+        await read("incoming");
+        expect(model.bodyState("detail")?.text).toHaveLength(256);
+        expect(model.bodyState("cold")).toBeUndefined();
+        const before = t.calls("history.read").length;
+        await model.loadBody("detail");
+        expect(t.calls("history.read")).toHaveLength(before);
+        await read("cold");
+        expect(model.bodyState("incoming")).toBeUndefined();
+        expect(model.bodyState("detail")?.text).toHaveLength(256);
+      } finally { unpin(); }
     } finally { model.dispose(); }
   });
 
   it("rejects a late full-body fetch after navigation cancellation", async () => {
-    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
-      owner.history.lead = [{ node_id: "savedassistant", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "prefix", text_complete: false }] }];
+    const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+      owner.history.lead = [{ node_id: "manual-user", kind: "user_message", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "prefix", text_complete: false }] }];
       owner.historyRevisions.lead = 2;
     }});
     try {
-      const pending = model.loadBody("savedassistant");
+      expect(t.calls("history.read")).toHaveLength(0);
+      const pending = model.loadBody("manual-user");
       const reader = model.longReader.peek()!;
       await flush();
       const call = t.calls("history.read").at(-1);
       expect(call).toBeDefined();
-      expect(call!.args).toMatchObject({ node_id: "savedassistant" });
+      expect(call!.args).toMatchObject({ node_id: "manual-user" });
       model.navigate({ view: "analytics" });
-      t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "late full body" });
+      expect(t.cancels()).toContain(call!.id);
+      t.ok(call!.id, { node_id: "manual-user", kind: "user_message", text: "late full body" });
       await pending;
-      expect(reader.bodies.get("savedassistant")?.text).toBeUndefined();
+      expect(reader.bodies.get("manual-user")?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 

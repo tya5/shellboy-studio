@@ -1,3 +1,4 @@
+import { RetainedBudget } from "./retained-budget";
 import type { DefinitionKind, ShellDefinition } from "./schedules";
 import type { HistoryWindowInput } from './history-input';
 import { Handoff, type HandoffRecord } from "./handoff";
@@ -293,6 +294,8 @@ export class ShellboyData {
   readonly activeThreadIds: ReadonlySignal<readonly string[]>;
   readonly inboxThreadIds: ReadonlySignal<readonly string[]>;
   readonly listFilter: ReadonlySignal<ListFilter>;
+
+  readonly retainedBudget = new RetainedBudget();
 
   constructor(options: DataOptions) {
     this.link = new Link(options.transport);

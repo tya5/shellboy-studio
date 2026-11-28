@@ -1,10 +1,12 @@
 import { CoreSettings } from "./CoreSettings";
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { GuideRegistrationView, guideSearchRows } from "./GuideRegistration";
-import { CAPABILITY_CONFIG, CONFIG_FIELDS, fieldOf, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, translator, type ConfigKey, type MessageKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
+import { CAPABILITY_CONFIG, DEFAULT_RETAINED_BYTES, RETAINED_MIB, parseRetainedBudgetMiB, CONFIG_FIELDS, fieldOf, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, translator, type ConfigKey, type MessageKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
 import { Button } from "../system/components/Button";
 import { CopyButton } from "../system/components/CopyButton";
 import { EffortControl } from "../system/components/ModelPicker/EffortControl";
+import { Field } from "../system/components/Field";
+import { SettingRow } from "../system/components/SettingRow";
 import { FactList, type Fact } from "../system/components/FactList";
 import { Notice } from "../system/components/Notice";
 import { PageHeader } from "../system/components/PageHeader";
@@ -117,7 +119,8 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "appearance":
         rows.set(section, appearanceSearchRows(context));
         return <Section title={t("set.section.appearance")}><AppearanceChoices context={context} searchable /></Section>;
-      case "studio":
+      case "studio": {
+        const retained = search("studio.retained-budget", "studio.retainedBudget", ["studio.retainedHelp"]);
         search("studio.startup", "studio.startup.open", ["studio.startup.hint"]);
         return <>
           <LoginStartup t={t} />
@@ -130,8 +133,9 @@ export function SettingsView({ context }: { context: DesignContext }) {
           </Section>
           <Section settingId={search("studio.remote", "studio.remote", ["studio.remoteGuide"]).settingId} title={t("studio.remote")} sub={t("studio.remoteGuide")}><FactList missing={missing} facts={[{ ...search("studio.fact.listen", "studio.listen"), value: model.data.listen.value, mono: true }]} /><p><code>shellboy-studio guide user</code></p><p><code>shellboy-studio --allow-host HOSTNAME</code></p><p>{t("studio.hostGuide")}</p></Section>
           <Section settingId={search("studio.token", "studio.token", ["studio.tokenGuide"]).settingId} title={t("studio.token")}><p>{t("studio.tokenGuide")}</p></Section>
-          <Section settingId={search("studio.info", "studio.info").settingId} title={t("studio.info")}><FactList missing={missing} facts={[{ ...search("studio.fact.version", "studio.version"), value: model.data.bridgeVersion.value, mono: true }, { ...search("studio.fact.ownerVersion", "studio.ownerVersion") }]} /></Section>
+          <Section settingId={search("studio.info", "studio.info").settingId} title={t("studio.info")}><RetainedBudgetSetting context={context} settingId={retained.settingId} /><FactList missing={missing} facts={[{ ...search("studio.fact.version", "studio.version"), value: model.data.bridgeVersion.value, mono: true }, { ...search("studio.fact.ownerVersion", "studio.ownerVersion") }]} /></Section>
         </>;
+      }
       case "index":
         return <>
         <Notice tone="wait">{t("set.index.cost")}</Notice>
@@ -152,4 +156,33 @@ export function SettingsView({ context }: { context: DesignContext }) {
     {section !== "studio" && section !== "agent" && section !== "core" ? <ConfigPanel model={model} /> : null}
     {bodies.get(section)}
   </SubView>;
+}
+
+function RetainedBudgetSetting({ context, settingId }: { context: DesignContext; settingId: string }) {
+  const t = context.model.t.value;
+  const budget = context.model.data.retainedBudget;
+  const { used, pinned } = budget.usage.value;
+  const bytes = context.prefs.value.retainedDataBudgetBytes ?? DEFAULT_RETAINED_BYTES;
+  const shown = String(bytes / RETAINED_MIB);
+  const [draft, setDraft] = useState<string>();
+  const invalid = draft !== undefined && parseRetainedBudgetMiB(draft) === undefined;
+  const label = t("studio.retainedBudget");
+  const display = new Intl.NumberFormat(context.prefs.value.lang, { maximumFractionDigits: 2 });
+  const mib = (value: number) => display.format(value / RETAINED_MIB);
+  const commit = (value: string) => {
+    const next = parseRetainedBudgetMiB(value);
+    if (next === undefined) return;
+    if (next !== bytes) context.setPrefs({ retainedDataBudgetBytes: next });
+    setDraft(undefined);
+  };
+  return <>
+    <SettingRow settingId={settingId} label={label} description={t("studio.retainedHelp")}
+      feedback={invalid ? t("studio.retainedInvalid") : undefined}
+      control={<Field ariaLabel={label} inputMode="numeric" value={draft ?? shown}
+        onInput={event => setDraft(event.currentTarget.value)}
+        onBlur={event => commit(event.currentTarget.value)}
+        onKeyDown={event => { if (event.key === "Enter") commit(event.currentTarget.value); if (event.key === "Escape") setDraft(undefined); }} />}
+    />
+    <FactList missing="" facts={[{ label: t("studio.retainedUsed"), value: `${mib(used)} / ${mib(bytes)} MiB` }, { label: t("studio.retainedPinned"), value: `${mib(pinned)} MiB` }]} />
+  </>;
 }
