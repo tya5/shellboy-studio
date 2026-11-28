@@ -147,6 +147,9 @@ listed, and the manual path remains available. The AGENTS.md guidance is
 collapsed at the bottom of the library.
 
 With no selected Thread (#176), Apps uses a Core `artifact.list` page with
-`scheme: shellboy-app` and no `thread_id`. The gateway reads the distinct owning
-Thread titles for that page only and returns the Core cursor unchanged. List hints
-reread the global page; there is no cross-Thread registry or list merge.
+`scheme: shellboy-app` and no `thread_id`. Core projects each owning Thread title in the same owner read that selects page
+membership and order; the gateway returns those titles and the opaque Core cursor
+without a second title lookup. List hints reconcile exactly the number of displayed
+Core pages (plus one admitted Show more page), so removed entries disappear without
+scanning to the end. One active reader per scope coalesces concurrent hints into at
+most one follow-up pass. There is no cross-Thread registry or list merge.

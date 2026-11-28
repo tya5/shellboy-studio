@@ -1497,22 +1497,26 @@ describe("Apps", () => {
     expect([...el.querySelectorAll(".card h2")].map(text)).toEqual(["First", "Later"]);
     expect(more()).toBeUndefined();
   });
-  it("lists all apps with owner titles and rereads after an archive hint", async () => {
+  it("reconciles archived displayed apps by page count and keeps the next page unloaded", async () => {
     const { model, t, db } = await fixtureModel({ route: "inbox" });
     const plain = db.answer;
     let archived = false;
     const a = { name: "a", title: "Board A", thread: "outside-a", thread_title: "Owner A" };
     const b = { name: "b", title: "Board B", thread: "outside-b", thread_title: "Owner B" };
-    db.answer = (c) => {
-      if (c.command !== "apps.list") return plain(c);
-      const args = c.args as { thread?: string; cursor?: string };
-      expect(args.thread).toBeUndefined();
-      return { ok: true, result: archived ? { apps: [a] } : args.cursor === "next" ? { apps: [a] } : { apps: [b], next_cursor: "next" } };
+    const c = { name: "c", title: "Board C", thread: "outside-c", thread_title: "Owner C" };
+    const d = { name: "d", title: "Board D", thread: "outside-d", thread_title: "Owner D" };
+    db.answer = (call) => {
+      if (call.command !== "apps.list") return plain(call);
+      const cursor = (call.args as { cursor?: string }).cursor;
+      if (!archived) {
+        return { ok: true, result: cursor === "p2" ? { apps: [a], next_cursor: "p3" } : cursor === "p3" ? { apps: [c] } : { apps: [b], next_cursor: "p2" } };
+      }
+      return { ok: true, result: cursor === "p2" ? { apps: [c], next_cursor: "p3" } : cursor === "p3" ? { apps: [d] } : { apps: [a], next_cursor: "p2" } };
     };
     const el = draw(model);
     await act(async () => { model.applyRoute({ view: "apps" }); await settle(t, db); });
     const cards = () => [...el.querySelectorAll(".card")].map(text);
-    expect(cards()[0]).toContain("Owner B");
+    expect(cards()).toEqual([expect.stringContaining("Owner B")]);
     await act(async () => {
       [...el.querySelectorAll("button")].find((button) => button.textContent === model.t.value("apps.more"))!.click();
       await settle(t, db);
@@ -1520,7 +1524,9 @@ describe("Apps", () => {
     expect(cards()).toEqual([expect.stringContaining("Owner B"), expect.stringContaining("Owner A")]);
     archived = true;
     await act(async () => { t.push({ t: "changed", thread_ids: ["outside-b"], list: true, config_changed: false }); await settle(t, db); });
-    expect(cards()).toEqual([expect.stringContaining("Owner A")]);
+    expect(cards()).toEqual([expect.stringContaining("Owner A"), expect.stringContaining("Owner C")]);
+    expect([...el.querySelectorAll("button")].some((button) => button.textContent === model.t.value("apps.more"))).toBe(true);
+    expect(cards().some((card) => card.includes("Owner D"))).toBe(false);
   });
   it("does not say there are no apps while a first page without apps has a next page", async () => {
     const { model, t, db } = await fixtureModel({ route: "inbox" });

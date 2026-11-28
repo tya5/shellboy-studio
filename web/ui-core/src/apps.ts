@@ -20,6 +20,8 @@ export interface AppListState {
   apps: AppInfo[];
   /** Core's cursor for the next page; undefined when all were read. */
   next: string | undefined;
+  /** Number of Core pages represented by the displayed list. */
+  pages: number;
   /** A Show more read is in flight. */
   loadingMore: boolean;
   error: OpError | undefined;
@@ -89,7 +91,7 @@ export function errorReportText(app: Pick<OpenApp, "name" | "title">, errors: re
 }
 
 export class AppsModel {
-  readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, thread: undefined, apps: [], next: undefined, loadingMore: false, error: undefined });
+  readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, thread: undefined, apps: [], next: undefined, pages: 0, loadingMore: false, error: undefined });
   readonly tabs: Signal<readonly OpenApp[]> = signal([]);
   readonly instances: Signal<Readonly<Record<string, readonly string[]>>> = signal({});
   readonly openError: Signal<{ name: string; message: string } | undefined> = signal(undefined);
@@ -113,7 +115,7 @@ export class AppsModel {
 
   constructor(private readonly ops: Operations) {}
 
-  private listGeneration = 0;
+  private reconciliations = new Map<string, { dirty: boolean; more: boolean; promise: Promise<void> }>();
   private globalHint: number | undefined;
 
   /** Read the active scope on entry and reread the global page on an owner list hint. */
@@ -124,62 +126,78 @@ export class AppsModel {
     if (changed || s.thread !== thread || (!s.loaded && !s.loading && (s.error === undefined || s.error.kind === "not_connected" || s.error.kind === "connection_lost"))) void this.refresh(thread);
   }
 
-  /** Reads the Thread's `shellboy-app:` artifacts through the gateway, so a new one shows at once. */
-  async refresh(thread: string | undefined): Promise<void> {
-    const generation = ++this.listGeneration;
-    // The list belongs to the Thread it was read for: another Thread's cards never wait under this one.
-    const before = this.list.peek();
-    const global = thread === undefined && before.thread === undefined;
-    const preserveMore = global && before.loadingMore;
-    const keepNames = global ? new Set(before.apps.map((app) => app.name)) : new Set<string>();
-    this.list.value = before.thread === thread ? { ...before, loading: true } : { loading: true, loaded: false, thread, apps: [], next: undefined, loadingMore: false, error: undefined };
-    const apps: AppInfo[] = [];
-    const seen = new Set<string>();
-    let cursor: string | undefined;
-    let next: string | undefined;
-    let boundaryReached = keepNames.size === 0;
-    let pendingPageRead = !preserveMore;
-    while (true) {
-      const out = await this.ops.appsList(thread, cursor);
-      if (this.listGeneration !== generation) return;
-      if (!out.ok) {
-        this.list.value = { ...this.list.peek(), loading: false, loadingMore: false, error: out.error };
-        return;
-      }
-      for (const app of readApps(out.value)) {
-        if (!seen.has(app.name)) {
-          seen.add(app.name);
-          apps.push(app);
-        }
-      }
-      next = str(out.value.next_cursor);
-      cursor = next;
-      const visibleBoundaryFound = [...keepNames].every((name) => seen.has(name));
-      if (preserveMore && visibleBoundaryFound) {
-        if (boundaryReached) pendingPageRead = true;
-        boundaryReached = true;
-      }
-      if (!global || ((visibleBoundaryFound && pendingPageRead) || cursor === undefined)) break;
+  /** Re-reads the displayed number of Core pages; hints coalesce behind one reader per scope. */
+  refresh(thread: string | undefined, showMore = false): Promise<void> {
+    const key = thread ?? "";
+    const current = this.list.peek();
+    const sameScope = current.thread === thread;
+    const active = this.reconciliations.get(key);
+    if (active) {
+      active.dirty = true;
+      active.more ||= showMore;
+      this.list.value = sameScope
+        ? { ...current, loading: true, loadingMore: current.loadingMore || showMore }
+        : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: showMore, error: undefined };
+      return active.promise;
     }
-    this.list.value = { loading: false, loaded: true, thread, apps, next, loadingMore: false, error: undefined };
+
+    const state = { dirty: false, more: showMore, promise: Promise.resolve() };
+    this.reconciliations.set(key, state);
+    this.list.value = sameScope
+      ? { ...current, loading: true, loadingMore: current.loadingMore || showMore }
+      : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: showMore, error: undefined };
+    state.promise = this.reconcile(thread, key, state);
+    return state.promise;
   }
 
-  /** The next Core page, added after the apps already shown. */
+  private async reconcile(thread: string | undefined, key: string, state: { dirty: boolean; more: boolean; promise: Promise<void> }): Promise<void> {
+    try {
+      do {
+        state.dirty = false;
+        const before = this.list.peek();
+        const sameScope = before.thread === thread;
+        const admittedMore = state.more;
+        const targetPages = Math.max(1, (sameScope ? before.pages : 0) + (admittedMore ? 1 : 0));
+        state.more = false;
+        this.list.value = sameScope
+          ? { ...before, loading: true, loadingMore: before.loadingMore || admittedMore }
+          : { loading: true, loaded: false, thread, apps: [], next: undefined, pages: 0, loadingMore: admittedMore, error: undefined };
+        const apps: AppInfo[] = [];
+        const seen = new Set<string>();
+        let cursor: string | undefined;
+        let next: string | undefined;
+        let pages = 0;
+        let error: OpError | undefined;
+        while (pages < targetPages) {
+          const out = await this.ops.appsList(thread, cursor);
+          if (!out.ok) { error = out.error; break; }
+          pages++;
+          for (const app of readApps(out.value)) {
+            if (!seen.has(app.name)) {
+              seen.add(app.name);
+              apps.push(app);
+            }
+          }
+          next = str(out.value.next_cursor);
+          cursor = next;
+          if (cursor === undefined) break;
+        }
+        const current = this.list.peek();
+        if (current.thread !== thread) return;
+        this.list.value = error
+          ? { ...current, loading: false, loadingMore: false, error }
+          : { loading: false, loaded: true, thread, apps, next, pages, loadingMore: false, error: undefined };
+      } while (state.dirty);
+    } finally {
+      if (this.reconciliations.get(key) === state) this.reconciliations.delete(key);
+    }
+  }
+
+  /** Admit one more Core page even if a reconciliation is already running. */
   async more(): Promise<void> {
     const before = this.list.peek();
-    const { thread, next } = before;
-    if (next === undefined || before.loading || before.loadingMore) return;
-    this.list.value = { ...before, loadingMore: true, error: undefined };
-    const generation = this.listGeneration;
-    const out = await this.ops.appsList(thread, next);
-    const now = this.list.peek();
-    if (this.listGeneration !== generation || now.thread !== thread || now.next !== next) return;
-    if (!out.ok) {
-      this.list.value = { ...now, loadingMore: false, error: out.error };
-      return;
-    }
-    const seen = new Set(now.apps.map((a) => a.name));
-    this.list.value = { ...now, loadingMore: false, apps: [...now.apps, ...readApps(out.value).filter((a) => !seen.has(a.name))], next: str(out.value.next_cursor) };
+    if (before.next === undefined || before.loadingMore) return;
+    await this.refresh(before.thread, true);
   }
 
   async loadInstances(name: string): Promise<void> {
