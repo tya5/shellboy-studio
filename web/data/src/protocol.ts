@@ -14,6 +14,7 @@ export interface ApiError {
 export interface OwnerInfo {
   protocol_version: number;
   instance_id: string | null;
+  operation_epoch: string | null;
   capabilities: string[];
 }
 

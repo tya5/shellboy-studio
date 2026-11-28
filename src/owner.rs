@@ -12,8 +12,8 @@ pub trait Owner: Send + Sync + 'static {
         false
     }
 
-    /// Read stable owner identity from Core's public status result.
-    fn instance_id(&self) -> impl Future<Output = Option<String>> + Send {
+    /// Read stable owner identity and the current operation epoch from Core status.
+    fn owner_facts(&self) -> impl Future<Output = Option<(String, String)>> + Send {
         async {
             let response = self
                 .call(
@@ -26,11 +26,11 @@ pub trait Owner: Send + Sync + 'static {
                 )
                 .await
                 .ok()?;
-            response
-                .result?
-                .get("instance_id")?
-                .as_str()
-                .map(str::to_owned)
+            let result = response.result?;
+            Some((
+                result.get("instance_id")?.as_str()?.to_owned(),
+                result.get("operation_epoch")?.as_str()?.to_owned(),
+            ))
         }
     }
 

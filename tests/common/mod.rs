@@ -94,6 +94,10 @@ pub fn mock_replies(
 }
 
 impl Owner for MockOwner {
+    async fn owner_facts(&self) -> Option<(String, String)> {
+        Some(("mock-instance".into(), "mock-instance.0".into()))
+    }
+
     async fn call(&self, command: Command, _op: Option<String>, _origin: Option<Origin>) -> Reply {
         if let Command::EventsWait(args) = &command {
             self.event_args.lock().unwrap().push(args.clone());

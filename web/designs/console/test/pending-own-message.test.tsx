@@ -527,7 +527,7 @@ it('retry display eligibility rejects owner ABA and route ABA without dispatch s
    expect(f.model.canResend(original)).toBe(true);
    const owner=f.data.owner.peek();
    if(mode==='owner'&&owner.state==='connected'){
-    f.t.push({t:'owner',event:'connected',owner:{...owner,info:{...owner.info,instance_id:'different-owner'}}});await flush(8);
+    f.t.push({t:'owner',event:'connected',owner:{...owner,info:{...owner.info,instance_id:'different-owner',operation_epoch:'different-owner.0'}}});await flush(8);
     f.t.push({t:'owner',event:'connected',owner});await flush(8);
    }else {f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);}
    const count=f.t.calls('message.send').length;

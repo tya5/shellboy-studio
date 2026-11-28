@@ -30,7 +30,7 @@ async function rig(order:Scenario){
   await pump(()=>{r.db.history.lead=[...(r.db.history.lead??[]),{node_id:'synthetic-tool-node',kind:order==='message'?'user':'assistant_response',excerpt:raw,...(order==='message'?{items:[{item_identity:'ordinary-json',kind:'text' as const,text:raw,text_complete:true}]}:{}),execution_count:0,execution_links_truncated:false,provenance:{sender:{kind:order==='message'?'human':'assistant'}}}];r.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});});
   if(order==='history-first')await pump(()=>{refsReady=true;r.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});});
   if(order==='owner-ABA')await pump(()=>{
-    const owner={state:'connected' as const,info:{protocol_version:5,instance_id:'synthetic-owner',capabilities:['history.window']}};
+    const owner={state:'connected' as const,info:{protocol_version:5,instance_id:'synthetic-owner', operation_epoch: "fixture.0",capabilities:['history.window']}};
     r.t.push({t:'owner',event:'restarted',owner});r.t.push({t:'owner',event:'restarted',owner});
   });
   return {observations,host:host!};

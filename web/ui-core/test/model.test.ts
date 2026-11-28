@@ -229,7 +229,7 @@ describe("AppModel over the fake transport", () => {
       const notifications: (string | undefined)[] = [];
       const stop = visible.subscribe(value => notifications.push(value));
       expect(visible.value).toBe("saved body");
-      t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["history.window"] } } });
+      t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", operation_epoch: "i2.0", capabilities: ["history.window"] } } });
       await flush(8);
       expect(model.handle.peek()).toBe(handle);
       expect(model.longReader.peek()).not.toBe(reader);
@@ -314,7 +314,7 @@ describe("AppModel over the fake transport", () => {
     await flush();
     const held = t.calls("history.window").find(call => !db.answered.has(call.id));
     expect(held).toBeDefined();
-    t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["history.window"] } } });
+    t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", operation_epoch: "i2.0", capabilities: ["history.window"] } } });
     t.push({ t: "resync" });
     const drainRequiredReplies = async () => {
       for (;;) {
@@ -441,7 +441,7 @@ describe("AppModel over the fake transport", () => {
       const owner = model.data.owner.peek();
       if (owner.state !== "connected") throw new Error("picker ABA requires connected owner");
       const ownerA = owner;
-      t.push({ t: "owner", event: "connected", owner: { ...ownerA, info: { ...ownerA.info, instance_id: "picker-aba-owner-b" } } });
+      t.push({ t: "owner", event: "connected", owner: { ...ownerA, info: { ...ownerA.info, instance_id: "picker-aba-owner-b", operation_epoch: "picker-aba-owner-b.0" } } });
       await flush();
       const ownerB = model.data.owner.peek();
       expect(ownerB.state).toBe("connected");
@@ -763,7 +763,7 @@ it.each(['reserve-next','invalidate-route','invalidate-owner'] as const)('ACK su
   observed={pending:f.model.pendingOwnMessage.peek(),phase:f.model.sendState.peek().kind};
   if(mode==='reserve-next')next=f.model.send('Next original operation');
   else if(mode==='invalidate-route')f.model.navigate({view:'conversation'});
-  else {const owner=f.data.owner.peek();if(owner.state==='connected')f.t.push({t:'owner',event:'connected',owner:{...owner,info:{...owner.info,instance_id:'replacement-owner'}}});}
+  else {const owner=f.data.owner.peek();if(owner.state==='connected')f.t.push({t:'owner',event:'connected',owner:{...owner,info:{...owner.info,instance_id:'replacement-owner',operation_epoch:'replacement-owner.0'}}});}
  });
  try{
   const sent=f.model.send('First original operation');await flush();const first=f.t.calls('message.send').at(-1)!;

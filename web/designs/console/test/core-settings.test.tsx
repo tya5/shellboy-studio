@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 import type { LauncherState, WorkItem } from "../../../data/src/protocol";
 import type { OwnerState } from "../../../data/src/protocol";
 
-const connected = (instance_id: string): OwnerState => ({ state: "connected", info: { instance_id, protocol_version: 23, capabilities: [] } });
+const connected = (instance_id: string): OwnerState => ({ state: "connected", info: { instance_id, operation_epoch: `${instance_id}.0`, protocol_version: 23, capabilities: [] } });
 import { fixtureModel, settle } from "../../../ui-core/test/fixture";
 import { CoreBanner, CoreSettings, CoreStatusLink } from "../screens/CoreSettings";
 

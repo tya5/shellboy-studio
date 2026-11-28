@@ -54,7 +54,7 @@ describe("Desktop navigation", () => {
     const { model, t, data } = await fixtureModel({ route: "inbox" });
     try {
       t.push({ t: "hello", bridge_version: "0.0.1", desktop: true, data_dir: "/temp/owner-a",
-        owner: { state: "connected", info: { protocol_version: 10, instance_id: "i1", capabilities: ["history.window"] } } });
+        owner: { state: "connected", info: { protocol_version: 10, instance_id: "i1", operation_epoch: "fixture.0", capabilities: ["history.window"] } } });
       const el = draw(model);
       const footers = () => el.querySelectorAll("footer.status");
       expect(footers()).toHaveLength(1);

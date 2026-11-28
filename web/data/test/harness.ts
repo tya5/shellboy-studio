@@ -93,8 +93,8 @@ export const okResponse = (result: unknown): OwnerResponse => ({
   result,
 });
 
-export const connected: OwnerState = { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: [] } };
-export const connectedWithHistory: OwnerState = { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: ["history.window"] } };
+export const connected: OwnerState = { state: "connected", info: { protocol_version: 5, instance_id: "i1", operation_epoch: "i1.0", capabilities: [] } };
+export const connectedWithHistory: OwnerState = { state: "connected", info: { protocol_version: 5, instance_id: "i1", operation_epoch: "i1.0", capabilities: ["history.window"] } };
 
 export function summary(id: string, extra: Record<string, unknown> = {}) {
   return { thread_id: id, title: `t-${id}`, cwd: "/", state: "idle", activity: "idle", updated_at: "u", excerpt: "", awaiting_named_count_exact: true, awaiting_replies_count_exact: true, awaiting_thread_count_exact: true, ...extra };

@@ -1045,14 +1045,10 @@ function listArgs(filter: ListFilter): ThreadListArgs {
   };
 }
 
-/**
- * The owner accepts a client's operation ID only as `<instance_id>:<id>` (found on the real owner:
- * a bare UUID is refused with "operation ID has no active instance prefix"). Before the instance
- * is known the ID stays bare, and the owner's refusal is reported rather than hidden.
- */
+/** Mint in the owner-published rolling epoch; this value stays opaque after creation. */
 function withInstance(owner: OwnerView, id: string): string {
-  const instance = owner.state === "connected" ? owner.info.instance_id : null;
-  return instance ? `${instance}:${id}` : id;
+  const epoch = owner.state === "connected" ? owner.info.operation_epoch : null;
+  return epoch ? `${epoch}:${id}` : id;
 }
 
 function defaultNewId(): string {
